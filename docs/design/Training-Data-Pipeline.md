@@ -2,9 +2,11 @@
 
 ## 1. 文档目的与范围
 
-- **目的**：定义 Training Data Pipeline 全 6 Phase 的输入/输出、执行逻辑、引擎适配、异常处理与产物归档规范，为后端开发提供实现依据。
-- **范围**：从 Trigger 创建 Instance 开始，到模型产物归档至 S3 为止的完整数据管道。不包含任务配置 CRUD（见 [系统架构说明.md](../architecture/系统架构说明.md)）和 UI 交互（待后续输出）。
-- **前置依赖**：阅读 [系统架构说明.md](../architecture/系统架构说明.md) §3 领域模型、§4.2 模型训练模块、§6 任务调度与串行控制。
+- **目的**：定义 Training Data Pipeline 构建时的全阶段流程规范。
+- **范围**：从 Trigger 创建 Instance 开始，说明平台如何将表单配置转换为内部 Python 代码（基于 `RayUtil` 包裹）投递并在 Ray 分布式集群上执行寻参、训练、回传模型。
+- **前置依赖**：阅读 [系统架构说明.md](../architecture/系统架构说明.md)。
+- **数据责任**：本平台仅提供表单能力与算力对接保障；模型所需的全部逻辑依赖特征平台宽表或直接 Hive 读取，平台仅生成选择和预处理的 Python 代码。
+- **Experiment 联动**：Experiment 由 AI Prompt 解析推导生成并批量填充 `TrainingTask` 配置。而单一实体 Pipeline 执行本质是一致的，即转化 Python `RayUtil` 并交给 **RayTune** 的调度机制。
 
 ---
 
@@ -15,67 +17,53 @@
 ```mermaid
 flowchart LR
     subgraph trigger [触发层]
-        Manual[手动触发]
-        Cron[Cron 调度]
+        Manual[手动触发 / Experiment 探索出发]
+        Cron[Cron 定时调度]
     end
 
-    subgraph queue [队列层]
-        PQ[优先级队列<br/>串行锁检查]
+    subgraph generate [核心处理层]
+        Form[表单参数提取]
+        Script[自动生成 Python Script<br/>包含 RayUtil 调用]
+        Submit[投递给基础调度/Ray]
     end
 
-    subgraph spark [Spark 阶段]
-        P1[Phase 1<br/>数据获取]
-        P2[Phase 2<br/>数据预处理]
-        P3[Phase 3<br/>Train/Val 切分]
+    subgraph execution [Ray 集群内部执行与分配]
+        RayTune[RayTune 负责 n_trials 分发]
+        RayTask[单次 Trial 读数/切分/评估与模型跑测]
+        RayTune -->|并发 trial| RayTask
     end
 
-    subgraph engine [训练引擎阶段]
-        P4[Phase 4<br/>模型训练]
-        P5[Phase 5<br/>模型评估]
-        P6[Phase 6<br/>产物归档]
+    subgraph output [产出链路回传]
+        S3Artifact[S3 存储库归档模型、日志与最终指标]
+        StatusUpdate[系统 Backend 实例状态流转更新]
     end
 
-    subgraph output [产出]
-        S3Artifact[S3 模型产物]
-        MetricsDB[训练指标]
-        StatusUpdate[实例状态更新]
-    end
-
-    Manual --> PQ
-    Cron --> PQ
-    PQ --> P1
-    P1 --> P2
-    P2 --> P3
-    P3 --> P4
-    P4 --> P5
-    P5 --> P6
-    P6 --> S3Artifact
-    P5 --> MetricsDB
-    P6 --> StatusUpdate
+    Manual --> Form
+    Cron --> Form
+    Form --> Script
+    Script --> Submit
+    Submit --> RayTune
+    RayTask --> S3Artifact
+    S3Artifact --> StatusUpdate
 ```
 
 ### 2.2 Phase 责任划分
 
-| Phase | 执行环境 | 职责 |
+| 逻辑阶段 | 环境映射 | 职责描述 |
 |-------|----------|------|
-| Phase 1: 数据获取 | Spark | 从 Hive 表读取原始数据 |
-| Phase 2: 数据预处理 | Spark | 缺失值处理、类别编码、归一化、特征筛选 |
-| Phase 3: 数据切分 | Spark | 按配置策略切分 Train / Validation 集 |
-| Phase 4: 模型训练 | 独立训练引擎 | 模型拟合（含超参搜索） |
-| Phase 5: 模型评估 | 独立训练引擎 | 在 Validation 集上计算评估指标 |
-| Phase 6: 产物归档 | 独立训练引擎 → S3 | 模型文件 + 指标 + 日志 + 配置快照归档至 S3 |
+| 数据获取 | Ray Data | Python 脚本包含获取设定范围内数据的指令，从 Hive 源表拉取数据 |
+| 特征选择与 WOE | Ray 环境 | 根据配置中的 `feature_selection_methods` 和 `woe_enabled` 决定是否处理并生成特征 |
+| 数据切分 | Ray Data | Train / Validation 数据按指定条件打上标识位或者分别切分加载 |
+| 搜索与模型训练 | Ray Tune | Python 脚本包裹空间参数（`search_space`, `n_trials`），由下层 Ray 集群多节点并发跑试验搜出最优超参 |
+| 产物最终归档 | Backend | Ray 执行结束会由包裹壳把最终结果（最佳 metrics 和打包出的模型以及 preprocessor 元数据）传输到 S3 并告知后台成功 |
 
-### 2.3 Spark 与训练引擎的交接
+### 2.3 `RayUtil` 生成设计概念
 
-Spark 阶段（Phase 1–3）完成后，数据需要交接给训练引擎阶段（Phase 4–6）。交接方式取决于训练引擎类型：
+为了屏蔽分布式运算以及异构配置，后台不会从头构造 Python 执行链路，而是**统一套壳调用 `RayUtil` 包下的相应功能类**。平台收集表单内容后：
 
-| 训练引擎 | 交接方式 | 说明 |
-|----------|----------|------|
-| XGBoost / LightGBM（Spark 分布式） | Spark DataFrame 直传 | 使用 SynapseML 或框架原生 Spark 集成，无需落盘 |
-| XGBoost / LightGBM / CatBoost / sklearn（单机） | 临时 Parquet 写 HDFS | Spark 写出 Parquet 文件到 HDFS 临时目录，训练引擎读取 |
-| PyTorch / TensorFlow（GPU 集群） | 临时 Parquet 写 HDFS / S3 staging | Spark 写出后，GPU 节点从 HDFS 或 S3 staging 路径读取 |
-
-临时 staging 数据在 Phase 6 归档完成后清理。
+1. 如果是特征环节（选用了包含缺失/分箱/WOE等配置），平台拼接 `ray_util.woe_fit(...)` 与对应的 `ray_util.feature_selection(...)` 参数。
+2. 如果是训练模型请求，则调用 `ray_util.model_tune()` 或者 `model_train()`。由于平台默认使用寻找最优模型流程，往往平台会直接封装调用 `model_tune`，指定搜索空间 `search_space`。
+3. 这些封装包裹调用指令被放入一份生成的 `task_id.py` 里，借助内部框架将 `task_id.py` 交给真实的 Ray 物理环境运行。
 
 ---
 
@@ -123,105 +111,76 @@ Spark 阶段（Phase 1–3）完成后，数据需要交接给训练引擎阶段
 
 ---
 
-### 3.2 Phase 2: 数据预处理（Spark）
+### 3.2 Phase 2: 特征自动选择与可选 WOE
 
 #### 输入
 
-- `raw_df`：Phase 1 输出的 Spark DataFrame
-- `TaskConfig.PreprocessConfig`：预处理配置
+- `raw_df`：Phase 1 输出的 Spark DataFrame（**上游已清洗**，无缺失值/编码/归一化责任）
+- `TaskConfig.PreprocessConfig`：特征选择与可选 WOE 配置
 - `TaskConfig.DataSourceConfig.label_column`：标签列名
-- `TaskConfig.DataSourceConfig.feature_columns`：特征列名列表
+- `TaskConfig.DataSourceConfig.feature_columns`：特征列名列表（候选）
+- `TaskConfig.DataSourceConfig.sample_use_col`（可选）：样本划分列，与 RAY 一致（如 train/test）
 
-#### 预处理步骤
+#### 步骤
 
-步骤顺序固定，按配置逐步执行。每步均操作在 `feature_columns` 范围内，`label_column` 不做预处理。
+##### Step 1: 特征自动选择（必选，P0）
 
-##### Step 1: 特征列筛选
+与 RAY 手册 Step 2（feature_selection / feature_selection_v2）对齐。
 
-在执行后续预处理前，先按 `feature_columns` 配置筛选出参与训练的列：
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| feature_selection_methods | list | 方法列表：`by_iv` / `by_corr` / `by_gini` / `by_psi` / `by_stability` |
+| fp_fs_iv_threshold | float | IV 筛选阈值（默认 0.02），低于该值的特征剔除 |
+| fp_fs_corr_threshold | float | 相关性阈值（默认 0.7），高于该值视为冗余 |
+| fp_fs_psi_threshold | float | PSI 阈值（默认 0.1），高于该值视为不稳定 |
+| exclude | list | 剔除列（如 ID、label）；与 RAY BaseConfig.exclude 一致 |
 
-```
-selected_df = raw_df.select(feature_columns + [label_column])
-```
+**by_stability 专用参数**：
 
-若配置了 `feature_selection_mode`：
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| fp_fs_lambda_grid | list | L1 正则化系数网格（如 np.logspace(-3, -1, 10)） |
+| fp_fs_stability_threshold | float | 稳定性阈值（默认 0.1） |
+| fp_fs_stability_n_resampling | int | 重采样次数（默认 50） |
+| fp_fs_stability_sample_fraction | float | 每次重采样样本比例（0.0–1.0） |
+| fp_fs_random_state | int | 随机种子 |
 
-| 模式 | 说明 |
-|------|------|
-| manual | 使用 `feature_columns` 配置（即用户在 UI 勾选的列） |
-| variance_threshold | 自动过滤方差低于阈值的特征列（阈值可配，默认 0.01） |
-| correlation_filter | 自动过滤与 label 相关性低于阈值或特征间高相关的列 |
+**输出**：筛选后特征列表；`selection_report_{model_name}.csv` 或等价物路径，供后续 WOE/训练使用。
 
-##### Step 2: 缺失值处理
+##### Step 2: 可选 WOE 变换
 
-| 策略 | 参数 | 说明 |
-|------|------|------|
-| drop_rows | — | 删除包含缺失值的行 |
-| fill_mean | — | 数值列用均值填充 |
-| fill_median | — | 数值列用中位数填充 |
-| fill_mode | — | 用众数填充（适用于类别列） |
-| fill_constant | fill_value | 用指定常量填充 |
+若 `TaskConfig.PreprocessConfig.woe_enabled == true`，执行与 RAY Feature 域一致的子步骤：
 
-- 支持**全局配置**（所有列统一策略）或**按列配置**（不同列不同策略）。
-- 按列配置优先级高于全局配置。
+1. **woe_fit**：分箱与编码器拟合；配置与手册 §1.1 对齐（label、sample_use_col、n_bins、method、transform_method、encoder_save_path、categorical_features、exclude 等）。
+2. **woe_transform**：应用编码器；配置与手册 §1.2 对齐（data_path、data_save_path、encoder_load_path）。
+3. **woe_merge**：多特征域合并；配置与手册 §1.3 对齐（on、how、data_path_dict、data_save_path）。
 
-##### Step 3: 类别特征编码
-
-| 编码方式 | 说明 | 适用场景 |
-|----------|------|----------|
-| label_encoding | 整数编码（0, 1, 2, ...） | 有序类别、树模型 |
-| one_hot_encoding | 独热编码，展开为多列 | 无序类别、线性模型 |
-| target_encoding | 用目标变量均值编码 | 高基数类别列 |
-
-**高基数处理**：当某列唯一值数量超过配置阈值（默认 50）时：
-- one_hot_encoding 自动降级为 frequency_encoding（频率编码）
-- 记录 warning 到日志
-
-##### Step 4: 特征归一化/标准化
-
-| 策略 | 公式 | 说明 |
-|------|------|------|
-| min_max | (x - min) / (max - min) | 缩放到 [0, 1] |
-| z_score | (x - mean) / std | 标准正态分布 |
-| robust_scaler | (x - median) / IQR | 对异常值更鲁棒 |
-| none | — | 不做归一化（树模型常选此项） |
-
-- 仅对数值列生效；类别列（已编码为数值后）是否归一化取决于配置。
-- 支持全局配置或按列配置。
+若不启用 WOE，本步跳过；Phase 2 输出为经特征选择后的 DataFrame 或落盘路径。
 
 #### 输出
 
-- `preprocessed_df`：预处理后的 Spark DataFrame
-- `preprocessor_metadata`：预处理元数据（JSON），包含：
+- 特征选择结果（筛选后特征列表 + selection_report 路径）
+- 可选 WOE 后的训练就绪数据（DataFrame 或 Parquet/S3 路径）
+- `preprocessor_metadata`（JSON）：记录 `feature_columns_final`、`label_column`、可选 `woe_encoder_path`、`selection_report_path`；供 Phase 6 归档与 Serving 复用。
 
-```json
-{
-  "feature_columns_final": ["col_a", "col_b", "col_c_encoded", ...],
-  "label_column": "label",
-  "missing_value_config": { "col_a": "fill_mean", "col_b": "fill_constant:0" },
-  "encoding_mappings": {
-    "col_c": { "method": "label_encoding", "mapping": {"cat_a": 0, "cat_b": 1} }
-  },
-  "normalization_params": {
-    "col_a": { "method": "min_max", "min": 0.0, "max": 100.0 },
-    "col_b": { "method": "z_score", "mean": 50.0, "std": 10.0 }
-  },
-  "dropped_features": ["col_x", "col_y"],
-  "rows_before": 1000000,
-  "rows_after": 985432
-}
-```
+#### 可选兜底：数据清洗（上游未清洗时）
 
-此元数据将在 Phase 6 归档至 S3，供后续 Serving 阶段复用同样的预处理逻辑。
+仅当上游未完成清洗且配置明确启用时，可执行最小兜底（**默认跳过**）：
+
+- **缺失值**：fill_mean / fill_median / fill_constant 等（见原 Step 2 表）
+- **编码/归一化**：label_encoding、min_max / z_score 等（见原 Step 3–4）
+
+上述逻辑标注为「上游已清洗时可选或跳过」，不纳入默认训练计划。
 
 #### 异常处理
 
 | 异常场景 | 处理方式 |
 |----------|----------|
-| label_column 不存在 | FAILED；error_message = "Label column '{col}' not found in dataframe" |
+| label_column 不存在 | FAILED；error_message = "Label column '{col}' not found" |
 | feature_columns 中有列不存在 | FAILED；列出缺失列名 |
-| 预处理后数据为空 | FAILED（例如 drop_rows 导致全部删除） |
-| one_hot_encoding 后列数爆炸（超 10000 列） | FAILED；建议改用 label_encoding 或 target_encoding |
+| 特征选择后无剩余特征 | FAILED；建议放宽阈值或检查数据 |
+| WOE fit 失败（如分箱样本不足） | FAILED；error_message 含具体原因 |
+| selection_report 写出失败 | FAILED；检查 S3/HDFS 权限与路径 |
 
 ---
 
@@ -331,14 +290,12 @@ val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter
 
 根据 `TaskConfig.framework` 分发到对应训练引擎：
 
-| Framework | 训练引擎 | 计算环境 | 数据接收方式 |
-|-----------|----------|----------|--------------|
-| xgboost | xgboost.train() 分布式 via Spark/Dask | Spark 集群 | Spark DataFrame 直传 |
-| lightgbm | SynapseML LightGBMClassifier/Regressor | Spark 集群 | Spark DataFrame 直传 |
-| catboost | catboost.CatBoostClassifier/Regressor | Spark Driver 或独立节点 | Parquet 读取 |
-| sklearn | sklearn Pipeline | Spark Driver 或独立节点 | Parquet 读取（pandas 转换） |
-| pytorch | PyTorch Distributed / TorchRun | GPU 集群（K8s） | HDFS/S3 staging 读取 |
-| tensorflow | tf.distribute.Strategy | GPU 集群（K8s） | HDFS/S3 staging 读取 |
+由于采用的是基于 Ray 的 MVP，执行层已经统一抽象并转移为 Ray 物理环境的负荷：
+
+| Framework | 训练引擎实现 | 
+|-----------|----------|
+| xgboost | backend 生成脚本中指定 Ray Tune 调用 XGBoost Trainer 引擎参数 | 
+| lightgbm | backend 生成脚本中指定 Ray Tune 调用 LightGBM Trainer 引擎 |
 
 #### 超参搜索
 
@@ -390,6 +347,16 @@ flowchart TD
 
 - 树模型（XGBoost/LightGBM）：基于 eval_metric 的 early_stopping_rounds。
 - 深度学习（PyTorch/TensorFlow）：基于 validation loss 的 EarlyStopping callback。
+
+#### 与 RAY 引擎对接（model_tune / model_train）
+
+当 framework 对接 RAY 分布式训练引擎（见 [分布式训练使用手册](../../分布式训练使用手册_v1.3.md)）时：
+
+- **超参空间**：TaskConfig.search_space 映射为 RAY **init_hypers**（支持字典、字符串、tune. 前缀）；类型与 uniform/randint/choice 等一致。
+- **搜索次数**：TaskConfig.n_trials 对应 RAY **n_trails**。
+- **停止条件**：early_stopping / patience / min_delta 对应 RAY **early_stopping_round**、**TrialPlateauStopper**；可选 metric_for_train_tune、train_val_ks_diff_threshold 与手册 model_tune 对齐。
+- **训练输入**：Phase 2 产出的 WOE merge 或特征选择后 Parquet 路径作为 **sample_path**；特征选择报告路径作为 **feature_selection_path**；use_feature_selection 对应所选 methods。
+- **最优超参**：调参阶段产出 best_hypers_path；训练阶段可优先使用 **best_hyper_path**，与手册 model_train 一致。
 
 #### 输出
 
@@ -520,7 +487,7 @@ s3://{bucket}/model-training/{task_id}/{instance_id}/
 | 产物 | 文件名 | 格式 | 说明 |
 |------|--------|------|------|
 | 模型文件 | `model.*` | 框架原生格式 | `.pkl`（sklearn/xgb/lgb/catboost）/ `.pt`（PyTorch）/ `.h5` 或 `SavedModel/`（TensorFlow） |
-| 预处理元数据 | `preprocessor.json` | JSON | Phase 2 产出的编码映射、归一化参数等，供 Serving 复用 |
+| 预处理元数据 | `preprocessor.json` | JSON | Phase 2 产出的特征列表、WOE 编码器路径、selection_report 等；缺失值/编码/归一化仅兜底时产出，上游已清洗时可选；供 Serving 复用 |
 | 训练指标 | `metrics.json` | JSON | Phase 5 产出的结构化指标（含曲线数据点） |
 | 任务配置快照 | `config_snapshot.json` | JSON | 训练时的完整 TaskConfig，含所有 6 个配置区块 |
 | 训练日志 | `train.log` | 文本 | Pipeline 执行全过程的 stdout/stderr |
@@ -616,30 +583,10 @@ flowchart TD
 
 ## 6. 监控与日志
 
-### 6.1 日志内容
+### 6.1 日志内容（从 Ray 拉取）
 
-train.log 按时间顺序记录 Pipeline 全过程：
+`train.log` 中直接留存投递的 `task_id.py` 输出（主要是 `RayUtil` 包的运行栈），由于封装好了进度追踪，这里会直接呈现每次 trial 的探索记录和收敛进展信息：
 
-```
-[2025-07-15 10:00:01] [INFO] Pipeline started. instance_id=inst_001, task_id=task_042
-[2025-07-15 10:00:01] [INFO] Phase 1: Reading from hive_sg.feature_wide_table_v3
-[2025-07-15 10:00:15] [INFO] Phase 1: Loaded 1,234,567 rows, 89 columns
-[2025-07-15 10:00:15] [INFO] Phase 2: Starting preprocessing
-[2025-07-15 10:00:16] [INFO] Phase 2: Missing values - col_a: 1.2% filled with mean(45.3)
-[2025-07-15 10:00:18] [INFO] Phase 2: Encoding - col_category: label_encoding (15 unique values)
-[2025-07-15 10:00:20] [INFO] Phase 2: Normalization - 42 numeric columns with min_max
-[2025-07-15 10:00:20] [INFO] Phase 2: After preprocessing: 1,220,345 rows, 95 columns
-[2025-07-15 10:00:20] [INFO] Phase 3: Splitting with random_ratio (0.8/0.2, seed=42)
-[2025-07-15 10:00:22] [INFO] Phase 3: Train=976,276 rows, Val=244,069 rows
-[2025-07-15 10:00:22] [INFO] Phase 4: Training XGBoost with bayesian search (n_trials=50)
-[2025-07-15 10:00:22] [INFO] Phase 4: Trial 1/50 - lr=0.1, depth=5 → AUC=0.891
-[2025-07-15 10:05:30] [INFO] Phase 4: Trial 50/50 - lr=0.05, depth=6 → AUC=0.923
-[2025-07-15 10:05:30] [INFO] Phase 4: Best trial: #37 (AUC=0.923)
-[2025-07-15 10:06:00] [INFO] Phase 5: Evaluating on validation set
-[2025-07-15 10:06:05] [INFO] Phase 5: AUC=0.923, F1=0.84, Precision=0.87, Recall=0.81
-[2025-07-15 10:06:05] [INFO] Phase 6: Archiving artifacts to S3
-[2025-07-15 10:06:10] [INFO] Phase 6: Upload complete. Cleaning temp data.
-[2025-07-15 10:06:12] [INFO] Pipeline completed. Duration=372s. Status=SUCCESS
 ```
 
 ### 6.2 Instance 元数据记录
