@@ -16,3 +16,5 @@ npm run dev
 ```bash
 npm run build
 ```
+
+**GitHub Actions 部署**：将 [`github-actions-deploy-pages.yml`](github-actions-deploy-pages.yml) 复制到仓库 `.github/workflows/deploy-pages.yml` 后推送（需具备 `workflow` 权限的凭据）。在仓库 **Settings → Pages** 中将 Source 设为 **GitHub Actions**。
