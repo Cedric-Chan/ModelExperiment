@@ -1,6 +1,6 @@
 # 标准 Experiment 画布步骤与节点设计（修订版）
 
-依据 [MODEL_PIPELINE.md](../../MODEL_PIPELINE.md) 与 [分布式训练使用手册_v1.3.md](../../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md)，按单域、统一数据源节点、SavePoint/CheckPoint 明确边界修订。先不考虑多域情况。实现参考 risk_model_on_ray，RayUtil 方法及 ray_*.py 脚本与画布节点对应关系见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。**本版对齐 Data Science 调研 SOP**：支持多 SavePoint、多 CheckPoint；**改配置后执行**统一为**新 Run**（始终从头执行，按最新 Experiment 配置），执行时由系统分析配置变更、无变更部分走缓存；画布仅提供 Run，并提示使用缓存与 Force Restart；不提供同一 Run 的「从最近 SavePoint 自动重跑」；SavePoint 仍用于按 Run 记录节点产出与溯源。「从某节点执行」不再作为画布选项，仅通过新 Run + 缓存复用实现等价能力。
+依据 [MODEL_PIPELINE.md](../../MODEL_PIPELINE.md) 与 [分布式训练使用手册_v1.3.md](../../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md)，按单域、统一数据源节点、SavePoint/CheckPoint 明确边界修订。先不考虑多域情况。实现参考 risk_model_on_ray，RayUtil 方法及 ray_*.py 脚本与画布节点对应关系见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。**本版对齐 Data Science 调研 SOP**：支持多 SavePoint、多 CheckPoint；**改配置后执行**统一为**新 Run**（按最新 Experiment 配置），执行时由系统分析配置变更、无变更部分走缓存。**交互（Figma / [`model-experiment-web`](../prototype/model-experiment-web/README.md)）**：**Action → Trigger Run** 与 **Use Cache** 弹窗；当前导出默认 **from start** 全 DAG 校验。「从选中节点起执行」为设计意图（源码有未挂接组件）。SavePoint 仍用于按 Run 记录节点产出与溯源。
 
 ---
 
@@ -44,11 +44,11 @@ Benchmark 框架：**Experiment Meta**（首位）→ 数据源(Type=S3) → Meg
 | 属性 | 含义 | 行为 | 适用节点 |
 |------|------|------|----------|
 | **SavePoint** (`isSavePoint`) | 节点产出作为「恢复点」持久化 | 本节点执行完成后，将其输出（如 WOE Encoder、合并后数据）写入 S3 并记录到 Run 的 SavePoint 列表。用户选择 **Revert** 时，从**最近一个 SavePoint** 加载产出，从该 SavePoint 的**下一节点**按当前配置重新执行。**允许多个节点开启 SavePoint。** | **WOE All Feature**、**WOE Selected Feature** |
-| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；用于产出存档等语义 | Run 状态仅为 **WAITING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING）。CheckPoint 节点完成后中间产物已写出，不改变 Run 状态为「暂停」；改配置后执行 = 新 Run id，按最新 Experiment 配置从头执行，无变更部分可走缓存。**允许多个节点开启 CheckPoint。** | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
+| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；用于产出存档等语义 | Run 状态为 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING；**WAITING** 与 **QUEUING** 可同义）。CheckPoint 节点完成后中间产物已写出，不改变 Run 状态为「暂停」；改配置后执行 = 新 Run id，按最新 Experiment 配置执行，无变更部分可走缓存。**允许多个节点开启 CheckPoint。** | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
 
 ### 2.2 状态与操作
 
-- **Run 状态**：仅 **WAITING / RUNNING / SUCCESS / FAILED / KILLED**，无 CHECKING。SavePoint 产出可被后续新 Run 复用（如改配置后执行 = 新 Run，执行时无变更部分可走缓存）。
+- **Run 状态**：**QUEUING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING；**WAITING** 与 **QUEUING** 可同义）。SavePoint 产出可被后续新 Run 复用（如改配置后执行 = 新 Run，执行时无变更部分可走缓存）。
 
 ### 2.3 最近 SavePoint 语义
 
@@ -61,14 +61,14 @@ Benchmark 框架：**Experiment Meta**（首位）→ 数据源(Type=S3) → Meg
 - **节点 3 之后**：WOE All Feature 产出（Encoder + WOE 数据 + 全量报告）持久化为 SavePoint 后，后续可多次从「节点 4」用不同配置重跑。
 - **节点 4**：Feature Selection + Fine Feature Report 可配置 CheckPoint，完成后中间产物已写出，Run 状态继续为 RUNNING 直至 SUCCESS/FAILED/KILLED。
 - **节点 5 之后**：WOE Selected Feature 产出持久化为 SavePoint（后续 Model Tune & Train 存档点），新 Run 可复用该 SavePoint 产出（无变更部分走缓存）。
-- **约束**：画布内 **允许多个 SavePoint、多个 CheckPoint**（CheckPoint 为节点属性、默认关闭）。改配置后执行 = 新 Run，始终从头执行，按最新 Experiment 配置，执行时无变更部分可走缓存；画布不提供「从某节点执行」选项，仅提供 Run 并提示缓存与 Force Restart；不提供「自动从最近 SavePoint 重跑」。
+- **约束**：画布内 **允许多个 SavePoint、多个 CheckPoint**（CheckPoint 为节点属性、默认关闭）。改配置后执行 = 新 Run，按最新 Experiment 配置，执行时无变更部分可走缓存；**Trigger Run** 弹窗内 **Use Cache** 表达缓存策略；不提供「自动从最近 SavePoint 重跑」。
 
 **中间产物与 MLflow**：**内部已定由 MLflow 管理模型离线实验的中间产物（artifact）**。SavePoint/CheckPoint 节点产出的 Encoder、报告、FS 结果、模型等，在写入 S3 的同时应通过 MLflow 登记与版本化（如与 Run/节点对应为 MLflow Run 或 artifact 路径），便于按 Run/节点查询、对比与复现，并与 [系统架构说明 §4.2.3](../architecture/系统架构说明.md) 的存储约定一致。
 
 ### 2.5 与现有文档对齐
 
 - [Training-Data-Pipeline.md §2.4](./Training-Data-Pipeline.md)：SavePoint/CheckPoint 描述与本设计一致（多 SavePoint、多 CheckPoint，改配置后执行 = 新 Run，从头执行+缓存（见系统架构说明与 Training-Data-Pipeline §2.4））。
-- [系统架构说明.md §4.2.2](../architecture/系统架构说明.md)：Run 状态机（WAITING / RUNNING / SUCCESS / FAILED / KILLED）与本文一致。
+- [系统架构说明.md §4.2.2](../architecture/系统架构说明.md)：Run 状态机若仍写 **WAITING**，与本文 **QUEUING** 视为同义，需随架构文档后续对齐。
 
 ---
 
@@ -174,7 +174,7 @@ S3 类型用于 Benchmark 或从已有 S3 数据继续下游；用户必须显�
 
 ### 5.6 节点：CheckPoint（择优）（Best Select / Model Summary）
 
-- **节点属性**：`isCheckPoint` **可选**。**Best Select（Model Summary）**：汇总多路 TUNE+Train 分支模型结果并识别最优；多子路径（Model Tune + Model Train）执行完成后，用户择优选定后进入 Model Inference（Run 无 CHECKING 状态，按 WAITING/RUNNING/SUCCESS/FAILED/KILLED 流转）。
+- **节点属性**：`isCheckPoint` **可选**。**Best Select（Model Summary）**：汇总多路 TUNE+Train 分支模型结果并识别最优；多子路径（Model Tune + Model Train）执行完成后，用户择优选定后进入 Model Inference（流程语义，无独立 Continue 按钮；Run 无 CHECKING，按 QUEUING/RUNNING/SUCCESS/FAILED/KILLED 流转）。
 - **配置**：无独立配置区；可选记录「择优结果」引用（如选中的子路径 ID 或 artifact 路径），供 Model Inference 节点读取。
 
 ### 5.7 节点：Model Inference

@@ -47,6 +47,8 @@ flowchart LR
     S3Artifact --> StatusUpdate
 ```
 
+**与 Figma / 控制台交互**：**Manual** 对应用户在 **Model Experiments** 配置页的 **Action → Trigger Run**（及设计意图中的列表 Trigger）；**Cron** 与 Experiment Meta **Schedule**（Hourly / Daily / …）对应，是否已由后端调度器落地以迭代为准。详见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)。
+
 ### 2.2 Phase 责任划分
 
 | 逻辑阶段 | 环境映射 | 职责描述 |
@@ -75,9 +77,9 @@ flowchart LR
 
 画布中节点可配置 **CheckPoint**（布尔 `isCheckPoint`，**默认关闭**）与 **SavePoint**（布尔 `isSavePoint`）。平台支持 CheckPoint 与 SavePoint；画布**每个节点支持独立运行并存记录**。
 
-**Run 状态**：Run 状态为 **WAITING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING）。状态流转见 [系统架构说明 §4.2.2](../architecture/系统架构说明.md)。仅 SUCCESS 可注册为 Build。
+**Run 状态**：界面与 Figma 一致时为 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING）；调度/架构文档若写 **WAITING**，与 **QUEUING** 同义。状态流转见 [系统架构说明 §4.2.2](../architecture/系统架构说明.md)。仅 SUCCESS 可注册为 Build。
 
-- **改配置后执行**：用户在画布配置页调整配置后执行 → 等价于 **Kill 原 Run、生成新 Run id**，按**最新 Experiment 配置**从头执行；执行时分析配置是否变更，无变更部分可走缓存。画布仅提供 **Run**（从头执行），提示是否使用缓存并支持 **Force Restart**；不提供「从某节点执行」或「Run From Current Step」。不提供「自动从最近 SavePoint 重跑」。
+- **改配置后执行**：用户在画布配置页调整配置后执行 → **新 Run id**，按**最新 Experiment 配置**执行；执行时分析配置是否变更，无变更部分可走缓存。**Trigger Run** 弹窗 **Use Cache** 表达缓存策略。设计意图中的「从某节点执行」见 [产品原型与PRD §4.1](./产品原型与PRD.md)。不提供「自动从最近 SavePoint 重跑」。
 
 **SavePoint 定义**：可为**多个节点**的产出；每个节点完成后产出缓存于 S3，并记录到 Run 的 `savepoint_snapshots`（node_id、s3_path、completed_at）。每个 Run 的产物均有对应存储路径（`s3://…/{exp_id}/{run_id}/`）。
 

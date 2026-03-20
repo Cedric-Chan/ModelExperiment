@@ -4,6 +4,8 @@
 **基于模板**: Product Manager Toolkit - Standard PRD Template
 **作者**: AI Product Manager
 
+**交互说明来源**：页面流转、控件文案与状态展示以 [Figma：Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) 及同源导出 [`docs/prototype/model-experiment-web`](../prototype/model-experiment-web/README.md) 为准。下文 **Experiment / Run** 为领域实体；界面可见 **Exp Id / Exp Name / Model Experiments** 等与 [`Naming-And-Responsibilities.md`](./Naming-And-Responsibilities.md) 中的「界面 ↔ 领域」映射一致。矛盾追溯见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md)。
+
 ---
 
 ## 1. Executive Summary (执行摘要)
@@ -11,8 +13,8 @@
 **Purpose**: 定义离线模型训练平台本期 MVP 迭代的产品需求文档（PRD）及页面结构约束。
 
 - **问题陈述**: 现有的系统编排基于复杂的 6-Phase Spark 管道与 yaml 拖拽，对于普通业务人员或初阶算法工程师而言，构建、组合多任务寻优的门槛极高，执行环境异构导致稳定性不足。
-- **解决方案**: 将底层执行统一包裹为 Ray Python 脚本，并对用户侧提供 **Experiment（EXP）画布**：Experiment 绑定已注册 Model，保留当前/最新画布配置；一次执行为 **Run**（Run id 标识），中间产物与画布配置均绑定 Run id；画布入口在 Experiment 层级，新建 Run 在画布内点击「Run」执行调度。
-- **业务影响**: 降低训练环境配置时间；Run 始终从头执行，执行时分析配置是否变更、无变更部分走缓存，默认提示使用缓存并支持 Force Restart，便于迭代与复现。
+- **解决方案**: 将底层执行统一包裹为 Ray Python 脚本，并对用户侧提供 **Experiment（EXP）画布**：Experiment 绑定已注册 Model，保留当前/最新画布配置；一次执行为 **Run**（界面展示 **Run ID**，数据模型同源 **TaskInstance**），中间产物与画布配置均绑定 Run id。列表与导航以 **Model Experiments** 为主入口；在配置页通过 **Action → Trigger Run** 创建新实例，弹窗内配置 **Use Cache**（关闭即等价全量重跑）、**Run Notes**，提交后实例进入排队态 **QUEUING**。
+- **业务影响**: 降低训练环境配置时间；当前导出实现中 Trigger Run 默认按**全 DAG / from start** 校验与执行；执行时分析配置是否变更、无变更部分可走缓存，便于迭代与复现。
 - **核心指标 (Success Metrics)**:
   - 任务配置提单耗时缩短比例 (Target: < 5 分钟)
   - 底层失败率 (Target: < 5%，依赖 Ray 稳定剥离)
@@ -30,9 +32,9 @@
 | **模型** | Model | 逻辑模型实体，代表一个业务场景下的预测/分类任务（如「欺诈检测模型」「信用评分模型」），包含元信息：名称、任务类型（classification / regression）、框架偏好、Owner、所属业务团队。**Model 不绑定具体训练产物，仅作顶层逻辑归类与注册入口。** | 1 Model → N ModelVersion。Model 是模型注册与版本管理的顶层入口。 |
 | **模型版本** | ModelVersion | Model 的一次**重大迭代**（如架构变更、特征集重构、数据源切换），以 `v1 / v2` 标签区分。同一 Model 下可并行存在多个 Version，便于 A/B 或灰度评估。Version Tag 通常作为 Model 名称后缀（如 `fraud_detection_model_v2`）。 | 1 ModelVersion → N Build。归属于一个 Model。 |
 | **构建产物** | Build | 一次 SUCCESS 的 Run 产出的模型快照，经**用户主动 Review 后注册**。Build 不复制文件，而是**引用** ModelArtifact 的 S3 路径，并冻结指标快照与配置快照。注册后不可修改。 | 1 Build ← 1 Run（产出方）；注册到 1 ModelVersion 下。 |
-| **实验** | Experiment (EXP) | **（P0 本期 MVP 核心）** 绑定已注册 Model 的训练编排单元；默认继承 Model 的 name 与 region（Experiment 与 Run 不覆盖 Model 元信息）。**Experiment 无状态**，仅承载每次执行 Run 的配置信息。**系统只记录 Run 对应的 Config Snapshot，不区分具体 Version**；Experiment 列表页无 Version 入口。保留**当前/最新画布配置**，历史 Run 可对应当时配置以溯源与复现。**画布配置入口在 Experiment 层级**；Exp 展开二级表格为下属 **Run 列表**，**每行 Run 保留 View 入口**，点击可查看该 Run 的配置快照、DAG 及节点执行情况（仅执行信息与状态管理 Action，不对应画布入口）。新建 Run 在**画布内**点击右上角「Run」执行调度。 | 1 Model → N Experiment；1 Experiment → N Run。 |
-| **运行** | Run | Experiment 的一次实际执行，以 **Run id** 标识；创建时携带**配置快照（Config Snapshot）**，不记录 Version 信息，**中间产物与画布配置均绑定 Run id**。在配置详情页调整配置后执行 = Kill 原 Run、生成新 Run id，按最新 Experiment 配置从头执行。状态机：`WAITING → RUNNING → SUCCESS / FAILED / KILLED`。S3 路径：`s3://{bucket}/model-training/{exp_id}/{run_id}/`。 | 1 Run ← 1 Experiment；SUCCESS 时 1:1 产出 ModelArtifact；可被 0..1 个 Build 引用。 |
-| **训练数据管道** | Training Data Pipeline | 从 Hive 读数据到模型产物归档至 S3 的端到端执行流水线；由平台根据 Run 配置画布自动生成的 Python `RayUtil` 脚本在 Ray 集群上执行。**每次 Run 从头执行**；执行时分析配置是否变更，无变更部分可直接使用缓存。画布点击 Run 时提示是否默认使用缓存，用户可选择 **Force Restart**。节点有 **CheckPoint** 属性（默认关闭）。画布节点命名与 SOP 对齐：**WOE All Feature**（全部特征 fit→transform→merge）、**WOE Selected Feature**（选中特征可选 update→transform→merge）、**CheckPoint（择优）**含 **Best Select（Model Summary）**；详见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。**实现参考** risk_model_on_ray；配置与脚本映射见 Task-Canvas-Config 与 [Training-Data-Pipeline.md](./Training-Data-Pipeline.md)。 | 每次 Run 执行一次完整流水线；产出 ModelArtifact。 |
+| **实验** | Experiment (EXP) | **（P0 本期 MVP 核心）** 绑定已注册 Model 的训练编排单元；默认继承 Model 的 name 与 region（Experiment 与 Run 不覆盖 Model 元信息）。**设计稿中任务级状态为 `DRAFT` / `ENABLED` / `DISABLED`**（实现层映射同一 Experiment 实体），用于控制是否可调度、是否允许编辑等；**另保留画布配置版本历史 `history[]`** 与 **Run History** 交互。保留**当前/最新画布配置**；列表主表展示 **Exp Id、Exp Name**，展开行为 **Run** 子表。子表每行 **View** 进入 **Run View**（DAG + 节点执行态 + 只读配置）。新建执行实例的主路径为配置页 **Action → Trigger Run**（见 §4.1）。 | 1 Model → N Experiment；1 Experiment → N Run。 |
+| **运行** | Run | Experiment 的一次实际执行，以 **Run id** 标识（与 **TaskInstance.id** 同源）；创建时携带**配置快照（Config Snapshot）**，**中间产物与画布配置均绑定 Run id**；实例可展示 **bindTask**（绑定的配置版本标签）。在配置详情页调整配置后再次执行 = 新 Run id + 按最新配置从头执行（是否 Kill 在途实例由策略决定）。**界面状态机**：`QUEUING → RUNNING → SUCCESS / FAILED / KILLED`（与 Figma/原型一致；若后端使用 `WAITING` 文案，与 **QUEUING** 视为同位语）。S3 路径：`s3://{bucket}/model-training/{exp_id}/{run_id}/`。 | 1 Run ← 1 Experiment；SUCCESS 时 1:1 产出 ModelArtifact；可被 0..1 个 Build 引用。 |
+| **训练数据管道** | Training Data Pipeline | 从 Hive 读数据到模型产物归档至 S3 的端到端执行流水线；由平台根据 Run 配置画布自动生成的 Python `RayUtil` 脚本在 Ray 集群上执行。**每次 Run 默认全量路径执行**；执行时分析配置是否变更，无变更部分可直接使用缓存。**Trigger Run** 弹窗通过 **Use Cache** 开关表达是否优先复用缓存（关即全量重跑）。节点有 **CheckPoint** 属性（默认关闭）。画布节点命名与 SOP 对齐：**WOE All Feature**、**WOE Selected Feature**、**CheckPoint（择优）** / **Best Select（Model Summary）**；详见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。**实现参考** risk_model_on_ray；配置与脚本映射见 Task-Canvas-Config 与 [Training-Data-Pipeline.md](./Training-Data-Pipeline.md)。 | 每次 Run 执行一次完整流水线；产出 ModelArtifact。 |
 | **模型产物** | ModelArtifact | Run 执行 SUCCESS 后统一归档至 S3 的全部文件集合。 | 1 Artifact ↔ 1 Run；Build 注册时引用 Artifact 的 S3 路径。 |
 
 > **Trial 辨析**：文中涉及的"Trial"指 Ray Tune 在一次 Run 执行内部自动发起的超参搜索迭代（由 `n_trials` 控制），属于底层引擎行为，不对应平台的独立实体。用户通过 Experiment 画布配置设置 `n_trials` 值即可，无需关心单次 Trial 细节。
@@ -74,11 +76,11 @@ Model → Experiment（绑定已注册 Model，继承 name / region）
 | 易混淆点 | 辨析说明 |
 |----------|----------|
 | **Build vs ModelArtifact** | ModelArtifact 是 Run 的原始产出（SUCCESS 后自动归档到 S3）；Build 是用户主动 Review 后将 Artifact **注册** 到 ModelVersion 下的动作结果。并非所有 Artifact 都会成为 Build——只有用户认为满意的才值得注册。 |
-| **Experiment vs Run** | Experiment 是绑定 Model 的训练编排单元，保留当前/最新画布配置；Run 是一次执行（Run id 标识），配置快照与中间产物均绑定 Run id。画布入口在 Experiment 层级；新建 Run 在画布内点击「Run」。 |
+| **Experiment vs Run** | Experiment 是绑定 Model 的训练编排单元，保留当前/最新画布配置；Run 是一次执行（Run id 标识），配置快照与中间产物均绑定 Run id。画布入口在 Experiment 层级；新建 Run 的主交互为配置页 **Action → Trigger Run**。 |
 | **Run vs Trial** | Run 是平台层面的一次**完整执行**（端到端）；Trial 是 Ray Tune 引擎层面的一次**超参组合尝试**。一个 Run 内部可包含 `n_trials` 次 Trial，Trial 对用户透明、不持久化为独立实体。 |
 | **Model vs ModelVersion** | Model 是抽象的逻辑归类（如"欺诈检测"这件事），不随训练变化；ModelVersion 是对同一逻辑模型的一次**重大迭代升级**。日常迭代通常在同一 Version 下产生新 Build，仅当架构或特征集发生根本变更时才新建 Version。 |
-| **Experiment 与 Run 状态** | **Experiment 无状态**，仅承载每次执行 Run 的配置信息。Run 状态（`WAITING / RUNNING / SUCCESS / FAILED / KILLED`）管理**执行生命周期**：WAITING 等待资源，RUNNING 执行中，complete → SUCCESS、error → FAILED、用户 kill → KILLED。 |
-| **与 Figma 设计稿（Model Experiment）的对应** | 设计稿中 **TrainingTask** → 本系统 **Experiment**，**TaskInstance** → **Run**。产品不提供配置 Version、Rollback、Experiment 级 Status 与 Enable/Disable；Run 在画布内创建，Run 状态使用 **WAITING**（设计稿中 QUEUING 与 WAITING 同义）。 |
+| **Experiment 与 Run 状态** | **任务级**：`DRAFT` / `ENABLED` / `DISABLED`（设计稿 TrainingTask.status）。**运行级**：`QUEUING` / `RUNNING` / `SUCCESS` / `FAILED` / `KILLED`；**QUEUING** 表示已触发、等待调度（与部分实现中的 `WAITING` 文案等价）。无单独 **CHECKING** 态。 |
+| **与 Figma 设计稿（Model Experiment）的对应** | **TrainingTask** ↔ **Experiment**，**TaskInstance** ↔ **Run**；列表列 **Exp Id / Exp Name**；配置顶栏 **Current Config**、**Run History** 下拉、**History Run** / **Run View** 只读模式；**Version History** 弹窗查看 `history[]`。**Manage（Enable / Disable / Delete）** 与 **Action（Trigger Run / Kill）** 为设计约定组件（详见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md) 与原型挂接情况）。 |
 | **Framework：LightGBM/XGBoost vs benchmark** | **LightGBM / XGBoost** 对应完整训练画布（画布节点 1–10：Experiment Meta → 数据源 → WOE All Feature → Feature Selection + Fine Feature Report → WOE Selected Feature → Model Tune → Model Train → CheckPoint（择优）/ Best Select → Model Inference → Calibrate），数据源为 Hive 表。**benchmark** 画布仅含 Experiment Meta、S3 数据源、model_bm、校准等节点。创建 Experiment 时选择 Template（含 Framework），画布模板随之确定。 |
 
 ---
@@ -90,14 +92,14 @@ Model → Experiment（绑定已注册 Model，继承 name / region）
 ```mermaid
 flowchart TD
     subgraph Web_Console [Web 后台控制台]
-        Nav["左侧主导航栏"]
+        Nav["侧栏 Aimos Model<br/>Pipelines / Experiments / Model Registry"]
     end
 
-    subgraph Module_Experiment [Experiment 模块]
-        ExpList["Experiment 列表页"]
-        ExpCanvas["画布配置页<br/>入口在 Experiment 层级"]
-        ExpRunList["Run 列表（Exp 下二级表格<br/>每行 Run 有 View 入口 → 配置快照+DAG+节点执行）"]
-        RunDetail["Run 详情页 / 执行监控<br/>配置快照、DAG、节点执行、日志与指标"]
+    subgraph Module_Experiment [Model Experiments 模块]
+        ExpList["Model Experiments 列表<br/>Exp Id / Exp Name / Model+Version / Owner…"]
+        ExpCanvas["画布配置页 DAG + 右侧配置面板"]
+        ExpRunList["展开行：Run 子表<br/>View / Kill / More"]
+        RunDetail["Run View：同页画布只读<br/>DAG 节点执行态 + 顶栏实例信息"]
     end
 
     subgraph Module_Model [模型产物模块 Model]
@@ -108,11 +110,11 @@ flowchart TD
     Nav --> ExpList
     Nav --> ModelList
 
-    ExpList -->|点击 Experiment 进入| ExpCanvas
-    ExpList -->|展开二级表格| ExpRunList
-    ExpRunList --> RunDetail
+    ExpList -->|Edit 进入| ExpCanvas
+    ExpList -->|展开子表| ExpRunList
+    ExpRunList -->|View| RunDetail
 
-    ExpCanvas -->|画布内点击 Run（从头执行，提示缓存 / Force Restart）| ExpRunList
+    ExpCanvas -->|Action 触发 Trigger Run 弹窗<br/>Use Cache + Run Notes → 新 Run| ExpRunList
     RunDetail -->|手动 Register Build| ModelDetail
 ```
 
@@ -122,9 +124,9 @@ flowchart TD
 
 ### 4.1 核心页面：Experiment 画布配置页
 
-**页面定位**：**画布配置入口统一在 Experiment 层级**。首次 **Create Experiment** 需选择 **Template**（含 Framework），点击即进入画布页。各节点**右侧配置栏为 Tag 分页**：**左分页 = 配置单**，**右分页 = last run 信息并显示对应 Run ID Tag**。**新建 Run** 均在**画布内**点击右上角 **「Run」** 执行调度并新建一个 Run；**Run 即从头执行**，执行前提示是否默认使用缓存，支持 **Force Restart**。
+**页面定位**：**画布配置入口在 Experiment（列表项 Edit）层级**。创建流：**Create Exp.** → 表单（模型、区域、框架等）→ 进入画布。画布为 **左侧 DAG + 右侧固定配置面板**（非抽屉）；节点面板 **Tag：Config / Last Run**，Last Run 展示对应 **Run ID** 与节点级上次执行信息。**新建 Run（TaskInstance）**：顶栏 **Action → Trigger Run** → 先做 **DAG 与配置校验**，通过后打开 **Trigger Run** 弹窗：**Use Cache**（开=优先复用未变更节点缓存，关=全量重跑）、**Run Notes**（可选）、**Run** 提交；新建实例状态为 **QUEUING**。源码中另有 **Run 下拉（From Current Step / From Start）** 组件，**当前导出未挂接**；画布底部提示「Click node to set start point」体现**从选中节点起执行**的设计意图，落地以 Figma/后续迭代为准。
 
-**画布节点粒度**：首位为 **Experiment Meta**（**Task Config**：元信息、资源分配、任务优先级），随后为**数据源**、**WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，用户择优后 Continue 至 Model Inference）、**Model Inference**、**Calibrate**（本期 Pending）。节点有 **CheckPoint** 属性（**默认关闭**），Run 无 CHECKING 状态，仅五态（WAITING/RUNNING/SUCCESS/FAILED/KILLED）。画布内**不提供「从当前节点执行」或「从头执行」选项**，仅提供 **Run**（始终从头执行）。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
+**画布节点粒度**：首位为 **Experiment Meta**（**Task Config**：元信息、资源分配、任务优先级；设计稿中可含 **Schedule**：`ONCE` / `Hourly` / `Daily` / `Weekly` / `Monthly`），随后为**数据源**、**WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，**再进入 Model Inference 为流程语义**，非单独「Continue」按钮）、**Model Inference**、**Calibrate**（本期 Pending）。节点有 **CheckPoint** 属性（**默认关闭**），Run 无 CHECKING 状态，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
 
 - **LightGBM / XGBoost**：画布含 Experiment Meta、数据源（Hive）、**WOE All Feature**、Feature Selection + Fine Feature Report、**WOE Selected Feature**、Model Tune、Model Train、**CheckPoint（择优）（Best Select / Model Summary）**、Model Inference、Calibrate（默认关闭，本期 Pending）。
 - **benchmark**：画布含 Experiment Meta、S3 数据源、model_bm、校准节点。
@@ -134,47 +136,45 @@ flowchart TD
 
 **Experiment Meta**：Meta 节点内对元信息 / Execute Info 的修改直接更新 Experiment 实体；Experiment 保留**当前/最新画布配置**，便于历史 Run 溯源与复现。Experiment 与 Run 不覆盖 Model 元信息；仅继承 Model 的 name 与 region。
 
-**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；CheckPoint 为节点属性、默认关闭，可用于产出存档等，**Run 无 CHECKING 状态**，仅存在 WAITING / RUNNING / SUCCESS / FAILED / KILLED。改配置后执行 = Kill 原 Run、新 Run id，按**最新 Experiment 配置**从头执行。**SavePoint 适用节点**：WOE All Feature（节点 3）、WOE Selected Feature（节点 5）；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report（节点 4）、CheckPoint（择优）（节点 8，可选）。
+**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；CheckPoint 为节点属性、默认关闭，可用于产出存档等，**Run 无 CHECKING 状态**，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。改配置后再次执行 = 新 Run id，按**最新 Experiment 配置**执行。**SavePoint 适用节点**：WOE All Feature（节点 3）、WOE Selected Feature（节点 5）；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report（节点 4）、CheckPoint（择优）（节点 8，可选）。
 
-**Check（校验）**：保存或执行前可进行**前端配置完整性校验**（必填项、格式等）。
+**Check（校验）**：**Trigger Run** 前执行 **runFrontendCheck**（必填、DAG 连通性等）；失败时在画布区展示 **Validation failed** 浮层。
 
 **交互说明（User Flow）**：
-- **创建**：Experiment 列表页点击「Create Experiment」→ 选择 Template → 进入画布页 → 配置各节点 → 保存；画布内点击「Run」新建 Run。
-- **编辑 / 复制**：从 Experiment 列表进入画布（Framework 由 Template 决定，只读）；复制时保留原 Experiment 的 `framework`。
+- **创建**：列表 **Create Exp.** → 创建弹窗 → 进入画布；配置后可通过顶栏 **Action → Trigger Run** 新建实例（或通过列表侧逻辑触发，见原型挂接说明）。
+- **编辑 / 复制**：列表 **Edit** 进入画布；**Copy** 走创建弹窗并可进入新任务画布。顶栏 **Edit**（笔形）可开 **Experiment Meta** 编辑弹窗。
+- **历史与只读**：**Run History** 下拉切换历史运行快照 → **History Run** 横幅 + 只读画布；从列表 **View** 进入 **Run View**（ live 实例，可 **Kill**）。
 
-#### 4.1.1 原型实现说明（docs/prototype/MODEL_TRAINING.html）
+#### 4.1.1 原型实现说明（`docs/prototype/model-experiment-web`）
 
-以下为当前 HTML 原型的交互与视觉约定，与 §4.1 设计对齐并作为实现参考。
+以下为与 Figma 对齐的 **React + Vite** 原型交互约定； legacy **MODEL_TRAINING.html** 若与本文冲突，以本仓库 **model-experiment-web** 为准。
 
-**全局与品牌**：平台名称使用 **Aimos Model**（侧栏与标题）。
+**全局与品牌**：侧栏品牌 **Aimos Model**；主列表标题 **Model Experiments**。
 
-**Experiment 列表与 Run 列表**：**Experiment 列表页无 Version 列或 Version 入口**。二级 **Run 列表**每行提供 **View** 入口，点击进入该 Run 的详情页（配置快照 + DAG + 节点执行情况）。画布顶栏**不展示「Version: Latest」或历史版本切换**，仅保留当前画布配置相关操作；Run 操作区为单一 **Run** 按钮，并提示是否使用缓存、支持 **Force Restart**。
+**列表页**：筛选条、**Owned by me**、**Refresh**、**Create Exp.**；主表列 **Exp Id / Exp Name / Model（含 modelVersion 角标）/ Region / Owner / Biz Team / Description / Update Time / Actions（Edit / Copy / Alert / Delete）**。展开行展示 **Run** 子表：**Run ID、Run Status（含 QUEUING）、Notes、Trigger Time、View / Kill / More（Artifact、View Log）**。任务级 **DRAFT/ENABLED/DISABLED** 在数据模型中存在；**Manage（Enable/Disable）** 组件在源码中已定义，**当前表格行未挂接**，以 Figma 为准补齐。
 
-**设计稿差异**：Figma Model Experiment（含导出 zip）中的 Task 状态（DRAFT/ENABLED/DISABLED）、Version/History、Rollback、列表 Trigger/Enable/Disable、Continue 等**以本 PRD 为准**：Experiment 无状态，列表不展示 Status、不提供 Trigger/Enable/Disable；Run 在画布内点击「Run」创建；Run 状态使用 **WAITING**（设计稿中 QUEUING 视为同义）。实现与设计对接时以本文档及 [系统架构说明](../architecture/系统架构说明.md) 为准。
+**领域映射（设计稿 ↔ 产品）**：
 
-| 设计稿（Model Experiment） | 本期产品（以本 PRD 为准） |
-|---------------------------|---------------------------|
-| TrainingTask + TaskInstance | Experiment + Run |
-| Task status: DRAFT/ENABLED/DISABLED | Experiment 无状态 |
-| Instance status: QUEUING / ... | Run status: **WAITING** / RUNNING / SUCCESS / FAILED / KILLED |
-| history[]、bindTask、Rollback | 不区分 Version，无 Rollback；改配置后执行 = 新 Run |
-| 列表 Trigger、Enable/Disable | Run 在画布内创建；列表无 Status/Trigger/Manage |
-| Continue | 不提供 Continue（无 CHECKING 状态） |
+| 界面 / 设计稿（Model Experiment） | 领域实体（本 PRD / 架构） |
+|----------------------------------|---------------------------|
+| TrainingTask、Exp Id / Exp Name | Experiment |
+| TaskInstance、Run ID | Run |
+| Task status：DRAFT / ENABLED / DISABLED | Experiment 任务级生命周期 |
+| Instance status：QUEUING … | Run 排队与执行态 |
+| history[]、Version History、Run History | 配置版本与运行快照溯源 |
+| bindTask | Run 与配置版本标签的绑定展示 |
+| Trigger Run / 列表 Trigger（意图） | 创建新 Run |
+| Use Cache 开关 | 是否优先复用未变更节点缓存（关=全量） |
 
-**任务列表与实例列表 Action**：
-- 一级表格（Training Task）与二级表格（Task Instance / Run）的 Action 列为**无边框文本链接**样式（无按钮外框、主色链接态）；Run 行必有 **View**；不可用操作（如非 RUNNING 下的 Kill）置灰且 `cursor: not-allowed`。
-- 一级 Manage 下拉中 **Disable** 项使用红色样式（`.text-danger`）。
-- 二级 Run 行的 **View** 进入 Run 详情（配置快照、DAG、节点执行）；**More** 下拉（Log / Build）通过 `overflow: visible` 与较高 `z-index` 避免被表格下边界截断。
+**配置页（画布）**：
+- 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 256px）。
+- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉 + **Action**（**Trigger Run**；Run View 下 **Kill** 可用）。
+- **Trigger Run** 弹窗：**Use Cache**、**Run Notes**、**Run** 提交。
+- 节点链与 §4.1 一致；**Experiment Meta** 含 **Schedule** 频率枚举（**ONCE** 时为仅手动触发文案）。
 
-**弹窗交互**：
-- **Artifact**：任意 Instance 状态均可点击 Artifact，打开 Mock 弹窗展示 Parameter path、Metrics path 等占位信息。
-- **Run 配置快照**：在 Run View 或 Run 详情中查看该 Run 的 Config Snapshot（JSON）；若原型保留 History 弹窗，则用于按 Run 查看配置快照，非按 Version。
+**弹窗**：**Artifact**（Mock 指标/参数）、**Version History**（左侧版本列表 + 右侧 JSON）、创建/编辑/复制实验表单。
 
-**任务配置详情页（画布 + 抽屉）**：
-- 布局：左侧为**点阵背景的 DAG 画布区**（节点 + SVG 连线），右侧为**滑出式配置抽屉（Drawer）**；点击画布空白或抽屉关闭按钮可收起抽屉。
-- 节点链按 **Framework**（Template）固定生成，**首位均为 Experiment Meta**：**LightGBM / XGBoost** 为 Experiment Meta → Data Source → **Feature & Preprocessing**（对应画布节点 **WOE All Feature**、**Feature Selection + Fine Feature Report**、**WOE Selected Feature**）→ **Training & Search Space**（对应 **Model Tune**、**Model Train**）；规范节点名称以 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 为准。**Benchmark** 为 Experiment Meta → Data Source (S3) → Mega Model → Calibration。
-- 点击某一节点后该节点高亮，右侧配置栏为 **Tag 分页**：**左分页 = 配置单**，**右分页 = last run 信息 + Run ID Tag**。**Experiment Meta** 节点左分页包含两区：**Meta Info**（Experiment Name 只读回显、Region 仅查看、Owner 可编辑多选、Description 可编辑）与 **Execute Info**（Resource Tier、Queue Priority）。**Data Source** 节点仅含数据源表单。切换节点或关闭前将当前表单值写回（Experiment Meta 写入 Experiment 实体且不落版，其余写入当前画布配置 / Run 配置快照）。
-- 画布顶部操作栏：**Save**、**Check**及画布内 **Run**（不提供 Experiment 级 Enable，Experiment 无状态）。
+**实现差异脚注**：列表行内 **Trigger**、`Manage` 下拉、独立 **Check** 按钮等若在源码中未挂接，以 Figma 为验收准绳；详见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md)。
 
 ### 4.2 核心创新：Experiment (AI Prompt 向导页)
 
@@ -208,7 +208,7 @@ flowchart TD
 
 ### 4.4 Experiment 数据模型与生命周期
 
-本节补充 Experiment 模块的数据模型、约束规则与端到端生命周期，作为 §4.2 / §4.3 UI 设计的底层支撑。**Experiment 无状态**，仅承载每次执行 Run 的配置信息。
+本节补充 Experiment 模块的数据模型、约束规则与端到端生命周期，作为 §4.2 / §4.3 UI 设计的底层支撑。**任务级状态**（DRAFT/ENABLED/DISABLED）与 **配置历史**（`history[]`）以设计稿为准；领域层仍可将 Experiment 视为「配置与 Run 集合」的聚合根。
 
 #### 实体定义
 
@@ -264,7 +264,7 @@ sequenceDiagram
     Web->>BE: 创建 Experiment 记录 + N 个 TrainingTask
     BE->>BE: 为每个 Task 生成 Python RayUtil 脚本
     BE->>Ray: 投递 N 个 TaskInstance（QUEUING）
-    BE-->>Web: 创建 Run（WAITING）
+    BE-->>Web: 创建 Run（QUEUING）
     end
 
     rect rgb(240, 248, 255)

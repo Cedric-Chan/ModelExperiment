@@ -22,7 +22,7 @@
 | 竞品调研_火山引擎机器学习平台.md | 竞品调研 |
 | Canvas-DAG-技术选型与方案对比.md | Canvas DAG 技术选型与方案对比 |
 | 方案B-G-Task与Run概念及配置承载对比.md | Task/Run 与配置承载方案对比 |
-| Model Experiment.zip | Figma 导出的交互与视觉参考（React 代码包）；**实体与操作以 [系统架构说明](architecture/系统架构说明.md) 与 [产品原型与PRD](design/产品原型与PRD.md) 为准**，与设计稿的差异见 PRD §4.1.1「设计稿差异」及「设计稿与产品差异」表。 |
+| Model Experiment.zip | Figma 导出的交互与视觉参考（React 代码包）；**页面交互与控件以 Figma / [`prototype/model-experiment-web`](prototype/model-experiment-web/) 为准**，与 [产品原型与PRD](design/产品原型与PRD.md) 同步；领域模型仍以 [系统架构说明](architecture/系统架构说明.md) 为基准，矛盾追溯见 [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)。 |
 
 ---
 
@@ -49,6 +49,7 @@
 |------|------|
 | [architecture/系统架构说明.md](architecture/系统架构说明.md) | 系统架构、领域模型、模块职责、状态机等 |
 | [design/产品原型与PRD.md](design/产品原型与PRD.md) | 产品原型与 PRD |
+| [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md) | Figma/原型 与历史文档矛盾清单与处置结论 |
 | [design/Naming-And-Responsibilities.md](design/Naming-And-Responsibilities.md) | 命名与职责 |
 | [design/Pipeline-Steps-and-Canvas-Nodes.md](design/Pipeline-Steps-and-Canvas-Nodes.md) | Pipeline 步骤与画布节点 |
 | [design/Task-Canvas-Config.md](design/Task-Canvas-Config.md) | Task 与画布配置 |
