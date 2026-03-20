@@ -6,7 +6,7 @@
 - **范围**：从 Trigger 创建 Instance 开始，说明平台如何将表单配置转换为内部 Python 代码（基于 `RayUtil` 包裹）投递并在 Ray 分布式集群上执行寻参、训练、回传模型。
 - **前置依赖**：阅读 [系统架构说明.md](../architecture/系统架构说明.md)。
 - **数据责任**：本平台仅提供表单能力与算力对接保障；模型所需的全部逻辑依赖特征平台宽表或直接 Hive 读取，平台仅生成选择和预处理的 Python 代码。
-- **Experiment 联动**：Experiment 由 AI Prompt 解析推导生成并批量填充 `TrainingTask` 配置。而单一实体 Pipeline 执行本质是一致的，即转化 Python `RayUtil` 并交给 **RayTune** 的调度机制。
+- **Experiment 与 Run**：Experiment 绑定已注册 Model，保留当前/最新画布配置；Run 为一次执行（Run id 标识），配置快照与中间产物均绑定 Run id。执行本质为将画布配置转化为 Python `RayUtil` 并交给 **RayTune** 的调度机制。
 
 ---
 
@@ -51,29 +51,47 @@ flowchart LR
 
 | 逻辑阶段 | 环境映射 | 职责描述 |
 |-------|----------|------|
-| 数据获取 | Ray Data | Python 脚本包含获取设定范围内数据的指令，从 Hive 源表拉取数据 |
-| 特征选择与 WOE | Ray 环境 | 根据配置中的 `feature_selection_methods` 和 `woe_enabled` 决定是否处理并生成特征 |
+| 数据获取 | Ray Data | Python 脚本包含获取设定范围内数据的指令。**当前实现（risk_model_on_ray）**：由 Ray 任务从 **S3 路径**（Parquet）读取，使用 Ray Dataset；若数据源为 Hive，需由上游或单独流程导出至 S3。 |
+| 特征选择与 WOE | Ray 环境 | 根据配置中的 `feature_selection_methods` 和 `woe_enabled` 决定是否处理并生成特征。实现对齐：`feature_selection` / `feature_selection_v2`（含 by_stability）、WOE v2.4（ray_woe_fit_v2_4 / ray_woe_transform_v2_4）、woe_merge_v2。 |
 | 数据切分 | Ray Data | Train / Validation 数据按指定条件打上标识位或者分别切分加载 |
 | 搜索与模型训练 | Ray Tune | Python 脚本包裹空间参数（`search_space`, `n_trials`），由下层 Ray 集群多节点并发跑试验搜出最优超参 |
 | 产物最终归档 | Backend | Ray 执行结束会由包裹壳把最终结果（最佳 metrics 和打包出的模型以及 preprocessor 元数据）传输到 S3 并告知后台成功 |
 
 ### 2.3 `RayUtil` 生成设计概念
 
-为了屏蔽分布式运算以及异构配置，后台不会从头构造 Python 执行链路，而是**统一套壳调用 `RayUtil` 包下的相应功能类**。平台收集表单内容后：
+为了屏蔽分布式运算以及异构配置，后台不会从头构造 Python 执行链路，而是**统一套壳调用 `RayUtil` 包下的相应功能类**。任务投递目标为 **RayHub**，entrypoint 脚本为对应的 **ray_*.py**（如 `ray_woe_fit_v2_4.py`、`ray_train.py`、`ray_tune.py`），配置通过 **RAY_JOB_CONFIG_JSON** 注入。RayUtil 方法（与 risk_model_on_ray 的 `ray_util.py` 一致）包括：
 
-1. 如果是特征环节（选用了包含缺失/分箱/WOE等配置），平台拼接 `ray_util.woe_fit(...)` 与对应的 `ray_util.feature_selection(...)` 参数。
+- **特征**：`woe_fit`、`woe_transform`、`woe_merge` / `woe_merge_v2`、`feature_selection` / `feature_selection_v2`、`feature_report`
+- **模型**：`model_tune`、`model_train`、`model_predict`、`model_bm` / `model_bm_v2`
+- **校准**：`calibrate_fit`、`calibrate_transform`（及 `multi_stage_calibrate_fit` / `multi_stage_calibrate_transform`）
+
+平台收集表单内容后：
+
+1. 如果是特征环节（选用了包含缺失/分箱/WOE 等配置），平台拼接 `ray_util.woe_fit(...)` 与对应的 `ray_util.feature_selection(...)` / `feature_selection_v2(...)` 参数。
 2. 如果是训练模型请求，则调用 `ray_util.model_tune()` 或者 `model_train()`。由于平台默认使用寻找最优模型流程，往往平台会直接封装调用 `model_tune`，指定搜索空间 `search_space`。
-3. 这些封装包裹调用指令被放入一份生成的 `task_id.py` 里，借助内部框架将 `task_id.py` 交给真实的 Ray 物理环境运行。
+3. 这些封装包裹调用指令被放入一份生成的 `task_id.py` 里，借助 Scheduler Adapter 向 **RayHub** 投递，集群上执行对应 ray_* 脚本，Config 经 RAY_JOB_CONFIG_JSON 注入。
+
+### 2.4 CheckPoint 与 SavePoint 机制（SOP 对齐）
+
+画布中节点可配置 **CheckPoint**（布尔 `isCheckPoint`，**默认关闭**）与 **SavePoint**（布尔 `isSavePoint`）。平台支持 CheckPoint 与 SavePoint；画布**每个节点支持独立运行并存记录**。
+
+**Run 状态**：Run 状态为 **WAITING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING）。状态流转见 [系统架构说明 §4.2.2](../architecture/系统架构说明.md)。仅 SUCCESS 可注册为 Build。
+
+- **改配置后执行**：用户在画布配置页调整配置后执行 → 等价于 **Kill 原 Run、生成新 Run id**，按**最新 Experiment 配置**从头执行；执行时分析配置是否变更，无变更部分可走缓存。画布仅提供 **Run**（从头执行），提示是否使用缓存并支持 **Force Restart**；不提供「从某节点执行」或「Run From Current Step」。不提供「自动从最近 SavePoint 重跑」。
+
+**SavePoint 定义**：可为**多个节点**的产出；每个节点完成后产出缓存于 S3，并记录到 Run 的 `savepoint_snapshots`（node_id、s3_path、completed_at）。每个 Run 的产物均有对应存储路径（`s3://…/{exp_id}/{run_id}/`）。
 
 ---
 
 ## 3. 各 Phase 详细说明
 
-### 3.1 Phase 1: 数据获取（Spark）
+### 3.1 Phase 1: 数据获取
+
+**实现说明**：risk_model_on_ray 下数据来自 **S3 路径**（BaseConfig 等）；若数据源配置为 Hive，平台或上游需负责将数据落到 S3 或提供可被 Ray 读取的路径。以下为表单与平台抽象的配置项（设计上支持 Hive 源表）。
 
 #### 输入
 
-来自 `TaskConfig.DataSourceConfig`：
+来自 Run 配置快照的 DataSourceConfig（如 `RunConfig.DataSourceConfig`）（画布数据源节点；Type=Hive 时）：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -82,6 +100,11 @@ flowchart LR
 | table_name | string | Yes | Hive 表名 |
 | partition_filter | string | No | 分区过滤条件（如 `dt >= '2025-01-01' AND dt < '2025-07-01'`） |
 | custom_filter | string | No | 自定义 WHERE 条件（如 `country = 'ID' AND status = 1`） |
+| label | string | Yes | 目标列/标签列名 |
+| sample_use_col | string | No | 样本划分列，默认 'sample_use' |
+| categorical_col | list[string] 或 逗号分隔 | No | 不经 WOE 的类别变量，供后续 WOE/FS 使用 |
+
+Type=S3 时：sample_path、label、sample_use_col、categorical_col（同上语义）。
 
 #### 执行逻辑
 
@@ -111,15 +134,19 @@ flowchart LR
 
 ---
 
-### 3.2 Phase 2: 特征自动选择与可选 WOE
+### 3.2 Phase 2: 特征工程（WOE Fit + Report、Feature Selection + Report、WOE Update + Merge）
+
+**画布对齐（SOP）**：本 Phase 对应画布节点 3、4、5。**节点 3**：WOE Fit + All Feature Report（woe_fit → feature_report 全部特征）；**节点 4**：Feature Selection + Fine Feature Report（feature_selection → feature_report 选中特征）；**节点 5**：可选 woe_update 后 woe_transform + woe_merge。
+
+**实现对齐**：WOE 使用 **v2.4**（ray_woe_fit_v2_4、ray_woe_transform_v2_4）；woe_merge 推荐 **woe_merge_v2**（Ray 原生 join）；特征选择为 **feature_selection**（v1）或 **feature_selection_v2**（含 **by_stability** 及分布式 L1 LR 参数）；可选精调为 **woe_update** / **woe_update_by_adding_cutoff**（ray_woe_update.py 等）。手册见 [分布式训练使用手册_v1.3.md](../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md)（或英文版 distributed_training_manual_en_v1.3.md）。
 
 #### 输入
 
-- `raw_df`：Phase 1 输出的 Spark DataFrame（**上游已清洗**，无缺失值/编码/归一化责任）
-- `TaskConfig.PreprocessConfig`：特征选择与可选 WOE 配置
-- `TaskConfig.DataSourceConfig.label_column`：标签列名
-- `TaskConfig.DataSourceConfig.feature_columns`：特征列名列表（候选）
-- `TaskConfig.DataSourceConfig.sample_use_col`（可选）：样本划分列，与 RAY 一致（如 train/test）
+- `raw_df`：Phase 1 输出的数据（**上游已清洗**；实现侧为 S3 路径 + Ray Dataset，无 Spark DataFrame）
+- Run 配置的 PreprocessConfig（如 `RunConfig.PreprocessConfig`）：特征选择与可选 WOE 配置
+- Run 配置 DataSourceConfig.label_column：标签列名
+- Run 配置 DataSourceConfig.feature_columns：特征列名列表（候选）
+- Run 配置 DataSourceConfig.sample_use_col（可选）：样本划分列，与 RAY 一致（如 train/test）
 
 #### 步骤
 
@@ -149,11 +176,11 @@ flowchart LR
 
 ##### Step 2: 可选 WOE 变换
 
-若 `TaskConfig.PreprocessConfig.woe_enabled == true`，执行与 RAY Feature 域一致的子步骤：
+若 Run 配置 `PreprocessConfig.woe_enabled == true`，执行与 RAY Feature 域一致的子步骤（实现：WOE v2.4，woe_merge 推荐 woe_merge_v2）：
 
-1. **woe_fit**：分箱与编码器拟合；配置与手册 §1.1 对齐（label、sample_use_col、n_bins、method、transform_method、encoder_save_path、categorical_features、exclude 等）。
-2. **woe_transform**：应用编码器；配置与手册 §1.2 对齐（data_path、data_save_path、encoder_load_path）。
-3. **woe_merge**：多特征域合并；配置与手册 §1.3 对齐（on、how、data_path_dict、data_save_path）。
+1. **woe_fit**：分箱与编码器拟合；配置与手册 §1.1 对齐（label、sample_use_col、n_bins、method、transform_method、encoder_save_path、categorical_features、exclude 等）；实现脚本 `ray_woe_fit_v2_4.py`。
+2. **woe_transform**：应用编码器；配置与手册 §1.2 对齐（data_path、data_save_path、encoder_load_path）；实现脚本 `ray_woe_transform_v2_4.py`。
+3. **woe_merge**：多特征域合并；配置与手册 §1.3 对齐（on、how、data_path_dict、data_save_path）；实现推荐 `woe_merge_v2`（Ray 原生 join），脚本 `ray_woe_merge_v2.py`。
 
 若不启用 WOE，本步跳过；Phase 2 输出为经特征选择后的 DataFrame 或落盘路径。
 
@@ -189,7 +216,7 @@ flowchart LR
 #### 输入
 
 - `preprocessed_df`：Phase 2 输出
-- `TaskConfig.SplitConfig`：切分配置
+- Run 配置 SplitConfig：切分配置
 
 #### 切分策略
 
@@ -283,12 +310,12 @@ val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter
 #### 输入
 
 - `train_df` + `val_df`：Phase 3 输出
-- `TaskConfig.ModelHyperParams`：超参配置
-- `TaskConfig.TrainingObjective`：训练目标
+- Run 配置 ModelHyperParams：超参配置
+- Run 配置 TrainingObjective：训练目标
 
 #### 引擎适配层
 
-根据 `TaskConfig.framework` 分发到对应训练引擎：
+根据 Run 配置 framework 分发到对应训练引擎：
 
 由于采用的是基于 Ray 的 MVP，执行层已经统一抽象并转移为 Ray 物理环境的负荷：
 
@@ -299,7 +326,7 @@ val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter
 
 #### 超参搜索
 
-当 `TaskConfig.hyperparam_search != none` 时启用超参搜索：
+当 Run 配置 `hyperparam_search != none` 时启用超参搜索：
 
 | 搜索方式 | 实现 | 说明 |
 |----------|------|------|
@@ -307,7 +334,7 @@ val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter
 | random_search | 随机采样 N 组 | 需配置 `n_trials` |
 | bayesian | Optuna TPE / GP | 自动优化搜索方向，需配置 `n_trials` |
 
-**搜索空间定义**（`TaskConfig.search_space`）：
+**搜索空间定义**（Run 配置 search_space）：
 
 ```json
 {
@@ -348,15 +375,17 @@ flowchart TD
 - 树模型（XGBoost/LightGBM）：基于 eval_metric 的 early_stopping_rounds。
 - 深度学习（PyTorch/TensorFlow）：基于 validation loss 的 EarlyStopping callback。
 
-#### 与 RAY 引擎对接（model_tune / model_train）
+#### 与 RAY 引擎对接（model_tune / model_train / model_predict）
 
-当 framework 对接 RAY 分布式训练引擎（见 [分布式训练使用手册](../../分布式训练使用手册_v1.3.md)）时：
+当 framework 对接 RAY 分布式训练引擎（见 [分布式训练使用手册](../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md)）时：
 
-- **超参空间**：TaskConfig.search_space 映射为 RAY **init_hypers**（支持字典、字符串、tune. 前缀）；类型与 uniform/randint/choice 等一致。
-- **搜索次数**：TaskConfig.n_trials 对应 RAY **n_trails**。
+- **画布节点**：**Model Tune**、**Model Train** 为独立节点，可配置多子路径做不同超参组合；可选 **CheckPoint（择优）** 节点在多子路径训练完成后暂停，用户择优选定结果；**Model Inference** 节点使用选定结果执行 model_predict（`ray_predict.py`）。
+- **超参空间**：Run 配置 search_space 映射为 RAY **init_hypers**（支持字典、字符串、tune. 前缀）；类型与 uniform/randint/choice 等一致。
+- **搜索次数**：Run 配置 n_trials 对应 RAY **n_trails**。
 - **停止条件**：early_stopping / patience / min_delta 对应 RAY **early_stopping_round**、**TrialPlateauStopper**；可选 metric_for_train_tune、train_val_ks_diff_threshold 与手册 model_tune 对齐。
 - **训练输入**：Phase 2 产出的 WOE merge 或特征选择后 Parquet 路径作为 **sample_path**；特征选择报告路径作为 **feature_selection_path**；use_feature_selection 对应所选 methods。
 - **最优超参**：调参阶段产出 best_hypers_path；训练阶段可优先使用 **best_hyper_path**，与手册 model_train 一致。
+- **实现脚本**：Model Tune → `ray_tune.py`；Model Train → `ray_train.py`；Model Inference → `ray_predict.py`；配置来自 Config 与 RAY_JOB_CONFIG_JSON。
 
 #### 输出
 
@@ -381,11 +410,11 @@ flowchart TD
 
 - `best_model`：Phase 4 产出的最优模型
 - `val_df`：验证集
-- `TaskConfig.TrainingObjective`：训练目标
+- Run 配置 TrainingObjective：训练目标
 
 #### 评估指标
 
-根据 `TaskConfig.model_type` 动态选择评估指标：
+根据 Run 配置 model_type 动态选择评估指标：
 
 ##### Classification（分类任务）
 
@@ -477,7 +506,7 @@ s3://{bucket}/model-training/{task_id}/{instance_id}/
 ├── model.*                    # 模型文件（框架原生格式）
 ├── preprocessor.json          # 预处理元数据
 ├── metrics.json               # 训练指标（Phase 5 输出）
-├── config_snapshot.json       # 训练时的完整 TaskConfig 快照
+├── config_snapshot.json       # 训练时的完整 Run 配置快照 快照
 ├── train.log                  # 训练过程日志
 └── hyperparams_search.json    # 超参搜索历史（可选，仅超参搜索时）
 ```
@@ -489,7 +518,7 @@ s3://{bucket}/model-training/{task_id}/{instance_id}/
 | 模型文件 | `model.*` | 框架原生格式 | `.pkl`（sklearn/xgb/lgb/catboost）/ `.pt`（PyTorch）/ `.h5` 或 `SavedModel/`（TensorFlow） |
 | 预处理元数据 | `preprocessor.json` | JSON | Phase 2 产出的特征列表、WOE 编码器路径、selection_report 等；缺失值/编码/归一化仅兜底时产出，上游已清洗时可选；供 Serving 复用 |
 | 训练指标 | `metrics.json` | JSON | Phase 5 产出的结构化指标（含曲线数据点） |
-| 任务配置快照 | `config_snapshot.json` | JSON | 训练时的完整 TaskConfig，含所有 6 个配置区块 |
+| 任务配置快照 | `config_snapshot.json` | JSON | 训练时的完整 Run 配置快照，含所有 6 个配置区块 |
 | 训练日志 | `train.log` | 文本 | Pipeline 执行全过程的 stdout/stderr |
 | 超参搜索历史 | `hyperparams_search.json` | JSON | 每组试验的超参 + 指标（仅超参搜索时生成） |
 
@@ -501,7 +530,7 @@ flowchart TD
     UpdateMeta --> UpdateInstance[更新 Instance]
     UpdateInstance --> Cleanup[清理临时数据]
     Cleanup --> ReleaseLock[释放串行锁]
-    ReleaseLock --> CheckQueue[检查同 Task QUEUING 实例]
+    ReleaseLock --> CheckQueue[检查同 Task WAITING 实例]
     CheckQueue -->|有| StartNext[启动下一个]
     CheckQueue -->|无| Done[完成]
 ```
@@ -515,7 +544,7 @@ flowchart TD
    - Instance.config_snapshot_s3_path → `s3://{bucket}/model-training/{task_id}/{instance_id}/config_snapshot.json`
    - Instance.finished_at → 当前时间
 3. **清理临时数据**：删除 HDFS/S3 staging 中的临时 Parquet 文件。
-4. **释放串行锁**：允许同一 Task 的下一个 QUEUING 实例获取锁并执行。
+4. **释放串行锁**：允许同一 Task 的下一个 WAITING 实例获取锁并执行。
 
 #### FAILED 场景的归档
 
@@ -575,7 +604,7 @@ flowchart TD
 
 | Instance 状态 | Kill 行为 |
 |---------------|-----------|
-| QUEUING | 从优先级队列移除，Instance → KILLED |
+| WAITING | 从优先级队列移除，Instance → KILLED |
 | RUNNING（Spark 阶段） | 调用 SparkContext.cancelJobGroup()，清理临时数据，Instance → KILLED |
 | RUNNING（训练引擎阶段） | 向引擎进程发送 SIGTERM/SIGKILL，清理临时数据，Instance → KILLED |
 
@@ -596,9 +625,10 @@ flowchart TD
 | 字段 | 更新时机 | 说明 |
 |------|----------|------|
 | queued_at | 创建时 | 入队时间 |
-| started_at | QUEUING → RUNNING | 开始执行时间 |
+| started_at | WAITING → RUNNING | 开始执行时间 |
 | finished_at | → SUCCESS / FAILED / KILLED | 结束时间 |
 | error_message | → FAILED | 错误摘要 |
+| savepoint_s3_path | Phase 1 WOE fit 完成后 | SavePoint 数据 S3 路径 |
 | artifact_s3_path | → SUCCESS | 模型产物路径 |
 | metrics_s3_path | → SUCCESS | 指标文件路径 |
 | log_s3_path | → SUCCESS / FAILED / KILLED | 日志文件路径（始终归档） |

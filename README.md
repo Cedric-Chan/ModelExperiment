@@ -86,19 +86,35 @@ TrainingTask (表单驱动的可复用训练实体，直接生成执行 Python)
 Model Training Pipeline/
 ├── README.md                                    # 项目说明（本文件）
 ├── .gitignore                                   # Git 忽略规则
-├── samples/                                     # Python 基线脚本（无平台时手写参考）
-│   └── full_training_pipeline.py                # 完整 Pipeline: WOE → FS → Tune → Train → Predict
+├── MODEL_PIPELINE.md                            # 【内部参考，勿改】流程图与步骤定义
+├── risk_model_on_ray/                           # 【内部参考，勿改】参考实现与分布式训练手册
 └── docs/                                        # 文档目录
+    ├── research/                                # 调研整理材料（可增删）
+    │   ├── 竞品调研_*.md                          # 竞品调研
+    │   ├── Canvas-DAG-技术选型与方案对比.md
+    │   └── 方案B-G-Task与Run概念及配置承载对比.md
     ├── architecture/
-    │   └── 系统架构说明.md                        # 系统架构 + 领域模型 + 模块职责
-    │                                             # + 状态机 + 产品交付 + 预研清单
-    ├── design/
-    │   ├── Training-Data-Pipeline.md             # Ray 调度模式下的 Pipeline 规范
-    │   │                                         # Python 脚本生成 / Ray 执行 / 异常处理
-    │   └── 产品原型与PRD.md                       # 产品原型与 PRD，含用户操作说明与平台价值对比 §5
-    └── prototype/
-        └── index.html                            # 交互原型页
+    │   └── 系统架构说明.md                        # 本系统架构设计（可编辑）
+    ├── design/                                  # PRD 与设计描述（可编辑）
+    │   ├── Naming-And-Responsibilities.md
+    │   ├── Pipeline-Steps-and-Canvas-Nodes.md
+    │   ├── Task-Canvas-Config.md
+    │   ├── Training-Data-Pipeline.md
+    │   └── 产品原型与PRD.md
+    └── prototype/                               # 前端交互示意（可编辑）
+        └── MODEL_TRAINING.html                  # 画布交互原型
 ```
+
+---
+
+## 文档与参考材料说明
+
+| 分类 | 路径 | 是否可改 | 说明 |
+|------|------|----------|------|
+| **调研整理材料** | `docs/research/*.md` | 可增删改 | 竞品调研、技术选型与方案对比，供方案分析用，不驱动产品定稿。 |
+| **内部参考（不可改动）** | 根目录 `MODEL_PIPELINE.md`、目录 `risk_model_on_ray/` | **不可改** | 流程图与步骤定义、参考实现代码与分布式训练手册，仅作阅读与对照，请勿修改。 |
+| **PRD 与设计** | `docs/design/*.md`、`docs/architecture/系统架构说明.md` | 可改 | 产品需求、画布配置、数据管道、系统架构等设计文档。 |
+| **前端交互示意** | `docs/prototype/*.html` | 可改 | 可交互原型（如 Experiment 画布 MODEL_TRAINING.html）。 |
 
 ---
 
@@ -109,7 +125,7 @@ Model Training Pipeline/
 | [系统架构说明](docs/architecture/系统架构说明.md) | 系统架构、领域模型、模块职责、状态机、产品交付示意图、上下游边界、预研清单 (§1–§17) | PM / Backend / Frontend / Arch |
 | [Training Data Pipeline](docs/design/Training-Data-Pipeline.md) | 表单转化为 Python 脚本投递给 Ray 的详细设计与规范及日志采集过程 (§1–§7) | Backend / ML Engineer |
 | [产品原型与 PRD](docs/design/产品原型与PRD.md) | 产品原型、IA、核心功能、MVP Scope；**§5 用户操作说明与平台价值对比**（Python 流程图、Before/After、多模型三种模式） | PM / Frontend |
-| [samples/full_training_pipeline.py](samples/full_training_pipeline.py) | 无平台时提交 Ray 的完整 Python 基线脚本（WOE → FS → Tune → Train → Predict），供 PRD §5 对照 | ML Engineer / Backend |
+| [docs/README.md](docs/README.md) | docs 目录索引：调研 / 设计 / 原型 / 参考材料分类 | 全员 |
 
 **建议阅读顺序**：先读「系统架构说明」建立完整概念 → 再读「Training Data Pipeline」了解执行层细节；产品价值与操作对比见「产品原型与 PRD」§5。
 
