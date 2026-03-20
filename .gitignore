@@ -40,6 +40,10 @@ credentials.json
 *.pem
 *.key
 
+# Node (prototype)
+node_modules/
+docs/prototype/model-experiment-web/dist/
+
 # Data (large files)
 *.parquet
 *.csv

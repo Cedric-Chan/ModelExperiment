@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { TrainingTask, TaskInstance, HistoryVersion, initialMockTasks, IS_ADMIN, CURRENT_USER } from './components/data';
+import { TrainingTask, TaskInstance, initialMockTasks, CURRENT_USER } from './components/data';
 import { FilterBar, FilterValues, defaultFilters } from './components/FilterBar';
 import { Toolbar, TaskTable, Pagination } from './components/TaskTable';
 import {
@@ -7,6 +7,7 @@ import {
   useToast, ToastContainer
 } from './components/Modals';
 import { ConfigDetailPage } from './components/ConfigDetailPage';
+import { AppShell } from './components/AppShell';
 
 type ModalState =
   | { type: 'create' }
@@ -32,7 +33,6 @@ export default function App() {
   const [ownByMe, setOwnByMe] = useState(false);
   const { toasts, show: showToast } = useToast();
 
-  /* ─── Filtered tasks ─── */
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
       const nameMatch  = !filters.expName || t.taskName.toLowerCase().includes(filters.expName.toLowerCase());
@@ -43,7 +43,6 @@ export default function App() {
     });
   }, [tasks, filters, ownByMe]);
 
-  /* ─── Handlers ─── */
   const handleRefresh = () => {
     setRefreshing(true);
     setTimeout(() => {
@@ -121,10 +120,6 @@ export default function App() {
     showToast(`New instance triggered for "${task.taskName}"`, 'success');
   };
 
-  const handleInstanceContinue = (taskId: string, instanceId: string) => {
-    showToast(`Instance ${instanceId} continued`, 'success');
-  };
-
   const handleInstanceKill = (taskId: string, instanceId: string) => {
     setTasks((prev) => prev.map((t) =>
       t.id === taskId
@@ -141,24 +136,6 @@ export default function App() {
     showToast(`Instance ${instanceId} killed`, 'info');
   };
 
-  const handleRollback = (taskId: string, version: HistoryVersion) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
-    const newVersion: HistoryVersion = {
-      version: `V${task.history.length + 1}`,
-      createdAt: now,
-      createdBy: 'alice',
-      config: version.config,
-    };
-    setTasks((prev) => prev.map((t) =>
-      t.id === taskId
-        ? { ...t, history: [newVersion, ...t.history], updateTime: now.split(' ')[0] }
-        : t
-    ));
-    showToast(`Rolled back to ${version.version} — new version created`, 'success');
-  };
-
   const handleSaveConfig = (task: TrainingTask) => {
     showToast(`Configuration saved for "${task.taskName}"`, 'success');
   };
@@ -168,121 +145,109 @@ export default function App() {
     setPage(1);
   };
 
-  /* ─── Config Detail View ─── */
+  let main: React.ReactNode;
   if (view.type === 'config') {
-    return (
-      <>
-        <ConfigDetailPage
-          task={view.task}
-          onBack={() => setView({ type: 'list' })}
-          onSave={(task) => {
-            handleSaveConfig(task);
-            setView({ type: 'list' });
-          }}
-          onRunCreated={(instance) => {
-            const updatedTask = { ...view.task, instances: [instance, ...view.task.instances] };
-            setTasks(prev => prev.map(t => t.id === view.task.id ? updatedTask : t));
-            setView({ type: 'run', task: updatedTask, instance });
-          }}
-        />
-        <ToastContainer toasts={toasts} />
-      </>
+    main = (
+      <ConfigDetailPage
+        task={view.task}
+        onBack={() => setView({ type: 'list' })}
+        onSave={(task) => {
+          handleSaveConfig(task);
+          setView({ type: 'list' });
+        }}
+        onRunCreated={(instance) => {
+          const updatedTask = { ...view.task, instances: [instance, ...view.task.instances] };
+          setTasks(prev => prev.map(t => t.id === view.task.id ? updatedTask : t));
+          setView({ type: 'run', task: updatedTask, instance });
+        }}
+      />
     );
-  }
-
-  /* ─── Run View ─── */
-  if (view.type === 'run') {
-    return (
-      <>
-        <ConfigDetailPage
-          task={view.task}
-          runInstance={view.instance}
-          onBack={() => setView({ type: 'list' })}
-          onBackToConfig={() => setView({ type: 'config', task: view.task })}
-          onSave={() => {}}
-          onKill={() => handleInstanceKill(view.task.id, view.instance.id)}
-        />
-        <ToastContainer toasts={toasts} />
-      </>
+  } else if (view.type === 'run') {
+    main = (
+      <ConfigDetailPage
+        task={view.task}
+        runInstance={view.instance}
+        onBack={() => setView({ type: 'list' })}
+        onBackToConfig={() => setView({ type: 'config', task: view.task })}
+        onSave={() => {}}
+        onKill={() => handleInstanceKill(view.task.id, view.instance.id)}
+      />
     );
-  }
-
-  /* ─── List View ─── */
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Page Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="w-full px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center shadow-sm">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-slate-900">Model Experiments</h1>
+  } else {
+    main = (
+      <div className="flex min-h-full flex-col bg-[#f0f2f5]">
+        <div className="border-b border-[#e8e8e8] bg-white">
+          <div className="w-full px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#14b8a6] to-[#08979c] shadow-sm">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-[1.25rem] font-semibold text-[#333]">Model Experiments</h1>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="w-full px-6 py-5 flex flex-col gap-4">
-        {/* Filter Bar */}
-        <FilterBar
-          filters={filters}
-          onChange={(f) => { setFilters(f); setPage(1); }}
-          onReset={handleFilterReset}
-        />
-
-        {/* Table Card */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col gap-4">
-          {/* Toolbar inside card */}
-          <div className="px-5 pt-4">
-            <Toolbar
-              total={tasks.length}
-              filtered={filteredTasks.length}
-              onRefresh={handleRefresh}
-              onCreateTask={() => setModal({ type: 'create' })}
-              refreshing={refreshing}
-              ownByMe={ownByMe}
-              onOwnByMeChange={(v) => { setOwnByMe(v); setPage(1); }}
-            />
-          </div>
-
-          {/* Table */}
-          <TaskTable
-            tasks={filteredTasks}
-            onEdit={(task) => setView({ type: 'config', task })}
-            onTrigger={handleTrigger}
-            onCopy={(task) => setModal({ type: 'copy', task })}
-            onStatusChange={handleStatusChange}
-            onDelete={handleDeleteTask}
-            onInstanceKill={handleInstanceKill}
-            onInstanceArtifact={(inst) => setModal({ type: 'artifact', instance: inst })}
-            onInstanceView={(taskId, instanceId) => {
-              const task = tasks.find(t => t.id === taskId);
-              const instance = task?.instances.find(i => i.id === instanceId);
-              if (task && instance) setView({ type: 'run', task, instance });
-            }}
-            page={page}
-            pageSize={pageSize}
+        <div className="flex w-full flex-col gap-4 px-6 py-5">
+          <FilterBar
+            filters={filters}
+            onChange={(f) => { setFilters(f); setPage(1); }}
+            onReset={handleFilterReset}
           />
 
-          {/* Pagination */}
-          <div className="px-5 pb-4 border-t border-slate-100 pt-4">
-            <Pagination
-              total={filteredTasks.length}
+          <div className="flex flex-col gap-4 overflow-hidden rounded-[6px] border border-[#e8e8e8] bg-white shadow-sm">
+            <div className="px-5 pt-4">
+              <Toolbar
+                total={tasks.length}
+                filtered={filteredTasks.length}
+                onRefresh={handleRefresh}
+                onCreateTask={() => setModal({ type: 'create' })}
+                refreshing={refreshing}
+                ownByMe={ownByMe}
+                onOwnByMeChange={(v) => { setOwnByMe(v); setPage(1); }}
+              />
+            </div>
+
+            <TaskTable
+              tasks={filteredTasks}
+              onEdit={(task) => setView({ type: 'config', task })}
+              onTrigger={handleTrigger}
+              onCopy={(task) => setModal({ type: 'copy', task })}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDeleteTask}
+              onInstanceKill={handleInstanceKill}
+              onInstanceArtifact={(inst) => setModal({ type: 'artifact', instance: inst })}
+              onInstanceView={(taskId, instanceId) => {
+                const task = tasks.find(t => t.id === taskId);
+                const instance = task?.instances.find(i => i.id === instanceId);
+                if (task && instance) setView({ type: 'run', task, instance });
+              }}
               page={page}
               pageSize={pageSize}
-              onPageChange={setPage}
-              onPageSizeChange={setPageSize}
             />
+
+            <div className="border-t border-[#e8e8e8] px-5 pb-4 pt-4">
+              <Pagination
+                total={filteredTasks.length}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Modals */}
+  return (
+    <>
+      <AppShell activeNav="pipelines">{main}</AppShell>
+
       {modal?.type === 'create' && (
         <CreateEditModal
           onClose={() => setModal(null)}
@@ -324,6 +289,6 @@ export default function App() {
       )}
 
       <ToastContainer toasts={toasts} />
-    </div>
+    </>
   );
 }

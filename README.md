@@ -102,7 +102,8 @@ Model Training Pipeline/
     │   ├── Training-Data-Pipeline.md
     │   └── 产品原型与PRD.md
     └── prototype/                               # 前端交互示意（可编辑）
-        └── MODEL_TRAINING.html                  # 画布交互原型
+        ├── MODEL_TRAINING.html                  # 说明页：指向 GitHub Pages 线上原型
+        └── model-experiment-web/                # React（Vite）交互原型源码
 ```
 
 ---
@@ -114,7 +115,7 @@ Model Training Pipeline/
 | **调研整理材料** | `docs/research/*.md` | 可增删改 | 竞品调研、技术选型与方案对比，供方案分析用，不驱动产品定稿。 |
 | **内部参考（不可改动）** | 根目录 `MODEL_PIPELINE.md`、目录 `risk_model_on_ray/` | **不可改** | 流程图与步骤定义、参考实现代码与分布式训练手册，仅作阅读与对照，请勿修改。 |
 | **PRD 与设计** | `docs/design/*.md`、`docs/architecture/系统架构说明.md` | 可改 | 产品需求、画布配置、数据管道、系统架构等设计文档。 |
-| **前端交互示意** | `docs/prototype/*.html` | 可改 | 可交互原型（如 Experiment 画布 MODEL_TRAINING.html）。 |
+| **前端交互示意** | `docs/prototype/` | 可改 | `MODEL_TRAINING.html` 为说明页；**可交互原型**为 `model-experiment-web/`（React），公共演示见 [GitHub Pages](https://cedric-chan.github.io/ModelExperiment/)。 |
 
 ---
 

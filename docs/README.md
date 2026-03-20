@@ -60,8 +60,9 @@
 
 **路径**：`docs/prototype/`
 
-可交互 HTML 原型，与 design/产品原型与PRD.md 中的原型描述对应。
+React（Vite）可交互原型源码在 `model-experiment-web/`；公共部署见 **[GitHub Pages](https://cedric-chan.github.io/ModelExperiment/)**。`MODEL_TRAINING.html` 为说明页，引导打开线上演示与本地运行方式。
 
-| 文件 | 说明 |
+| 路径 | 说明 |
 |------|------|
-| [prototype/MODEL_TRAINING.html](prototype/MODEL_TRAINING.html) | Experiment 画布交互原型（模型训练页） |
+| [prototype/MODEL_TRAINING.html](prototype/MODEL_TRAINING.html) | 说明页：线上演示链接与本地运行命令 |
+| [prototype/model-experiment-web/](prototype/model-experiment-web/) | React 交互原型源码（与 Figma 导出一致） |
