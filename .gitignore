@@ -43,6 +43,7 @@ credentials.json
 # Node (prototype)
 node_modules/
 docs/prototype/model-experiment-web/dist/
+docs/prototype/node-*.msi
 
 # Data (large files)
 *.parquet
