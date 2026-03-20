@@ -1,5 +1,4 @@
-# Copy this file to: .github/workflows/deploy-pages.yml
-# Then commit and push using credentials with the `workflow` scope (OAuth tokens often lack it).
+# Mirror of .github/workflows/deploy-pages.yml (kept for reference).
 # Repository Settings → Pages → Source: GitHub Actions.
 
 name: Deploy GitHub Pages
@@ -10,6 +9,7 @@ on:
     paths:
       - 'docs/prototype/model-experiment-web/**'
       - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,10 +28,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: docs/prototype/model-experiment-web/package-lock.json
       - name: Install and build
         working-directory: docs/prototype/model-experiment-web
         run: |
-          npm install
+          npm ci
           npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
