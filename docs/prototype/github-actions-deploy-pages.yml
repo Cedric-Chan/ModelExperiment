@@ -1,3 +1,7 @@
+# Copy this file to: .github/workflows/deploy-pages.yml
+# Then commit and push using credentials with the `workflow` scope (OAuth tokens often lack it).
+# Repository Settings → Pages → Source: GitHub Actions.
+
 name: Deploy GitHub Pages
 
 on:
