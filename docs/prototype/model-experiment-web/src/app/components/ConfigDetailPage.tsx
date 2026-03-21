@@ -2475,7 +2475,7 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 flex-col h-full">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${style.iconBg}`}>{style.icon}</div>
         <div className="min-w-0">
@@ -3606,7 +3606,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
   const maxY = Math.max(...effectiveNodes.map(n => n.y + NODE_H)) + 140;
 
   return (
-    <div className="min-h-screen min-h-0 flex flex-col overflow-hidden bg-slate-100">
+    <div className="flex h-full min-h-0 max-h-full flex-col overflow-hidden bg-slate-100">
       {/* ── Top bar ── */}
       <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center shrink-0">
         {/* Left */}

@@ -69,7 +69,8 @@ export function AppShell({
         </nav>
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
+        {/* overflow-hidden (not overflow-y-auto) so full-height views (e.g. canvas) stay viewport-bound; list views scroll internally */}
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
     </div>
   );

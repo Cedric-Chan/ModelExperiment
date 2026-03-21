@@ -175,7 +175,7 @@ export default function App() {
     );
   } else {
     main = (
-      <div className="flex min-h-full flex-col bg-[#f5f7fa]">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#f5f7fa]">
         <header className="bg-white border-b border-gray-100 px-6 py-3 shadow-sm">
           <div className="flex items-center gap-2.5 max-w-screen-2xl mx-auto w-full">
             <div className="w-7 h-7 rounded-lg bg-[#13c2c2] flex items-center justify-center shadow-sm shrink-0">
