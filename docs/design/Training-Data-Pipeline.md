@@ -47,7 +47,7 @@ flowchart LR
     S3Artifact --> StatusUpdate
 ```
 
-**与 Figma / 控制台交互**：**Manual** 对应用户在 **Model Experiments** 配置页的 **Action → Trigger Run**（及设计意图中的列表 Trigger）；**Cron** 与 Experiment Meta **Schedule**（Hourly / Daily / …）对应，是否已由后端调度器落地以迭代为准。详见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)。
+**与 Figma / 控制台交互**：**Manual** 对应用户在 **Model Experiments** 配置页的 **Action → Trigger Run**（及设计意图中的列表 Trigger）；**Cron** 与顶栏 **Execute Config · Schedule**（ONCE / Cron 表达式）对应，是否已由后端调度器落地以迭代为准。详见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)。
 
 ### 2.2 Phase 责任划分
 

@@ -98,8 +98,8 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 
 | Model Step | Component Type | Config Details | Note |
 |-------------|----------------|----------------|------|
-| Ray init | Task Config | 元信息、资源分配、任务优先级 | 画布首位，对应 Experiment Meta；修改不落版 |
-| read_data | Data Source | Type = Hive：hive_server、table_schema、table_name、custom_filter、label、sample_use_col、categorical_col。Type = S3：s3_path、label、sample_use_col、categorical_col | 数据源表干净、无偏，类别变量未经 WOE 的需标识 |
+| Ray init | Task Config | 元信息、资源分配、任务优先级 | **顶栏 Edit Meta / Execute Config**（非画布节点）；修改不落 Run 版 |
+| read_data | Data Source | Type = Hive：hive_server、table_schema、table_name、custom_filter、label、sample_use_col、categorical_col。Type = S3：s3_path、label、sample_use_col、categorical_col | **画布 DAG 首位管道节点**；数据源表干净、无偏 |
 | woe_fit对全部ft做fit | WOE All Feature | 全局默认 WOE 参数；对全部特征做 fit → transform → merge；再（可选）全部特征探查报告 | **Time Travel 实验 checkpoint（WOE 部分）**；可配置 SavePoint |
 | woe transform + merge、all feature_report(optional) | （同上） | （同上） | 节点 3 内完成全部特征的 transform + merge |
 | feature selection | Feature Selection | 特征选择；对选择留下的 Feature 做探查报告 | **CheckPoint**：后续 Model Tune & Train 实验的暂停点 |
@@ -114,8 +114,8 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 
 | Node Type | Config Details | Note |
 |-----------|----------------|------|
-| **Experiment Meta**（Task Config） | 元信息、资源分配、任务优先级 | 画布首位；修改不落版，直接更新 Experiment 实体 |
-| **数据源 (DataSource)** | Type = Hive：hive_server、table_schema、table_name、custom_filter、label、sample_use_col、categorical_col。Type = S3：s3_path、label、sample_use_col、categorical_col | 需保证数据源表干净、无偏，且标识不经 WOE 的类别变量 |
+| **顶栏 Edit Meta / Execute Config** | Meta：Owner、Description 等；Execute：Resource Tier、Queue Priority、Schedule（ONCE/Cron）、Pipeline Input Fields | 与 [Feature WideTable](https://github.com/Cedric-Chan/FeatureStore) Execute Config 入口与弹窗样式对齐；非画布节点 |
+| **数据源 (DataSource)** | Type = Hive：hive_server、table_schema、table_name、custom_filter、label、sample_use_col、categorical_col。Type = S3：s3_path、label、sample_use_col、categorical_col | 画布 **首位管道节点**；需保证数据源表干净、无偏 |
 | **WOE All Feature** | 对全部特征做 **fit → transform → merge**；全局默认 WOE 参数（n_bins、min_bin_rate、min_bin_size、min_missing_bad_cnt、method 等）；再（可选）全部特征探查报告；可配置 SavePoint | WOE 部分 **Time Travel 实验 checkpoint**；节点支持独立运行并存记录 |
 | **Feature Selection** | 特征选择；对选择留下的 Feature 做探查报告；**CheckPoint 属性**（默认关闭，可开启） | 先 feature_selection，再 feature_report(选中特征)；为后续 Model Tune & Train 的 **CheckPoint**；开启时本节点完成后中间产物已写出（Run 无 CHECKING 状态） |
 | **WOE Selected Feature** | woe_update(可选) → woe_transform → woe_merge，针对**选中特征**；可配置 SavePoint | 后续 Model Tune & Train 实验的存档点 |
@@ -129,16 +129,16 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 
 | 序号 | 画布节点名称 | 对应 Python Step | 主要作用 | 实现脚本 | SavePoint / CheckPoint |
 |------|--------------|------------------|----------|----------|------------------------|
-| 1 | **Experiment Meta** | Step 0（实验级） | 实验元信息 + 执行与调度；修改不落版 | — | — |
-| 2 | **数据源 (DataSource)** | Step 1 | 配置数据来源（Hive/S3）、label、sample_use_col、**categorical_col** | — | — |
-| 3 | **WOE All Feature**（WOE Fit + All Feature Report） | Step 2 + 4 + 5 + Step 3 | 对全部特征 woe_fit → woe_transform → woe_merge，再（可选）All Feature Report；产出 Encoder + WOE 数据 + 全量报告 | ray_woe_fit_v2_4.py、ray_woe_transform_v2_4.py、ray_woe_merge_v2.py、ray_feature_report_v2_4.py | SavePoint 可配；**Time Travel checkpoint（WOE）** |
-| 4 | **Feature Selection + Fine Feature Report** | Step 6 + Step 3 | feature_selection → feature_report(选中特征)；产出 FS 报告 + 精选报告 | ray_fs.py / ray_fs_v2.py、ray_feature_report_v2_4.py | **CheckPoint**（节点属性，默认关） |
-| 5 | **WOE Selected Feature**（WOE Update + WOE Merge） | 可选 woe_update + Step 4 + Step 5 | 对选中特征：可选 woe_update → woe_transform → woe_merge | ray_woe_update.py（可选）、ray_woe_transform_v2_4.py、ray_woe_merge_v2.py | SavePoint 可配（后续 Tune & Train 存档点） |
-| 6 | **Model Tune** | Step 7 | model_tune；search_space + 搜索策略；可多子路径 | ray_tune.py | — |
-| 7 | **Model Train** | Step 8 | model_train；可与节点 6 组成多子路径 | ray_train.py | — |
-| 8 | **CheckPoint（择优）**（Best Select / Model Summary） | — | 汇总多分支 TUNE+Train 结果，用户择优选定后 Continue 至 Model Inference | — | **CheckPoint 可选**（节点属性，默认关） |
-| 9 | **Model Inference** | Step 9 | model_predict；使用择优选定的训练结果 | ray_predict.py | — |
-| 10 | **Calibrate** | Step 10 + 11 | calibrate_fit、calibrate_transform（默认关） | ray_calibrate_* | 本期不实现 / Pending |
+| — | **（顶栏）Edit Meta / Execute Config** | Step 0（实验级） | 实验元信息 + 执行与调度；修改不落 Run 版 | — | — |
+| 1 | **数据源 (DataSource)** | Step 1 | 配置数据来源（Hive/S3）、label、sample_use_col、**categorical_col** | — | — |
+| 2 | **WOE All Feature**（WOE Fit + All Feature Report） | Step 2 + 4 + 5 + Step 3 | 对全部特征 woe_fit → woe_transform → woe_merge，再（可选）All Feature Report；产出 Encoder + WOE 数据 + 全量报告 | ray_woe_fit_v2_4.py、ray_woe_transform_v2_4.py、ray_woe_merge_v2.py、ray_feature_report_v2_4.py | SavePoint 可配；**Time Travel checkpoint（WOE）** |
+| 3 | **Feature Selection + Fine Feature Report** | Step 6 + Step 3 | feature_selection → feature_report(选中特征)；产出 FS 报告 + 精选报告 | ray_fs.py / ray_fs_v2.py、ray_feature_report_v2_4.py | **CheckPoint**（节点属性，默认关） |
+| 4 | **WOE Selected Feature**（WOE Update + WOE Merge） | 可选 woe_update + Step 4 + Step 5 | 对选中特征：可选 woe_update → woe_transform → woe_merge | ray_woe_update.py（可选）、ray_woe_transform_v2_4.py、ray_woe_merge_v2.py | SavePoint 可配（后续 Tune & Train 存档点） |
+| 5 | **Model Tune** | Step 7 | model_tune；search_space + 搜索策略；可多子路径 | ray_tune.py | — |
+| 6 | **Model Train** | Step 8 | model_train；可与节点 5 组成多子路径 | ray_train.py | — |
+| 7 | **CheckPoint（择优）**（Best Select / Model Summary） | — | 汇总多分支 TUNE+Train 结果，用户择优选定后 Continue 至 Model Inference | — | **CheckPoint 可选**（节点属性，默认关） |
+| 8 | **Model Inference** | Step 9 | model_predict；使用择优选定的训练结果 | ray_predict.py | — |
+| 9 | **Calibrate** | Step 10 + 11 | calibrate_fit、calibrate_transform（默认关） | ray_calibrate_* | 本期不实现 / Pending |
 
 ### 2.2.0 特征选择裁切语义与 WOE 节点配置合并
 
@@ -151,51 +151,51 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 
 以下配置项均对应 MODEL_PIPELINE.md 中各 Step 的输入/输出参数；命名统一用 path 形式（如 encoder_save_path、data_path）。
 
-**节点 1：Experiment Meta**（对应 Step 0，实验级）  
-- **在做什么**：展示并编辑 Meta Info（Experiment Name 只读、Region 仅 View、Owner 可编辑多选、Description 可编辑）与 Execute Info（Resource Tier、Queue Priority）；修改直接写 Experiment 实体，不写入 Run 配置快照。  
-- **主要配置项**：Experiment Name、Region、Owner、Description、Resource Tier、Queue Priority。
+**顶栏：Edit Meta / Execute Config**（对应 Step 0，实验级）  
+- **在做什么**：**Edit Meta** 展示并编辑 Owner、Description 等；**Execute Config** 配置 Resource Tier、Queue Priority、Schedule（ONCE / Cron）、Pipeline Input Fields；样式与 Feature WideTable 画布 **Execute Config** 对齐。修改直接写 Experiment 实体或执行侧配置，不写入 Run 配置快照中的实验级字段。  
+- **主要配置项**：与 [Pipeline-Steps-and-Canvas-Nodes.md §三](./Pipeline-Steps-and-Canvas-Nodes.md) 一致。
 
-**节点 2：数据源 DataSource**（对应 Step 1）  
+**节点 1：数据源 DataSource**（对应 Step 1，画布首位管道节点）  
 - **在做什么**：配置数据来源与标签列，平台将解析结果注入后续各 Step 的 data_path / sample_path、label、sample_use_col；**categorical_col** 注入 WOE 的 categorical_features。  
 - **主要配置项**：  
   - Type = Hive：hive_server、table_schema、table_name、partition_filter、custom_filter、**label**、**sample_use_col**、**categorical_col**。  
   - Type = S3：**s3_path**（或 sample_path）、**label**、**sample_use_col**、**categorical_col**。  
 - **Note**：需保证数据源表干净、无偏，且标识不经 WOE 的类别变量。
 
-**节点 3：WOE All Feature**（WOE Fit + All Feature Report，对应 Step 2 + 4 + 5 + Step 3）  
+**节点 2：WOE All Feature**（WOE Fit + All Feature Report，对应 Step 2 + 4 + 5 + Step 3）  
 - **在做什么**：对**全部特征**先 woe_fit 产出 Encoder，再 woe_transform、woe_merge，最后（可选）对全部特征做 All Feature Report 产出全量报告；可配置 SavePoint，为 **WOE 部分 Time Travel 实验 checkpoint**，节点支持独立运行并存记录。与节点 5 可共用同一 WOE 配置块，本节点对应 scope = all（见 §2.2.0）。  
 - **配置区 1 - WOE Fit**（MODEL_PIPELINE §1）：feature_name、data_path、encoder_save_filepath、label、n_bins、min_bin_rate、min_bin_size、min_missing_bad_cnt、method、transform_method、exclude、categorical_features（可由数据源 categorical_col 注入）、missing_values、missing_logic、dict_*、model_level、sample_use_col、ls_high_risk_na_features、ls_neutral_risk_na_features。  
 - **配置区 2 - WOE Transform + Merge**（节点 3 内）：对全部特征做 woe_transform、woe_merge（参数见 MODEL_PIPELINE §3、§4）。  
 - **配置区 3 - All Feature Report**（MODEL_PIPELINE §2，可选）：feature_name、data_path、encoder_load_filepath、report_filepath、label、sample_type、pkey、dim、n_bins、sample_use_col、reports。
 
-**节点 4：Feature Selection + Fine Feature Report**（对应 Step 6 + Step 3）  
+**节点 3：Feature Selection + Fine Feature Report**（对应 Step 6 + Step 3）  
 - **在做什么**：先 feature_selection 产出 FS 报告，再 feature_report(选中特征) 产出精选报告；**CheckPoint** 为节点属性、默认关闭，开启时本节点完成后中间产物已写出（Run 无 CHECKING 状态）。  
 - **配置区 1 - Feature Selection**（MODEL_PIPELINE §5）：data_path、output_filepath、label、model_name、sample_use_col、fs_methods、exclude_cols、iv_threshold、corr_threshold、psi_threshold；v2：stability_* 等。  
 - **配置区 2 - Fine Feature Report**（MODEL_PIPELINE §2）：encoder_load_path、feature_selection_path、report_filepath、sample_type、pkey、dim、reports。
 
-**节点 5：WOE Selected Feature**（WOE Update + WOE Merge，对应可选 woe_update + Step 4 + Step 5）  
+**节点 4：WOE Selected Feature**（WOE Update + WOE Merge，对应可选 woe_update + Step 4 + Step 5）  
 - **在做什么**：针对**选中特征**，可选 woe_update 精调后，woe_transform、woe_merge；可配置 SavePoint（后续 Model Tune & Train 实验的存档点）。未配置 woe_update 时，仍可执行对选中特征的 transform + merge（与节点 3 Encoder 一致，结果与节点 3 表中对应列相同）；**等价地**，也可由下游直接使用节点 3 的 merge 表并按 `feature_selection_path` 过滤列训练，详见 §2.2.0。与节点 3 可共用同一 WOE 配置块，通过 scope = selected 与 `feature_selection_path` 区分（见 §2.2.0）。  
 - **配置区 1 - WOE Update**（可选）：特征列表 + 每特征调参（ws_list / cutoff / missing_logic 等，对应 ray_woe_update.py / ray_woe_update_by_adding_cutoff.py）；本期可预留，具体字段下期实现。  
 - **配置区 2 - WOE Transform**（MODEL_PIPELINE §3）：feature_name、data_path、encoder_load_filepath、data_save_path、sample_type、model_level、transform_method、n_bins、method、ooot_date。  
 - **配置区 3 - WOE Merge**（MODEL_PIPELINE §4）：data_path_dict、data_save_path、on、how；v2：num_partitions。
 
-**节点 6：Model Tune**（对应 Step 7）  
+**节点 5：Model Tune**（对应 Step 7）  
 - **在做什么**：超参搜索，支持不同分支定义搜索策略 + 搜索参数空间，各分支产出 best_hyper_path / best_model；支持分支 DAG 并行。  
 - **配置区**（MODEL_PIPELINE §6）：sample_path、label、best_model_filepath、best_hypers_path、feature_importance_path、bo_history_path、predict_result_path、checkpoint_path、sample_use_col、exclude_cols、feature_selection_path、use_feature_selection、sample_weight_col、auxilary_cols、**init_hypers、n_trials、search_space、搜索策略**、metric_for_tune、num_workers 等。
 
-**节点 7：Model Train**（对应 Step 8）  
+**节点 6：Model Train**（对应 Step 8）  
 - **在做什么**：选择最优一路分支的 best_hyper_path，再跑一次 model_train()，得到最终要发布的模型；合并多路 TUNE 分支。  
 - **配置区**（MODEL_PIPELINE §7）：sample_path、label、best_model_filepath、checkpoint_path、best_hyper_filepath、hypers、predict_result_path 等。
 
-**节点 8：CheckPoint（择优）**（Best Select / Model Summary）  
+**节点 7：CheckPoint（择优）**（Best Select / Model Summary）  
 - **在做什么**：**Best Select（Model Summary）**：汇总多路 TUNE+Train 分支模型结果并识别最优；多子路径完成后可选暂停，用户择优选定，再 **Continue**（不生成新 Run id）进入 Model Inference。**CheckPoint** 为节点属性、默认关闭。  
 - **配置**：无独立配置区；可选记录选中的子路径 ID 或 artifact 路径。
 
-**节点 9：Model Inference**（对应 Step 9）  
+**节点 8：Model Inference**（对应 Step 9）  
 - **在做什么**：使用择优选定的训练结果（或指定某次 Run/Build 产物）执行 model_predict，产出带 pred 列的 Parquet。需支持此节点独立组成完整画布（如数据源 + Model Inference），用于策略回扫等场景。  
 - **配置区**（MODEL_PIPELINE §8）：sample_path、**model_filepath**（选用择优结果或某 Instance/Build 产物）、predict_result_path、feature_cols、auxilary_cols 等。
 
-**节点 10：Calibrate**（对应 Step 10 + 11）  
+**节点 9：Calibrate**（对应 Step 10 + 11）  
 - **在做什么**：calibrate_fit + calibrate_transform。本期不实现 / Pending；画布保留节点，默认关闭，不做开发排期。  
 - **配置区 1 - Calibrate Fit**（MODEL_PIPELINE §10）：sample_path、label、feature_list、model_filepath、n_bins、n_degree、score_type；多阶段：n_stages、breakpoints、label_term。  
 - **配置区 2 - Calibrate Transform**（MODEL_PIPELINE §11）：sample_path、model_filepath、result_path、feature_list、auxilary_cols、fp_base。

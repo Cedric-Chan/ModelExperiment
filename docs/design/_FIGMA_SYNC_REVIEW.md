@@ -85,6 +85,14 @@
 | **旧文档** | 曾写列表 Trigger 与产品不符。 |
 | **结论** | 采纳设计稿：**允许**列表触发（与设计数据流一致）；注明当前 React 导出是否在行内展示 Trigger 以仓库实现为准。 |
 
+### ID-11 — WideTable 对齐：Execute Config 与 DAG 无 Start/End
+
+| 项 | 内容 |
+|----|------|
+| **参考** | [FeatureStore WideTable 画布](https://github.com/Cedric-Chan/FeatureStore)：`Execute Config` 顶栏入口 + 弹窗（Resource · Queue Priority · Scheduler）；DAG 为业务节点链，无独立 Start/End 占位。 |
+| **设计稿/Figma** | 可能尚未单独标注 **Execute Config** 或与顶栏分区不一致。 |
+| **结论** | 采纳参考实现：**Model Experiment** 顶栏增加 **Execute Config**（样式与 WideTable 一致）；画布 **移除 Start（exp_meta）与 End** 节点；实验级调度与 Pipeline Input Fields 归入 **Execute Config**。Figma 后续可再对齐。 |
+
 ---
 
 **最后更新**：与 `docs/design` 本轮以 Figma/原型为准的修订同步。

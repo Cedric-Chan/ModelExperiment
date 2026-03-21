@@ -32,8 +32,6 @@ interface ConfigDetailPageProps {
 
 /* ─────────────── Node types ─────────────── */
 type NodeType =
-  | 'exp_meta'
-  | 'end'
   | 'data_source'
   | 'woe_process'
   | 'woe_update'
@@ -67,7 +65,7 @@ interface NodeLastRun {
   artifact: { label: string; value: string }[];
 }
 
-type LastRunMap = Partial<Record<Exclude<NodeType, 'exp_meta' | 'end'>, NodeLastRun>>;
+type LastRunMap = Partial<Record<NodeType, NodeLastRun>>;
 
 interface VersionSnapshot {
   version: string;
@@ -77,7 +75,7 @@ interface VersionSnapshot {
   /** per-node id → partial overrides applied on top of default nodes */
   nodePatches?: Record<string, { sublabel?: string }>;
   /** per-node-type config property overrides */
-  propOverrides?: Partial<Record<Exclude<NodeType, 'exp_meta' | 'end'>, { label: string; value: string }[]>>;
+  propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
 }
 
 /* ─────────────── Constants ─────────────── */
@@ -93,16 +91,6 @@ const CURRENT_VERSION = 'v4';
 const NODE_STYLES: Record<NodeType, {
   bg: string; border: string; icon: React.ReactNode; accent: string; iconBg: string;
 }> = {
-  exp_meta: {
-    bg: 'bg-emerald-50', border: 'border-emerald-300', accent: 'text-emerald-700',
-    iconBg: 'bg-emerald-100',
-    icon: <Zap size={14} className="text-emerald-600" />,
-  },
-  end: {
-    bg: 'bg-orange-50', border: 'border-orange-300', accent: 'text-orange-700',
-    iconBg: 'bg-orange-100',
-    icon: <Flag size={14} className="text-orange-500" />,
-  },
   data_source: {
     bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
     iconBg: 'bg-blue-100',
@@ -143,25 +131,21 @@ const NODE_STYLES: Record<NodeType, {
 /* ─────────────── Default DAG builder ─────────────── */
 function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
   const nodes: DagNode[] = [
-    { id: 'n0', type: 'exp_meta',       label: 'Start',              sublabel: 'Input Fields · Schedule',                    x: X0+GX*0, y: MID, status: 'ready'   },
-    { id: 'n1', type: 'data_source',    label: 'DataSource',         sublabel: 'Feature Store · Label source',               x: X0+GX*1, y: MID, status: 'ready'   },
-    { id: 'n2', type: 'woe_process',    label: 'WOE Process',        sublabel: 'Fit_Transform_Merge · All Features',         x: X0+GX*2, y: MID, status: 'ready'   },
-    { id: 'n3', type: 'feature_sel',    label: 'Feature Selection',  sublabel: 'Filter · Fine Feature Report',               x: X0+GX*3, y: MID, status: 'ready'   },
-    { id: 'n4', type: 'woe_update',     label: 'WOE Update',         sublabel: 'Update_Fit_Transform · Selected Feats',      x: X0+GX*4, y: MID, status: 'ready'   },
-    { id: 'n5', type: 'model_tune',     label: 'Model Tune · Train', sublabel: 'Tune + Train · Best params',                 x: X0+GX*5, y: MID, status: 'pending' },
-    { id: 'n6', type: 'model_inference',label: 'Model Inference',    sublabel: 'Score · Predict · Export',                   x: X0+GX*6, y: MID, status: 'pending' },
-    { id: 'n7', type: 'model_calibrate',label: 'Calibrate',          sublabel: 'Platt Scaling · Score mapping',              x: X0+GX*7, y: MID, status: 'locked'  },
-    { id: 'n8', type: 'end',            label: 'End',                sublabel: 'Output · Global Variables',                  x: X0+GX*8, y: MID, status: 'locked'  },
+    { id: 'n1', type: 'data_source',    label: 'DataSource',         sublabel: 'Feature Store · Label source',               x: X0+GX*0, y: MID, status: 'ready'   },
+    { id: 'n2', type: 'woe_process',    label: 'WOE Process',        sublabel: 'Fit_Transform_Merge · All Features',         x: X0+GX*1, y: MID, status: 'ready'   },
+    { id: 'n3', type: 'feature_sel',    label: 'Feature Selection',  sublabel: 'Filter · Fine Feature Report',               x: X0+GX*2, y: MID, status: 'ready'   },
+    { id: 'n4', type: 'woe_update',     label: 'WOE Update',         sublabel: 'Update_Fit_Transform · Selected Feats',      x: X0+GX*3, y: MID, status: 'ready'   },
+    { id: 'n5', type: 'model_tune',     label: 'Model Tune · Train', sublabel: 'Tune + Train · Best params',                 x: X0+GX*4, y: MID, status: 'pending' },
+    { id: 'n6', type: 'model_inference',label: 'Model Inference',    sublabel: 'Score · Predict · Export',                   x: X0+GX*5, y: MID, status: 'pending' },
+    { id: 'n7', type: 'model_calibrate',label: 'Calibrate',          sublabel: 'Platt Scaling · Score mapping',              x: X0+GX*6, y: MID, status: 'locked'  },
   ];
   const edges: DagEdge[] = [
-    { from: 'n0', to: 'n1' },
     { from: 'n1', to: 'n2' },
     { from: 'n2', to: 'n3', label: 'SavePoint' },
     { from: 'n3', to: 'n4' },
     { from: 'n4', to: 'n5', label: 'SavePoint' },
     { from: 'n5', to: 'n6' },
     { from: 'n6', to: 'n7' },
-    { from: 'n7', to: 'n8' },
   ];
   return { nodes, edges };
 }
@@ -239,7 +223,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
 ];
 
 /* ─────────────── Default config props per node type ─────────────── */
-const DEFAULT_PROPS: Record<Exclude<NodeType, 'exp_meta' | 'end'>, { label: string; value: string }[]> = {
+const DEFAULT_PROPS: Record<NodeType, { label: string; value: string }[]> = {
   data_source:      [{ label: 'Source Type', value: 'Feature Store' }, { label: 'Lookback', value: '30 days' }, { label: 'Sampling', value: '100%' }, { label: 'Partition', value: 'dt=2025-03-01' }, { label: 'Label Source', value: 'Event Log · 30d' }],
   woe_process:      [{ label: 'WOE Bins', value: '10 (auto)' }, { label: 'Min Bin Rate', value: '5%' }, { label: 'Merge Strategy', value: 'Monotone' }, { label: 'Output', value: 'IV + WOE-encoded features' }],
   woe_update:       [{ label: 'Mode', value: 'Update_Fit_Transform' }, { label: 'Input', value: 'Selected Features' }, { label: 'ws_list Override', value: 'Optional' }, { label: 'Output', value: 'Updated encoder + merged result' }],
@@ -254,10 +238,10 @@ type NodeRunStatus = 'success' | 'running' | 'failed' | 'skipped' | 'pending';
 
 function deriveNodeRunStatuses(instance: TaskInstance): Record<string, NodeRunStatus> {
   const { status } = instance;
-  // DAG pipeline segments (linear: n0→n1→n2→n3→n4→n5→n6→n7→n8)
-  const earlyNodes = ['n0', 'n1', 'n2', 'n3', 'n4'];
+  // DAG pipeline segments (linear: n1→…→n7)
+  const earlyNodes = ['n1', 'n2', 'n3', 'n4'];
   const midNodes   = ['n5'];
-  const lateNodes  = ['n6', 'n7', 'n8'];
+  const lateNodes  = ['n6', 'n7'];
   const result: Record<string, NodeRunStatus> = {};
 
   switch (status as InstanceStatus) {
@@ -306,8 +290,8 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
   onSelect: () => void;
   onDragStart: (e: React.MouseEvent, id: string) => void;
 }) {
-  const style = NODE_STYLES[node.type] ?? NODE_STYLES['exp_meta'];
-  const isExpMeta = node.type === 'exp_meta';
+  const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
+  const isFirstPipeline = node.type === 'data_source';
   const isRunView = runExecStatus !== undefined;
 
   // Border/shadow in run view mode
@@ -332,7 +316,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
       ? 'border-[#13c2c2] shadow-[#13c2c2]/20 shadow-md'
       : hasError
         ? 'border-rose-400 shadow-rose-200 shadow-md'
-        : isExpMeta
+        : isFirstPipeline
           ? 'border-emerald-400 shadow-emerald-100 shadow-sm'
           : style.border;
 
@@ -380,7 +364,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
 
       {/* Corner dot — normal view */}
       {!isRunView && selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-[#13c2c2] border-2 border-white shadow" />}
-      {!isRunView && isExpMeta && !selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />}
+      {!isRunView && isFirstPipeline && !selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />}
       {!isRunView && hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-rose-500 border-2 border-white shadow" />}
 
       {/* Corner badge — run view */}
@@ -440,7 +424,6 @@ function deriveNodeRunStatusesFromLastRunMap(lastRunMap: LastRunMap): Record<str
     return 'pending';
   };
   return {
-    n0: 'success', // exp_meta — always executed when pipeline runs
     n1: to(lastRunMap.data_source?.status),
     n2: to(lastRunMap.woe_process?.status),
     n3: to(lastRunMap.feature_sel?.status),
@@ -609,24 +592,38 @@ type ResourceTier  = 'Low' | 'Medium' | 'High';
 type QueuePriority = 'Normal' | 'Important' | 'Critical';
 interface TaskConfigState { resourceTier: ResourceTier; queuePriority: QueuePriority; }
 
-type ScheduleFrequency = 'ONCE' | 'Hourly' | 'Daily' | 'Weekly' | 'Monthly';
-interface ScheduleConfig { frequency: ScheduleFrequency; time: string; timezone: string; }
+/** ONCE = manual trigger only; Cron = scheduler expression (WideTable-aligned). */
+interface ScheduleConfig { mode: 'once' | 'cron'; cronExpr: string; time: string; timezone: string; }
+
+function parseCronEnglish(expr: string): { valid: boolean; english: string } {
+  const t = expr.trim();
+  if (!t) return { valid: false, english: 'Enter a cron expression' };
+  const parts = t.split(/\s+/);
+  const core = parts.length === 6 ? parts.slice(1) : parts;
+  if (core.length !== 5) return { valid: false, english: 'Use 5 fields (or 6 with seconds)' };
+  const [min, hour, dom, month, dow] = core;
+  const fieldOk = (s: string) => /^[\d*\-/,\?]+$/.test(s);
+  if (![min, hour, dom, month, dow].every(fieldOk)) return { valid: false, english: 'Invalid characters in field' };
+  if ((dom === '*' || dom === '?') && month === '*' && (dow === '*' || dow === '?') && /^\d+$/.test(min) && /^\d+$/.test(hour)) {
+    const h = parseInt(hour, 10); const m = parseInt(min, 10);
+    const hh = h % 12 || 12;
+    const ampm = h >= 12 ? 'pm' : 'am';
+    return { valid: true, english: `Run at ${hh}:${String(m).padStart(2, '0')} ${ampm} every day` };
+  }
+  return { valid: true, english: 'Schedule active (English preview is simplified in prototype)' };
+}
 interface InputField { id: string; name: string; type: 'int' | 'string' | 'float' | 'bool' | 'date'; }
 interface OutputVariable { id: string; name: string; sourceVar: string; }
 
 /* ─────────────── Exp Meta Edit Modal (topbar) ─────────────── */
-function ExpMetaEditModal({ task, execConfig, onUpdateTask, onUpdateExec, onClose }: {
+function ExpMetaEditModal({ task, onUpdateTask, onClose }: {
   task: TrainingTask;
-  execConfig: TaskConfigState;
   onUpdateTask: (patch: Partial<Pick<TrainingTask, 'owner' | 'description'>>) => void;
-  onUpdateExec: (patch: Partial<TaskConfigState>) => void;
   onClose: () => void;
 }) {
   const initialOwners = task.owner.split(',').map(s => s.trim()).filter(Boolean);
   const [selectedOwners, setSelectedOwners] = useState<string[]>(initialOwners);
   const [description, setDescription]       = useState(task.description);
-  const [resourceTier, setResourceTier]     = useState<ResourceTier>(execConfig.resourceTier);
-  const [queuePriority, setQueuePriority]   = useState<QueuePriority>(execConfig.queuePriority);
   const [ownerDropOpen, setOwnerDropOpen]   = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -643,13 +640,10 @@ function ExpMetaEditModal({ task, execConfig, onUpdateTask, onUpdateExec, onClos
   };
   const handleSave = () => {
     onUpdateTask({ owner: selectedOwners.join(', '), description });
-    onUpdateExec({ resourceTier, queuePriority });
     onClose();
   };
 
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1';
-  const tierColors: Record<ResourceTier, string>      = { Low: 'text-slate-600', Medium: 'text-amber-600', High: 'text-rose-600' };
-  const priorityColors: Record<QueuePriority, string> = { Normal: 'text-slate-600', Important: 'text-indigo-600', Critical: 'text-rose-600' };
   const readonlyCls = 'flex items-center gap-2 min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 text-xs text-slate-600';
 
   const modal = ReactDOM.createPortal(
@@ -726,38 +720,6 @@ function ExpMetaEditModal({ task, execConfig, onUpdateTask, onUpdateExec, onClos
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 resize-none focus:outline-none focus:border-slate-400 transition-colors leading-relaxed"
               placeholder="Describe this experiment…" />
           </div>
-          {/* Resource Tier */}
-          <div>
-            <p className={labelCls}>Resource Tier</p>
-            <div className="relative">
-              <select value={resourceTier} onChange={e => setResourceTier(e.target.value as ResourceTier)}
-                className={`w-full h-8 pl-2.5 pr-7 rounded-lg border border-slate-200 bg-white text-xs appearance-none cursor-pointer focus:outline-none focus:border-slate-400 transition-colors font-medium ${tierColors[resourceTier]}`}>
-                {(['Low','Medium','High'] as ResourceTier[]).map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              {resourceTier === 'Low' && 'Shared pool · 2 CPU · 4 GB'}
-              {resourceTier === 'Medium' && 'Dedicated · 8 CPU · 32 GB'}
-              {resourceTier === 'High' && 'GPU cluster · A100 × 4'}
-            </p>
-          </div>
-          {/* Queue Priority */}
-          <div>
-            <p className={labelCls}>Queue Priority</p>
-            <div className="relative">
-              <select value={queuePriority} onChange={e => setQueuePriority(e.target.value as QueuePriority)}
-                className={`w-full h-8 pl-2.5 pr-7 rounded-lg border border-slate-200 bg-white text-xs appearance-none cursor-pointer focus:outline-none focus:border-slate-400 transition-colors font-medium ${priorityColors[queuePriority]}`}>
-                {(['Normal','Important','Critical'] as QueuePriority[]).map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              {queuePriority === 'Normal' && 'Standard queue · Best effort'}
-              {queuePriority === 'Important' && 'Elevated · Preempts Normal'}
-              {queuePriority === 'Critical' && 'Highest · Preempts all tiers'}
-            </p>
-          </div>
         </div>
 
         {/* Footer */}
@@ -772,28 +734,53 @@ function ExpMetaEditModal({ task, execConfig, onUpdateTask, onUpdateExec, onClos
   return modal;
 }
 
-/* ─────────────── Start Node panel ─────────────── */
-
-function StartNodePanel({ inputFields, scheduleConfig, onUpdateInputFields, onUpdateSchedule, readOnly }: {
-  inputFields: InputField[];
+/* ─────────────── Execute Config modal (WideTable-aligned) ─────────────── */
+function ExecuteConfigModal({
+  onClose,
+  execConfig,
+  onSaveExec,
+  scheduleConfig,
+  onUpdateSchedule,
+  inputFields,
+  onUpdateInputFields,
+  outputVariables,
+  onUpdateOutputVariables,
+  readOnly,
+}: {
+  onClose: () => void;
+  execConfig: TaskConfigState;
+  onSaveExec: (patch: Partial<TaskConfigState>) => void;
   scheduleConfig: ScheduleConfig;
-  onUpdateInputFields: (fields: InputField[]) => void;
   onUpdateSchedule: (cfg: ScheduleConfig) => void;
+  inputFields: InputField[];
+  onUpdateInputFields: (fields: InputField[]) => void;
+  outputVariables: OutputVariable[];
+  onUpdateOutputVariables: (vars: OutputVariable[]) => void;
   readOnly?: boolean;
 }) {
+  const [resourceTier, setResourceTier] = useState<ResourceTier>(execConfig.resourceTier);
+  const [queuePriority, setQueuePriority] = useState<QueuePriority>(execConfig.queuePriority);
+  const [schedMode, setSchedMode] = useState<'once' | 'cron'>(scheduleConfig.mode);
+  const [cronExpr, setCronExpr] = useState(scheduleConfig.cronExpr);
+  const cron = parseCronEnglish(cronExpr);
   const FIELD_TYPES = ['int', 'string', 'float', 'bool', 'date'] as const;
-  const FREQUENCIES: ScheduleFrequency[] = ['ONCE', 'Hourly', 'Daily', 'Weekly', 'Monthly'];
-  const [freqOpen, setFreqOpen] = useState(false);
-  const freqRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (freqRef.current && !freqRef.current.contains(e.target as Node)) setFreqOpen(false); };
-    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
-  }, []);
+    setResourceTier(execConfig.resourceTier);
+    setQueuePriority(execConfig.queuePriority);
+    setSchedMode(scheduleConfig.mode);
+    setCronExpr(scheduleConfig.cronExpr);
+  }, [execConfig.resourceTier, execConfig.queuePriority, scheduleConfig.mode, scheduleConfig.cronExpr]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
 
   const addField = () => {
     if (readOnly) return;
-    const newField: InputField = { id: `f${Date.now()}`, name: '', type: 'string' };
-    onUpdateInputFields([...inputFields, newField]);
+    onUpdateInputFields([...inputFields, { id: `f${Date.now()}`, name: '', type: 'string' }]);
   };
   const removeField = (id: string) => {
     if (readOnly) return;
@@ -804,172 +791,177 @@ function StartNodePanel({ inputFields, scheduleConfig, onUpdateInputFields, onUp
     onUpdateInputFields(inputFields.map(f => f.id === id ? { ...f, ...patch } : f));
   };
 
-  const sectionHdrCls = 'text-[10px] font-bold text-slate-500 uppercase tracking-widest';
+  const addOut = () => {
+    if (readOnly) return;
+    onUpdateOutputVariables([...outputVariables, { id: `ov${Date.now()}`, name: '', sourceVar: '' }]);
+  };
+  const removeOut = (id: string) => {
+    if (readOnly) return;
+    onUpdateOutputVariables(outputVariables.filter(v => v.id !== id));
+  };
+  const updateOut = (id: string, patch: Partial<OutputVariable>) => {
+    if (readOnly) return;
+    onUpdateOutputVariables(outputVariables.map(v => v.id === id ? { ...v, ...patch } : v));
+  };
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Panel header */}
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5 bg-emerald-50/60 shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
-          <Zap size={13} className="text-emerald-600" />
+  const handleSave = () => {
+    onSaveExec({ resourceTier, queuePriority });
+    onUpdateSchedule({ ...scheduleConfig, mode: schedMode, cronExpr });
+    onClose();
+  };
+
+  const tierColors: Record<ResourceTier, string> = { Low: 'text-slate-600', Medium: 'text-amber-600', High: 'text-rose-600' };
+  const priorityColors: Record<QueuePriority, string> = { Normal: 'text-slate-600', Important: 'text-indigo-600', Critical: 'text-rose-600' };
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">Execute Config</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">Resource · Queue Priority · Scheduler</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+            <X size={15} />
+          </button>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-700">Start</p>
-          <p className="text-[10px] text-slate-400 truncate">Start node</p>
-        </div>
-        {readOnly && <span className="text-[9px] font-semibold bg-indigo-100 text-indigo-500 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">READ-ONLY</span>}
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
-
-        {/* ── INPUT FIELD section ── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className={sectionHdrCls}>Input Field</span>
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5">Resource</p>
+            <select
+              value={resourceTier}
+              disabled={readOnly}
+              onChange={e => setResourceTier(e.target.value as ResourceTier)}
+              className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-medium ${tierColors[resourceTier]}`}
+            >
+              {(['Low', 'Medium', 'High'] as ResourceTier[]).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5">Queue Priority</p>
+            <select
+              value={queuePriority}
+              disabled={readOnly}
+              onChange={e => setQueuePriority(e.target.value as QueuePriority)}
+              className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-medium ${priorityColors[queuePriority]}`}
+            >
+              {(['Normal', 'Important', 'Critical'] as QueuePriority[]).map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5">Scheduler</p>
+            <select
+              value={schedMode}
+              disabled={readOnly}
+              onChange={e => setSchedMode(e.target.value as 'once' | 'cron')}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400"
+            >
+              <option value="once">ONCE</option>
+              <option value="cron">Cron</option>
+            </select>
+            {schedMode === 'cron' && (
+              <div className="mt-2 space-y-1">
+                <p className="text-[10px] text-slate-500">Cron expression</p>
+                <input
+                  type="text"
+                  value={cronExpr}
+                  disabled={readOnly}
+                  onChange={e => setCronExpr(e.target.value)}
+                  placeholder="0 6 * * *"
+                  className={`w-full font-mono text-sm border rounded-xl px-3 py-2 bg-gray-50 focus:outline-none ${cron.valid ? 'border-gray-200 focus:border-teal-400' : 'border-red-300 focus:border-red-400'}`}
+                />
+                <p className="text-[10px] text-slate-500">{cron.english}</p>
+              </div>
+            )}
+            {schedMode === 'once' && (
+              <p className="text-[10px] text-slate-400 mt-2">Manual trigger only — no automatic schedule</p>
+            )}
           </div>
 
-          {inputFields.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-4 text-center">
-              <p className="text-[11px] text-slate-400">No input parameters</p>
-              <p className="text-[10px] text-slate-300 mt-0.5">Click + Add to define input fields</p>
-            </div>
-          )}
-
-          {inputFields.length > 0 && (
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Pipeline Input Fields</p>
+            {inputFields.length === 0 && (
+              <p className="text-[11px] text-slate-400 mb-2">No input parameters</p>
+            )}
             <div className="flex flex-col gap-2">
               {inputFields.map((field, idx) => (
                 <div key={field.id} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                  {/* Row 1: index + name */}
                   <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1">
-                    <span className="text-[9px] font-semibold text-slate-400 w-4 shrink-0 select-none">{idx + 1}</span>
+                    <span className="text-[9px] font-semibold text-slate-400 w-4 shrink-0">{idx + 1}</span>
                     <input
                       type="text"
                       value={field.name}
                       disabled={readOnly}
                       onChange={e => updateField(field.id, { name: e.target.value })}
                       placeholder="field name"
-                      className="flex-1 min-w-0 h-6 px-1.5 rounded border border-slate-200 bg-slate-50/60 text-xs text-slate-700 font-mono placeholder-slate-300
-                        focus:outline-none focus:border-[#13c2c2]/60 focus:bg-white disabled:bg-transparent disabled:border-transparent disabled:text-slate-500"
+                      className="flex-1 min-w-0 h-6 px-1.5 rounded border border-slate-200 bg-slate-50/60 text-xs font-mono focus:outline-none focus:border-teal-400/60"
                     />
                   </div>
-                  {/* Row 2: type + delete */}
                   <div className="flex items-center gap-1.5 px-2 pb-1.5">
-                    <span className="text-[9px] text-slate-300 w-4 shrink-0 select-none">type</span>
-                    <div className="relative flex-1 min-w-0">
-                      <select
-                        value={field.type}
-                        disabled={readOnly}
-                        onChange={e => updateField(field.id, { type: e.target.value as InputField['type'] })}
-                        className="w-full h-6 pl-2 pr-5 rounded border border-slate-200 bg-slate-50/60 text-xs text-slate-600 appearance-none
-                          focus:outline-none focus:border-[#13c2c2]/60 disabled:bg-transparent disabled:border-transparent cursor-pointer"
-                      >
-                        {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <ChevronDown size={9} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
-                    {!readOnly ? (
-                      <button onClick={() => removeField(field.id)}
-                        className="w-5 h-5 flex items-center justify-center rounded text-slate-300 hover:text-rose-400 hover:bg-rose-50 transition-colors shrink-0">
+                    <select
+                      value={field.type}
+                      disabled={readOnly}
+                      onChange={e => updateField(field.id, { type: e.target.value as InputField['type'] })}
+                      className="flex-1 h-6 pl-2 rounded border border-slate-200 bg-slate-50/60 text-xs"
+                    >
+                      {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {!readOnly && (
+                      <button type="button" onClick={() => removeField(field.id)} className="text-slate-300 hover:text-rose-400">
                         <Trash2 size={11} />
                       </button>
-                    ) : (
-                      <span className="w-5 shrink-0" />
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          )}
+            {!readOnly && (
+              <button type="button" onClick={addField} className="mt-2 w-full h-8 rounded-lg border border-dashed border-slate-300 text-xs text-slate-500 hover:border-teal-400 flex items-center justify-center gap-1">
+                <Plus size={13} /> Add field
+              </button>
+            )}
+          </div>
 
-          {/* Add button */}
-          {!readOnly && (
-            <button onClick={addField}
-              className="mt-3 w-full h-8 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:border-[#13c2c2]/60 hover:bg-[#13c2c2]/5 transition-colors flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-[#0d9e9e]">
-              <Plus size={13} />
-              Add
-            </button>
-          )}
-        </div>
-
-        {/* ── SCHEDULE section ── */}
-        <div>
-          <span className={sectionHdrCls}>Schedule</span>
-          <div className="mt-3 flex flex-col gap-3">
-            {/* Frequency + Time row */}
-            <div className="flex items-end gap-3">
-              {/* Frequency */}
-              <div className="flex flex-col gap-1 flex-1">
-                <span className="text-[10px] text-slate-500">Frequency</span>
-                <div className="relative" ref={freqRef}>
-                  <button
-                    disabled={readOnly}
-                    onClick={() => !readOnly && setFreqOpen(p => !p)}
-                    className={`w-full h-8 pl-2.5 pr-7 rounded-lg border text-xs text-left transition-colors flex items-center justify-between
-                      ${freqOpen ? 'border-[#13c2c2]/60 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}
-                      disabled:bg-slate-50 disabled:text-slate-400 text-slate-700`}
-                  >
-                    <span>{scheduleConfig.frequency}</span>
-                    <ChevronDown size={10} className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 transition-transform ${freqOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {freqOpen && (
-                    <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-xl z-30 py-1 overflow-hidden">
-                      <div className="px-2.5 py-1.5 border-b border-slate-50">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Frequency</span>
-                      </div>
-                      {FREQUENCIES.map(f => (
-                        <button
-                          key={f}
-                          onClick={() => { onUpdateSchedule({ ...scheduleConfig, frequency: f }); setFreqOpen(false); }}
-                          className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          {f}
-                          {scheduleConfig.frequency === f && <CheckIcon size={11} className="text-[#13c2c2]" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Time — only when not ONCE */}
-              {scheduleConfig.frequency !== 'ONCE' && (
-                <div className="flex flex-col gap-1 flex-1">
-                  <span className="text-[10px] text-slate-500">Time</span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="time"
-                      value={scheduleConfig.time}
-                      disabled={readOnly}
-                      onChange={e => onUpdateSchedule({ ...scheduleConfig, time: e.target.value })}
-                      className="flex-1 h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700
-                        focus:outline-none focus:border-[#13c2c2]/60 disabled:bg-slate-50"
-                    />
-                    <div className="flex items-center gap-1 shrink-0 text-[10px] text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-2 h-8">
-                      <Clock size={10} className="shrink-0" />
-                      <span>{scheduleConfig.timezone}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Output Variables</p>
+            {outputVariables.length === 0 && <p className="text-[11px] text-slate-400 mb-2">No output variables</p>}
+            <div className="flex flex-col gap-2">
+              {outputVariables.map((v, idx) => (
+                <OutputVarRow
+                  key={v.id}
+                  variable={v}
+                  index={idx}
+                  readOnly={readOnly}
+                  onChangeName={name => updateOut(v.id, { name })}
+                  onChangeSource={sourceVar => updateOut(v.id, { sourceVar })}
+                  onDelete={() => removeOut(v.id)}
+                />
+              ))}
             </div>
-
-            {/* ONCE — friendly info */}
-            {scheduleConfig.frequency === 'ONCE' && (
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                <Zap size={11} className="text-slate-400 shrink-0" />
-                <p className="text-[10px] text-slate-400 leading-relaxed">Manual trigger only — no automatic schedule</p>
-              </div>
+            {!readOnly && (
+              <button type="button" onClick={addOut} className="mt-2 w-full h-8 rounded-lg border border-dashed border-slate-300 text-xs text-slate-500 hover:border-orange-300 flex items-center justify-center gap-1">
+                <Plus size={13} /> Add variable
+              </button>
             )}
           </div>
         </div>
-      </div>
 
-      <div className="shrink-0 px-4 py-2.5 border-t border-slate-100 bg-slate-50/60">
-        <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-          {readOnly ? 'Viewing historical snapshot — read-only' : 'Start node · Input fields and schedule'}
-        </p>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+          <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button
+            type="button"
+            disabled={readOnly}
+            onClick={handleSave}
+            className="h-9 px-5 rounded-lg bg-teal-500 text-white text-sm hover:bg-teal-600 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -2570,18 +2562,15 @@ function DataSourceConfigPanel({ readOnly }: { readOnly?: boolean }) {
 function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
   node: DagNode;
   lastRunMap: LastRunMap;
-  propOverrides?: Partial<Record<Exclude<NodeType, 'exp_meta' | 'end'>, { label: string; value: string }[]>>;
+  propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
 }) {
-  const style = NODE_STYLES[node.type] ?? NODE_STYLES['exp_meta'];
+  const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
   const [showBinning, setShowBinning] = useState(false);
 
-  const props = (node.type !== 'exp_meta' && node.type !== 'end')
-    ? (propOverrides?.[node.type as Exclude<NodeType, 'exp_meta' | 'end'>] ?? DEFAULT_PROPS[node.type as Exclude<NodeType, 'exp_meta' | 'end'>] ?? [])
-    : [];
-
-  const runInfo = (node.type !== 'exp_meta' && node.type !== 'end') ? lastRunMap[node.type as Exclude<NodeType, 'exp_meta' | 'end'>] : undefined;
+  const props = propOverrides?.[node.type] ?? DEFAULT_PROPS[node.type] ?? [];
+  const runInfo = lastRunMap[node.type];
 
   const statusStyle: Record<string, { dot: string; text: string; bg: string }> = {
     SUCCESS: { dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -2869,146 +2858,18 @@ function OutputVarRow({
   );
 }
 
-function EndNodePanel({ outputVariables, onUpdateOutputVariables, readOnly }: {
-  outputVariables: OutputVariable[];
-  onUpdateOutputVariables: (vars: OutputVariable[]) => void;
-  readOnly?: boolean;
-}) {
-  const addVar = () => {
-    if (readOnly) return;
-    onUpdateOutputVariables([...outputVariables, { id: `ov${Date.now()}`, name: '', sourceVar: '' }]);
-  };
-  const removeVar = (id: string) => {
-    if (readOnly) return;
-    onUpdateOutputVariables(outputVariables.filter(v => v.id !== id));
-  };
-  const updateVar = (id: string, patch: Partial<OutputVariable>) => {
-    if (readOnly) return;
-    onUpdateOutputVariables(outputVariables.map(v => v.id === id ? { ...v, ...patch } : v));
-  };
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Panel header */}
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5 bg-orange-50/60 shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-orange-100 border border-orange-200 flex items-center justify-center shrink-0">
-          <Flag size={13} className="text-orange-500" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-700">End</p>
-          <p className="text-[10px] text-slate-400 truncate">Output node · Global Variables</p>
-        </div>
-        {readOnly && <span className="text-[9px] font-semibold bg-indigo-100 text-indigo-500 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">READ-ONLY</span>}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 shrink-0">
-        <div className="flex-1 py-2 text-xs font-semibold text-center border-b-2 border-orange-400 text-orange-600 -mb-px">
-          Settings
-        </div>
-        <div className="flex-1 py-2 text-xs font-semibold text-center border-b-2 border-transparent text-slate-400">
-          Last Run
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-        {/* OUTPUT VARIABLE section */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Output Variable</span>
-              <span className="text-orange-500 text-[10px]">*</span>
-            </div>
-            {!readOnly && (
-              <button onClick={addVar}
-                className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition-colors border border-slate-200 hover:border-orange-200">
-                <Plus size={11} />
-              </button>
-            )}
-          </div>
-
-          {outputVariables.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-5 text-center">
-              <Flag size={16} className="text-slate-300 mx-auto mb-1.5" />
-              <p className="text-[11px] text-slate-400">No output variables defined</p>
-              <p className="text-[10px] text-slate-300 mt-0.5">Click + to bind global variables</p>
-            </div>
-          )}
-
-          {outputVariables.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {outputVariables.map((v, idx) => (
-                <OutputVarRow
-                  key={v.id}
-                  variable={v}
-                  index={idx}
-                  readOnly={readOnly}
-                  onChangeName={name => updateVar(v.id, { name })}
-                  onChangeSource={sourceVar => updateVar(v.id, { sourceVar })}
-                  onDelete={() => removeVar(v.id)}
-                />
-              ))}
-            </div>
-          )}
-
-          {!readOnly && (
-            <button onClick={addVar}
-              className="mt-3 w-full h-8 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:border-orange-300 hover:bg-orange-50/40 transition-colors flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-orange-600">
-              <Plus size={13} />
-              Add Variable
-            </button>
-          )}
-        </div>
-
-        {/* Description hint */}
-        <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5">
-          <p className="text-[10px] text-slate-400 leading-relaxed">
-            Output variables are published as <span className="font-mono text-slate-500">global variables</span> after the pipeline completes. Downstream workflows or systems can reference them by name.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ─────────────── Property panel dispatcher ─────────────── */
-function PropertyPanel({ node, task, execConfig, onUpdateTask, onUpdateExec, lastRunMap, propOverrides, readOnly, inputFields, scheduleConfig, onUpdateInputFields, onUpdateSchedule, outputVariables, onUpdateOutputVariables }: {
+function PropertyPanel({ node, lastRunMap, propOverrides, readOnly }: {
   node: DagNode | null;
-  task: TrainingTask;
-  execConfig: TaskConfigState;
-  onUpdateTask: (patch: Partial<Pick<TrainingTask, 'owner' | 'description'>>) => void;
-  onUpdateExec: (patch: Partial<TaskConfigState>) => void;
   lastRunMap: LastRunMap;
-  propOverrides?: Partial<Record<Exclude<NodeType, 'exp_meta' | 'end'>, { label: string; value: string }[]>>;
+  propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
-  inputFields: InputField[];
-  scheduleConfig: ScheduleConfig;
-  onUpdateInputFields: (fields: InputField[]) => void;
-  onUpdateSchedule: (cfg: ScheduleConfig) => void;
-  outputVariables: OutputVariable[];
-  onUpdateOutputVariables: (vars: OutputVariable[]) => void;
 }) {
   if (!node) return (
     <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 px-6">
       <Settings size={28} />
-      <p className="text-sm text-center text-slate-400">Click a node to view<br />and configure its properties</p>
+      <p className="text-sm text-center text-slate-400">Click a pipeline node to view<br />and configure its properties</p>
     </div>
-  );
-  if (node.type === 'exp_meta') return (
-    <StartNodePanel
-      inputFields={inputFields}
-      scheduleConfig={scheduleConfig}
-      onUpdateInputFields={onUpdateInputFields}
-      onUpdateSchedule={onUpdateSchedule}
-      readOnly={readOnly}
-    />
-  );
-  if (node.type === 'end') return (
-    <EndNodePanel
-      outputVariables={outputVariables}
-      onUpdateOutputVariables={onUpdateOutputVariables}
-      readOnly={readOnly}
-    />
   );
   return <RegularNodePanel node={node} lastRunMap={lastRunMap} propOverrides={propOverrides} readOnly={readOnly} />;
 }
@@ -3067,7 +2928,6 @@ function Minimap({
   const sc = Math.min(scaleX, scaleY, 1);
 
   const nodeTypeColor: Record<NodeType, string> = {
-    exp_meta:         '#94a3b8',
     data_source:      '#93c5fd',
     woe_process:      '#93c5fd',
     woe_update:       '#93c5fd',
@@ -3416,7 +3276,7 @@ function RunDropdown({
       desc: selectedNodeId ? 'Execute from selected node onward' : 'Select a node on canvas first',
       icon: <FastForward size={13} className={selectedNodeId ? 'text-[#13c2c2]' : 'text-slate-300'} />,
       available: true,
-      tip: !selectedNodeId ? 'Click a node on the canvas to set the starting point' : undefined,
+      tip: !selectedNodeId ? 'Click a pipeline node on the canvas to set the starting point' : undefined,
     },
     {
       mode: 'from_start',
@@ -3814,14 +3674,15 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validTypeSet]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>('n1');
   const [zoom, setZoom]             = useState(0.72);
   const [pan, setPan]               = useState({ x: 32, y: 80 });
   const [execConfig, setExecConfig] = useState<TaskConfigState>({ resourceTier: 'Medium', queuePriority: 'Normal' });
   const [inputFields, setInputFields] = useState<InputField[]>([]);
-  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ frequency: 'ONCE', time: '00:00', timezone: 'UTC+8' });
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ mode: 'once', cronExpr: '0 6 * * *', time: '00:00', timezone: 'UTC+8' });
   const [outputVariables, setOutputVariables] = useState<OutputVariable[]>([]);
   const [showExpMetaEditModal, setShowExpMetaEditModal] = useState(false);
+  const [showExecuteConfigModal, setShowExecuteConfigModal] = useState(false);
   const [checking, setChecking]       = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [showCheckPanel, setShowCheckPanel] = useState(false);
@@ -3902,13 +3763,14 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // Close any open overlay in priority order; stop at the first one found
-      if (showTriggerModal)       { setShowTriggerModal(false); return; }
-      if (showExpMetaEditModal)   { setShowExpMetaEditModal(false); return; }
-      if (showCheckPanel)         { setShowCheckPanel(false); return; }
+      if (showTriggerModal)         { setShowTriggerModal(false); return; }
+      if (showExecuteConfigModal)   { setShowExecuteConfigModal(false); return; }
+      if (showExpMetaEditModal)     { setShowExpMetaEditModal(false); return; }
+      if (showCheckPanel)           { setShowCheckPanel(false); return; }
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [showTriggerModal, showExpMetaEditModal, showCheckPanel]);
+  }, [showTriggerModal, showExecuteConfigModal, showExpMetaEditModal, showCheckPanel]);
 
   // Track canvas container size for minimap viewport rect
   useEffect(() => {
@@ -4035,10 +3897,22 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
         {showExpMetaEditModal && (
           <ExpMetaEditModal
             task={task}
-            execConfig={execConfig}
             onUpdateTask={patch => setTask(prev => ({ ...prev, ...patch }))}
-            onUpdateExec={patch => setExecConfig(prev => ({ ...prev, ...patch }))}
             onClose={() => setShowExpMetaEditModal(false)}
+          />
+        )}
+        {showExecuteConfigModal && (
+          <ExecuteConfigModal
+            onClose={() => setShowExecuteConfigModal(false)}
+            execConfig={execConfig}
+            onSaveExec={patch => setExecConfig(prev => ({ ...prev, ...patch }))}
+            scheduleConfig={scheduleConfig}
+            onUpdateSchedule={setScheduleConfig}
+            inputFields={inputFields}
+            onUpdateInputFields={setInputFields}
+            outputVariables={outputVariables}
+            onUpdateOutputVariables={setOutputVariables}
+            readOnly={isRunHistoryView || isRunView}
           />
         )}
 
@@ -4120,6 +3994,14 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
                 activeRunId={activeRunHistorySnap?.runId}
                 onSelectRun={snap => { setActiveRunHistorySnap(snap); setSelectedId(null); }}
               />
+
+              <button
+                type="button"
+                onClick={() => setShowExecuteConfigModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-teal-800 border-2 border-teal-400/80 bg-teal-50/70 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-all shadow-sm"
+              >
+                Execute Config
+              </button>
 
               {/* Action dropdown */}
               <ActionDropdown
@@ -4275,7 +4157,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
           <div className="absolute bottom-4 right-4 text-[10px] text-slate-400 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-100 pointer-events-none">
             {(isRunView || isRunHistoryView)
               ? 'Right-drag to pan · Scroll to zoom · Click node to inspect'
-              : 'Right-drag to pan · Scroll to zoom · Click node to set start point'}
+              : 'Right-drag to pan · Scroll to zoom · Click a pipeline node to set run start'}
           </div>
 
           {/* Run validation error notification */}
@@ -4300,17 +4182,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
         {/* Right panel */}
         <div className="w-64 bg-white border-l border-slate-200 flex flex-col shrink-0">
           <PropertyPanel
-            node={selectedNode} task={task} execConfig={execConfig}
-            onUpdateTask={handleUpdateTask} onUpdateExec={handleUpdateExec}
+            node={selectedNode}
             lastRunMap={effectiveLastRunMap}
             propOverrides={effectivePropOverrides}
             readOnly={isRunHistoryView || isRunView}
-            inputFields={inputFields}
-            scheduleConfig={scheduleConfig}
-            onUpdateInputFields={setInputFields}
-            onUpdateSchedule={setScheduleConfig}
-            outputVariables={outputVariables}
-            onUpdateOutputVariables={setOutputVariables}
           />
         </div>
       </div>

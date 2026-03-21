@@ -81,7 +81,7 @@ Model → Experiment（绑定已注册 Model，继承 name / region）
 | **Model vs ModelVersion** | Model 是抽象的逻辑归类（如"欺诈检测"这件事），不随训练变化；ModelVersion 是对同一逻辑模型的一次**重大迭代升级**。日常迭代通常在同一 Version 下产生新 Build，仅当架构或特征集发生根本变更时才新建 Version。 |
 | **Experiment 与 Run 状态** | **任务级**：`DRAFT` / `ENABLED` / `DISABLED`（设计稿 TrainingTask.status）。**运行级**：`QUEUING` / `RUNNING` / `SUCCESS` / `FAILED` / `KILLED`；**QUEUING** 表示已触发、等待调度（与部分实现中的 `WAITING` 文案等价）。无单独 **CHECKING** 态。 |
 | **与 Figma 设计稿（Model Experiment）的对应** | **TrainingTask** ↔ **Experiment**，**TaskInstance** ↔ **Run**；列表列 **Exp Id / Exp Name**；配置顶栏 **Current Config**、**Run History** 下拉、**History Run** / **Run View** 只读模式；**Version History** 弹窗查看 `history[]`。**Manage（Enable / Disable / Delete）** 与 **Action（Trigger Run / Kill）** 为设计约定组件（详见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md) 与原型挂接情况）。 |
-| **Framework：LightGBM/XGBoost vs benchmark** | **LightGBM / XGBoost** 对应完整训练画布（画布节点 1–10：Experiment Meta → 数据源 → WOE All Feature → Feature Selection + Fine Feature Report → WOE Selected Feature → Model Tune → Model Train → CheckPoint（择优）/ Best Select → Model Inference → Calibrate），数据源为 Hive 表。**benchmark** 画布仅含 Experiment Meta、S3 数据源、model_bm、校准等节点。创建 Experiment 时选择 Template（含 Framework），画布模板随之确定。 |
+| **Framework：LightGBM/XGBoost vs benchmark** | **LightGBM / XGBoost** 对应完整训练画布（**DAG 仅管道节点 1–9**：数据源 → WOE All Feature → … → Calibrate；**无 Start/End 占位节点**；实验级配置在顶栏 **Edit Meta / Execute Config**，与 [Feature WideTable](https://github.com/Cedric-Chan/FeatureStore) 一致），数据源为 Hive 表。**benchmark** 画布为 S3 数据源、model_bm、校准等；元信息仍在顶栏。创建 Experiment 时选择 Template（含 Framework），画布模板随之确定。 |
 
 ---
 
@@ -124,25 +124,27 @@ flowchart TD
 
 ### 4.1 核心页面：Experiment 画布配置页
 
-**页面定位**：**画布配置入口在 Experiment（列表项 Edit）层级**。创建流：**Create Exp.** → 表单（模型、区域、框架等）→ 进入画布。画布为 **左侧 DAG + 右侧固定配置面板**（非抽屉）；节点面板 **Tag：Config / Last Run**，Last Run 展示对应 **Run ID** 与节点级上次执行信息。**新建 Run（TaskInstance）**：顶栏 **Action → Trigger Run** → 先做 **DAG 与配置校验**，通过后打开 **Trigger Run** 弹窗：**Use Cache**（开=优先复用未变更节点缓存，关=全量重跑）、**Run Notes**（可选）、**Run** 提交；新建实例状态为 **QUEUING**。源码中另有 **Run 下拉（From Current Step / From Start）** 组件，**当前导出未挂接**；画布底部提示「Click node to set start point」体现**从选中节点起执行**的设计意图，落地以 Figma/后续迭代为准。
+**页面定位**：**画布配置入口在 Experiment（列表项 Edit）层级**。创建流：**Create Exp.** → 表单（模型、区域、框架等）→ 进入画布。画布为 **左侧 DAG + 右侧固定配置面板**（非抽屉）；节点面板 **Tag：Config / Last Run**，Last Run 展示对应 **Run ID** 与节点级上次执行信息。**新建 Run（TaskInstance）**：顶栏 **Action → Trigger Run** → 先做 **DAG 与配置校验**，通过后打开 **Trigger Run** 弹窗：**Use Cache**（开=优先复用未变更节点缓存，关=全量重跑）、**Run Notes**（可选）、**Run** 提交；新建实例状态为 **QUEUING**。源码中另有 **Run 下拉（From Current Step / From Start）** 组件，**当前导出未挂接**；画布底部提示选中**管道节点**作为起点，体现**从选中节点起执行**的设计意图，落地以 Figma/后续迭代为准。
 
-**画布节点粒度**：首位为 **Experiment Meta**（**Task Config**：元信息、资源分配、任务优先级；设计稿中可含 **Schedule**：`ONCE` / `Hourly` / `Daily` / `Weekly` / `Monthly`），随后为**数据源**、**WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，**再进入 Model Inference 为流程语义**，非单独「Continue」按钮）、**Model Inference**、**Calibrate**（本期 Pending）。节点有 **CheckPoint** 属性（**默认关闭**），Run 无 CHECKING 状态，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
+**顶栏（与 Feature WideTable 画布对齐）**：**Edit Meta**（笔形）：Experiment / Model 只读、Owner、Description。**Execute Config**：Resource Tier、Queue Priority、Schedule（**ONCE / Cron**）、Pipeline Input Fields；入口样式与弹窗布局与 [Feature WideTable · Execute Config](https://github.com/Cedric-Chan/FeatureStore) 一致。
 
-- **LightGBM / XGBoost**：画布含 Experiment Meta、数据源（Hive）、**WOE All Feature**、Feature Selection + Fine Feature Report、**WOE Selected Feature**、Model Tune、Model Train、**CheckPoint（择优）（Best Select / Model Summary）**、Model Inference、Calibrate（默认关闭，本期 Pending）。
-- **benchmark**：画布含 Experiment Meta、S3 数据源、model_bm、校准节点。
+**画布节点粒度（仅管道节点，无 Start/End）**：首位管道节点为 **数据源**，随后为 **WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，**再进入 Model Inference 为流程语义**，非单独「Continue」按钮）、**Model Inference**、**Calibrate**（本期 Pending）。节点有 **CheckPoint** 属性（**默认关闭**），Run 无 CHECKING 状态，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
+
+- **LightGBM / XGBoost**：画布含数据源（Hive）、**WOE All Feature**、Feature Selection + Fine Feature Report、**WOE Selected Feature**、Model Tune、Model Train、**CheckPoint（择优）（Best Select / Model Summary）**、Model Inference、Calibrate（默认关闭，本期 Pending）；实验级配置见顶栏。
+- **benchmark**：画布含 S3 数据源、model_bm、校准节点；实验级配置见顶栏。
 - **Model Inference 独立画布**：需支持「数据源 + Model Inference」组成**最小可执行画布**，用于策略回扫、批量预测等场景（产品需求）。
 
-**产品级说明**：**特征选择与裁切**：Feature Selection 节点只产出选择报告（如 selection_report_*.csv），不产出裁切后的数据集；训练阶段（Model Tune / Model Train）读表时按报告过滤列，仅使用选中特征。**WOE 配置**：节点 3（WOE All Feature）与节点 5（WOE Selected Feature）可共用同一套 WOE 参数配置（如 n_bins、method 等），通过 scope（all / selected）与 feature_selection_path 区分；详见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) §2.2.0。未配置 woe_update 时，节点 5 的 transform+merge 在训练结果上等价于下游仅使用选中特征训练；节点 5 仍可执行以保留 SavePoint/sample_path 语义，详见设计文档。建模实验 SOP 与画布节点配置的完整对照见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 中的建模实验 SOP 对照表。
+**产品级说明**：**特征选择与裁切**：Feature Selection 节点只产出选择报告（如 selection_report_*.csv），不产出裁切后的数据集；训练阶段（Model Tune / Model Train）读表时按报告过滤列，仅使用选中特征。**WOE 配置**：WOE All Feature 与 WOE Selected Feature 可共用同一套 WOE 参数配置（如 n_bins、method 等），通过 scope（all / selected）与 feature_selection_path 区分；详见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) §2.2.0。未配置 woe_update 时，WOE Selected Feature 的 transform+merge 在训练结果上等价于下游仅使用选中特征训练；该节点仍可执行以保留 SavePoint/sample_path 语义，详见设计文档。建模实验 SOP 与画布节点配置的完整对照见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 中的建模实验 SOP 对照表。
 
-**Experiment Meta**：Meta 节点内对元信息 / Execute Info 的修改直接更新 Experiment 实体；Experiment 保留**当前/最新画布配置**，便于历史 Run 溯源与复现。Experiment 与 Run 不覆盖 Model 元信息；仅继承 Model 的 name 与 region。
+**Edit Meta / Execute Config**：顶栏 **Edit Meta** 中对 Owner / Description 的修改直接更新 Experiment 实体；**Execute Config** 中 Resource / Queue / Schedule / Input Fields 为实验级或执行侧配置（不落 Run 版策略以后端为准）。Experiment 保留**当前/最新画布配置**，便于历史 Run 溯源与复现。Experiment 与 Run 不覆盖 Model 元信息；仅继承 Model 的 name 与 region。
 
-**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；CheckPoint 为节点属性、默认关闭，可用于产出存档等，**Run 无 CHECKING 状态**，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。改配置后再次执行 = 新 Run id，按**最新 Experiment 配置**执行。**SavePoint 适用节点**：WOE All Feature（节点 3）、WOE Selected Feature（节点 5）；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report（节点 4）、CheckPoint（择优）（节点 8，可选）。
+**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；CheckPoint 为节点属性、默认关闭，可用于产出存档等，**Run 无 CHECKING 状态**，仅 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**。改配置后再次执行 = 新 Run id，按**最新 Experiment 配置**执行。**SavePoint 适用节点**：WOE All Feature、WOE Selected Feature；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report、CheckPoint（择优）（可选）。
 
 **Check（校验）**：**Trigger Run** 前执行 **runFrontendCheck**（必填、DAG 连通性等）；失败时在画布区展示 **Validation failed** 浮层。
 
 **交互说明（User Flow）**：
 - **创建**：列表 **Create Exp.** → 创建弹窗 → 进入画布；配置后可通过顶栏 **Action → Trigger Run** 新建实例（或通过列表侧逻辑触发，见原型挂接说明）。
-- **编辑 / 复制**：列表 **Edit** 进入画布；**Copy** 走创建弹窗并可进入新任务画布。顶栏 **Edit**（笔形）可开 **Experiment Meta** 编辑弹窗。
+- **编辑 / 复制**：列表 **Edit** 进入画布；**Copy** 走创建弹窗并可进入新任务画布。顶栏 **Edit**（笔形）打开 **Edit Meta**；**Execute Config** 打开执行配置弹窗（与 WideTable 样式一致）。
 - **历史与只读**：**Run History** 下拉切换历史运行快照 → **History Run** 横幅 + 只读画布；从列表 **View** 进入 **Run View**（ live 实例，可 **Kill**）。
 
 #### 4.1.1 原型实现说明（`docs/prototype/model-experiment-web`）
@@ -168,9 +170,9 @@ flowchart TD
 
 **配置页（画布）**：
 - 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 256px）。
-- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉 + **Action**（**Trigger Run**；Run View 下 **Kill** 可用）。
+- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉 + **Execute Config** + **Action**（**Trigger Run**；Run View 下 **Kill** 可用）。
 - **Trigger Run** 弹窗：**Use Cache**、**Run Notes**、**Run** 提交。
-- 节点链与 §4.1 一致；**Experiment Meta** 含 **Schedule** 频率枚举（**ONCE** 时为仅手动触发文案）。
+- 节点链与 §4.1 一致；DAG **无 Start/End**；**Execute Config** 含 **Schedule：ONCE / Cron**（Cron 时填写表达式）及 **Pipeline Input Fields**。
 
 **弹窗**：**Artifact**（Mock 指标/参数）、**Version History**（左侧版本列表 + 右侧 JSON）、创建/编辑/复制实验表单。
 

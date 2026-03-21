@@ -8,10 +8,12 @@
 
 **术语**：**Experiment** = Model Experiment（模型实验）；画布节点 = **Experiment Component**（实验物料，基于 **Component Template**）；**Run** = 一次有顺序的执行记录，绑定配置与产物，改配置后执行 = 新 Run。
 
+画布 **DAG 仅含管道节点**（无独立的 Start / End 占位节点；与 [Feature WideTable 画布](https://github.com/Cedric-Chan/FeatureStore) 一致：**实验级元信息、资源队列与调度**在顶栏 **Edit Meta** / **Execute Config** 中配置，不占用画布节点）。
+
 整体顺序（单域）：
 
 ```
-Experiment Meta → 数据源 → WOE All Feature（woe_fit→woe_transform→woe_merge 全部特征，再可选 all feature_report）
+数据源 → WOE All Feature（woe_fit→woe_transform→woe_merge 全部特征，再可选 all feature_report）
   → Feature Selection + Fine Feature Report → WOE Selected Feature（可选 woe_update→woe_transform→woe_merge 选中特征）
   → Model Tune → Model Train → [可选] CheckPoint（择优）→ Model Inference → [可选] Calibrate Fit + Transform
 ```
@@ -22,18 +24,19 @@ Experiment Meta → 数据源 → WOE All Feature（woe_fit→woe_transform→wo
 
 | 序号 | 节点名称 | 涵盖步骤 | SavePoint | CheckPoint | 说明 |
 |-----|----------|----------|-----------|------------|------|
-| 1 | **Experiment Meta** | 实验元信息 + 执行与调度 | — | — | 画布首位；Meta Info + Execute Info；修改不落版，见下文 |
-| 2 | **数据源 (DataSource)** | 读取数据 | — | — | Type 单选：Hive / S3；**categorical_col**（与 label、sample_use_col 并列）；需保证数据源表干净、无偏，且标识不经 WOE 的类别变量 |
-| 3 | **WOE All Feature**（WOE Fit + All Feature Report） | woe_fit → woe_transform → woe_merge（全部特征）+ 可选 feature_report(全部特征) | **是** | — | 合并节点；对全部特征做 fit→transform→merge，再（可选）全部特征探查报告；产出 Encoder + WOE 数据 + 全量报告；**WOE 部分 Time Travel 实验 checkpoint**；SavePoint 存 Encoder + 报告路径 |
-| 4 | **Feature Selection + Fine Feature Report** | feature_selection + feature_report(选中特征) | — | **是** | 合并节点；先 feature_selection 再 fine feature_report；产出 FS 报告 + 精选报告；本节点打 CheckPoint |
-| 5 | **WOE Selected Feature**（WOE Update + WOE Merge） | woe_update(可选) → woe_transform → woe_merge（选中特征） | **是** | — | 针对选中特征：可选 woe_update 后 woe_transform + woe_merge；SavePoint 为后续 Model Tune & Train 存档点 |
-| 6 | **Model Tune** | model_tune | — | — | 超参搜索；支持不同分支定义搜索策略 + 搜索参数空间；支持分支 DAG 并行 |
-| 7 | **Model Train** | model_train | — | — | 选择最优分支 best_hyper_path 再 model_train()；合并多路 TUNE 分支 |
-| 8 | **CheckPoint（择优）**（Best Select / Model Summary） | — | — | **可选** | **Best Select（Model Summary）**：汇总多分支 TUNE+Train 结果，用户择优选定后 Continue 进入 Model Inference |
-| 9 | **Model Inference** | model_predict | — | — | 使用择优选定的训练结果执行 model_predict；需支持独立组成完整画布（如数据源 + 推理），用于策略回扫等场景 |
-| 10 | **Calibrate** | calibrate_fit、calibrate_transform | — | — | **本期不实现 / Pending**；画布保留节点，默认关闭；配置页内分两个配置区 |
+| 1 | **数据源 (DataSource)** | 读取数据 | — | — | 画布 DAG **首位管道节点**；Type 单选：Hive / S3；**categorical_col**（与 label、sample_use_col 并列）；需保证数据源表干净、无偏，且标识不经 WOE 的类别变量 |
+| 2 | **WOE All Feature**（WOE Fit + All Feature Report） | woe_fit → woe_transform → woe_merge（全部特征）+ 可选 feature_report(全部特征) | **是** | — | 合并节点；对全部特征做 fit→transform→merge，再（可选）全部特征探查报告；产出 Encoder + WOE 数据 + 全量报告；**WOE 部分 Time Travel 实验 checkpoint**；SavePoint 存 Encoder + 报告路径 |
+| 3 | **Feature Selection + Fine Feature Report** | feature_selection + feature_report(选中特征) | — | **是** | 合并节点；先 feature_selection 再 fine feature_report；产出 FS 报告 + 精选报告；本节点打 CheckPoint |
+| 4 | **WOE Selected Feature**（WOE Update + WOE Merge） | woe_update(可选) → woe_transform → woe_merge（选中特征） | **是** | — | 针对选中特征：可选 woe_update 后 woe_transform + woe_merge；SavePoint 为后续 Model Tune & Train 存档点 |
+| 5 | **Model Tune** | model_tune | — | — | 超参搜索；支持不同分支定义搜索策略 + 搜索参数空间；支持分支 DAG 并行 |
+| 6 | **Model Train** | model_train | — | — | 选择最优分支 best_hyper_path 再 model_train()；合并多路 TUNE 分支 |
+| 7 | **CheckPoint（择优）**（Best Select / Model Summary） | — | — | **可选** | **Best Select（Model Summary）**：汇总多分支 TUNE+Train 结果，用户择优选定后 Continue 进入 Model Inference |
+| 8 | **Model Inference** | model_predict | — | — | 使用择优选定的训练结果执行 model_predict；需支持独立组成完整画布（如数据源 + 推理），用于策略回扫等场景 |
+| 9 | **Calibrate** | calibrate_fit、calibrate_transform | — | — | **本期不实现 / Pending**；画布保留节点，默认关闭；配置页内分两个配置区 |
 
-Benchmark 框架：**Experiment Meta**（首位）→ 数据源(Type=S3) → Mega Model → Calibrate(默认关)。
+**实验级配置（非画布节点）**：**Edit Meta**（Experiment Name / Region / Owner / Description 等，修改不落 Run 版）、**Execute Config**（Resource Tier、Queue Priority、Schedule：**ONCE** 或 **Cron**、Pipeline 输入字段等；交互与 [Feature WideTable 画布 Execute Config](https://github.com/Cedric-Chan/FeatureStore) 顶栏入口与弹窗样式对齐）。
+
+Benchmark 框架：数据源(Type=S3) → Mega Model → Calibrate(默认关)；元信息与执行配置仍在顶栏。
 
 ---
 
@@ -72,31 +75,36 @@ Benchmark 框架：**Experiment Meta**（首位）→ 数据源(Type=S3) → Meg
 
 ---
 
-## 三、Experiment Meta 节点（画布首位，不落版）
+## 三、顶栏：Edit Meta 与 Execute Config（非画布节点，不落 Run 版）
 
-Experiment Meta 为画布**第一个节点**，合并「实验元信息」与「执行与调度」。点击后右侧配置栏为 **Tag 分页**：左分页 = 配置单，右分页 = last run 信息 + Run ID Tag。左分页分为两个区域。
+画布 **不**再使用「Experiment Meta / Start / End」类占位节点；与 Feature WideTable 一致，**实验级信息**在顶栏完成。
 
-### 3.1 区域 1：Meta Info（来自创建时 Experiment Info，回显）
+### 3.1 Edit Meta（笔形入口）
 
 | 字段 | 展示/编辑 | 说明 |
 |------|------------|------|
 | Experiment Name | 只读回显 | 创建时确定，不可编辑 |
+| Model | 只读 | 绑定 Model |
 | Region | 仅查看 | 不可编辑，仅 View |
 | Owner | 可编辑，多选 | 支持改选多个 Owner |
 | Description | 回显可编辑 | 创建时带入，可修改 |
 
-### 3.2 区域 2：Execute Info
+对 **Owner / Description** 等 Meta 的修改**不**写入 Run 配置快照，**直接更新 Experiment 实体**。
 
-| 字段 | 控件 | 选项 |
-|------|------|------|
-| Resource Tier | 单选下拉 | Low / Medium / High |
-| Queue Priority | 单选下拉 | Normal / Important / Critical |
+### 3.2 Execute Config（顶栏入口，与 WideTable 样式对齐）
 
-### 3.3 不落版语义
+| 字段 | 控件 | 选项 / 说明 |
+|------|------|-------------|
+| Resource Tier | 单选 | Low / Medium / High |
+| Queue Priority | 单选 | Normal / Important / Critical |
+| Scheduler | ONCE / Cron | Cron 模式下填写 cron 表达式（原型与 WideTable 一致可提供英文可读预览） |
+| Pipeline Input Fields | 列表（可选） | 与原先 Start 节点一致的管道输入字段定义，现归 Execute Config |
 
-- Experiment Meta 节点承载的是**实验级（Experiment 实体）**信息：`name`、`region`、`owner`、`description`、`resource_tier`、`queue_priority`。
-- 对这些字段的修改**不**写入「Run 的配置快照」，**不**生成新 Version；而是**直接更新 Experiment 实体**（如 PATCH experiment 或更新实验级存储）。
-- 列表页（Experiment 列表）与画布配置详情页展示的 Experiment Name、Region、Owner、Description、Resource Tier、Queue Priority 均从**Experiment 实体**读取，因此 Experiment Meta 的修改会**立即**在列表页和画布配置详情页体现。
+`resource_tier`、`queue_priority`、调度与输入字段属**实验级或执行侧配置**，修改**不**生成新画布 Version；进入 Run 的策略以产品/后端约定为准。
+
+### 3.3 不落版语义（延续）
+
+- **Experiment 实体**字段：`name`、`region`、`owner`、`description`、`resource_tier`、`queue_priority` 等在列表与配置页展示；Meta/Execute 修改**不**写入「单次 Run 的配置快照」中属于**实验级**的部分（与此前「Experiment Meta 节点不落版」一致，仅承载位置从节点改为顶栏）。
 
 其他节点（DataSource、WOE、Feature Selection、Training、Calibrate、Mega Model）为 **Experiment Component** 的配置明细，创建/保存 Run 时进入该 Run 的配置快照（按现有「Save DRAFT」/版本逻辑）。
 
@@ -134,7 +142,7 @@ S3 类型用于 Benchmark 或从已有 S3 数据继续下游；用户必须显�
 
 ## 五、各节点配置区划分（单节点多 Area）
 
-以下仅列配置区（Area）划分与关键配置项；参数命名在两文档中任取其一统一（如 `encoder_save_path`）。完整参数字段以 MODEL_PIPELINE.md 与使用手册为准。Experiment Meta 节点配置见 §三。
+以下仅列配置区（Area）划分与关键配置项；参数命名在两文档中任取其一统一（如 `encoder_save_path`）。完整参数字段以 MODEL_PIPELINE.md 与使用手册为准。实验级配置见 §三（顶栏）。
 
 ### 5.1 节点：WOE All Feature（WOE Fit + All Feature Report）
 
@@ -192,7 +200,7 @@ S3 类型用于 Benchmark 或从已有 S3 数据继续下游；用户必须显�
 
 ## 六、Benchmark 画布
 
-- **Experiment Meta**：首位，同上 §三。
+- **顶栏**：Edit Meta / Execute Config，同上 §三。
 - **数据源**：Type 选 **S3**，用户指定 sample_path、label、categorical_col 等。
 - **Mega Model**：model_bm / model_bm_v2 对应配置（sample_path、label、submodel_list、model_path、predict_result_path、sample_use_col、auxilary_cols 及 v2 特有项）。
 - **Calibrate**：同上，默认关闭。
@@ -207,7 +215,7 @@ S3 类型用于 Benchmark 或从已有 S3 数据继续下游；用户必须显�
 4. **Model Tune / Model Train / Model Inference 拆分**：Model Tune（节点 6）、Model Train（节点 7）为独立节点，支持多子路径做训练参数组合；CheckPoint（择优）（节点 8）含 Best Select，汇总多分支结果后用户择优，再由 Model Inference（节点 9）使用选定结果执行 model_predict。
 5. **数据源**：Hive 与 S3 均增加 **categorical_col**，平台注入到 WOE 的 categorical_features。
 6. **Run**：需维护 SavePoint 列表（savepoint_snapshots），用于按 Run id 溯源节点产出；产物路径 `s3://…/{exp_id}/{run_id}/`；详见系统架构说明。
-7. **Experiment Meta 首位且不落版**：同前版。
+7. **实验级 Meta / Execute 在顶栏且实验级字段不落 Run 版**：同前版语义，画布无 Meta 占位节点。
 8. **实现参考 risk_model_on_ray**：RayUtil 方法及 ray_*.py 与画布节点对应见 Task-Canvas-Config；节点 5 的 woe_update 对应 ray_woe_update.py、ray_woe_merge_v2.py 等。MODEL_PIPELINE.md 与 risk_model_on_ray 为外部参考，不写入。
 
 同步到 PRD 时，可将本文档作为「Experiment 画布步骤与节点规范」附录或独立小节引用，并保持 Training-Data-Pipeline.md §2.4、系统架构说明中 SavePoint/CheckPoint 与本文一致。
