@@ -176,20 +176,20 @@ export default function App() {
   } else {
     main = (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#f5f7fa]">
-        <header className="bg-white border-b border-gray-100 px-6 py-3 shadow-sm">
-          <div className="flex items-center gap-2.5 max-w-screen-2xl mx-auto w-full">
-            <div className="w-7 h-7 rounded-lg bg-[#13c2c2] flex items-center justify-center shadow-sm shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <header className="bg-white border-b border-gray-100 shadow-sm">
+          <div className="mx-auto flex w-full max-w-[min(100%,1920px)] items-center gap-3 px-6 py-4 sm:px-8 lg:px-10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#13c2c2] shadow-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <h1 className="text-gray-800 font-semibold leading-tight" style={{ fontSize: '15px' }}>
+            <h1 className="text-lg font-semibold leading-tight text-gray-800 sm:text-xl">
               Model Experiments
             </h1>
           </div>
         </header>
 
-        <div className="flex w-full flex-col gap-4 max-w-screen-2xl mx-auto p-5">
+        <div className="mx-auto flex w-full max-w-[min(100%,1920px)] flex-col gap-5 px-6 py-6 sm:px-8 lg:px-10">
           <FilterBar
             filters={filters}
             onChange={(f) => { setFilters(f); setPage(1); }}

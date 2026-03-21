@@ -10,12 +10,12 @@ import { TaskStatusBadge, InstanceStatusBadge, RegionBadge } from './StatusBadge
 /* ─── Description Tooltip ─── */
 function DescTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
-  if (!text) return <span className="text-xs text-gray-300 italic">—</span>;
+  if (!text) return <span className="text-sm italic text-gray-300">—</span>;
   return (
     <div className="relative max-w-full" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <p className="text-xs text-gray-500 truncate cursor-default">{text}</p>
+      <p className="cursor-default truncate text-sm text-gray-600">{text}</p>
       {show && (
-        <div className="absolute left-0 top-full mt-1.5 z-50 w-64 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-relaxed pointer-events-none">
+        <div className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg bg-slate-800 px-3 py-2 text-sm leading-relaxed text-white shadow-xl">
           <div className="absolute -top-1.5 left-4 w-3 h-3 bg-slate-800 rotate-45 rounded-sm" />
           {text}
         </div>
@@ -38,7 +38,7 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
 
   if (disabled) {
     return (
-      <button disabled className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-slate-300 cursor-not-allowed ${className}`}>
+      <button disabled className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-slate-300 cursor-not-allowed ${className}`}>
         {label}
       </button>
     );
@@ -46,14 +46,14 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
 
   if (isDanger) {
     return (
-      <button onClick={onClick} className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer ${className}`}>
+      <button onClick={onClick} className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer ${className}`}>
         {label}
       </button>
     );
   }
 
   return (
-    <button onClick={onClick} className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50/80 transition-colors cursor-pointer ${className}`}>
+    <button onClick={onClick} className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-teal-600 transition-colors hover:bg-teal-50/80 hover:text-teal-700 cursor-pointer ${className}`}>
         {label}
       </button>
   );
@@ -612,17 +612,17 @@ function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps)
 
   return (
     <tr className="group hover:bg-blue-50/30 transition-colors border-b border-slate-100 last:border-0">
-      <td className="py-3 pl-14 pr-3 text-xs text-blue-600 font-medium whitespace-nowrap font-mono">
+      <td className="whitespace-nowrap py-3.5 pl-14 pr-3 font-mono text-sm font-medium text-blue-600">
         {instance.id}
       </td>
-      <td className="py-3 px-3 whitespace-nowrap"><InstanceStatusBadge status={instance.status} /></td>
-      <td className="py-3 px-3 text-xs text-gray-500 max-w-[160px]">
+      <td className="whitespace-nowrap px-3 py-3.5"><InstanceStatusBadge status={instance.status} /></td>
+      <td className="max-w-[180px] px-3 py-3.5 text-sm text-gray-600">
         <DescTooltip text={instance.notes ?? ''} />
       </td>
-      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.triggerTime}</td>
-      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.startTime}</td>
-      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.finishTime}</td>
-      <td className="py-3 px-3 text-xs text-gray-600 font-mono truncate whitespace-nowrap">{instance.duration}</td>
+      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.triggerTime}</td>
+      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.startTime}</td>
+      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.finishTime}</td>
+      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-700">{instance.duration}</td>
       <td className="py-3 pl-3 pr-4">
         <div className="flex items-center gap-0.5 flex-nowrap">
           {/* View — always available */}
@@ -638,8 +638,8 @@ function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps)
           {/* More ▾ — Artifact + Log */}
           <Dropdown
             trigger={
-              <button className="inline-flex items-center gap-0.5 px-2 py-1 rounded text-xs font-medium text-teal-600 hover:bg-teal-50/80 transition-all">
-                More <ChevronDown size={10} />
+              <button className="inline-flex items-center gap-0.5 rounded px-2.5 py-1.5 text-sm font-medium text-teal-600 transition-all hover:bg-teal-50/80">
+                More <ChevronDown size={12} />
               </button>
             }
             items={moreItems}
@@ -665,13 +665,13 @@ interface TaskRowProps {
 
 // Column pixel widths — must match <colgroup> exactly
 const COL = {
-  toggle: 36,   // col 1
-  expId:  96,   // col 2
-  expName: 144, // col 3
+  toggle: 40,   // col 1
+  expId:  112,  // col 2
+  expName: 200, // col 3
   // col 4–8 are non-sticky, auto-laid out by table-fixed
 };
-const STICKY2 = COL.toggle;                      // left offset for EXP ID  = 36
-const STICKY3 = COL.toggle + COL.expId;          // left offset for EXP Name = 132
+const STICKY2 = COL.toggle;             // left offset for EXP ID
+const STICKY3 = COL.toggle + COL.expId; // left offset for EXP Name
 
 function TaskRow({
   task, onEdit, onTrigger, onCopy,
@@ -696,7 +696,7 @@ function TaskRow({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); if (task.instances.length > 0) setExpanded(!expanded); }}
-            className={`flex items-center justify-center w-6 h-6 rounded-md border transition-all
+            className={`flex h-7 w-7 items-center justify-center rounded-md border transition-all
               ${task.instances.length === 0
                 ? 'border-gray-200 text-gray-200 cursor-default'
                 : expanded
@@ -704,7 +704,7 @@ function TaskRow({
                   : 'border-gray-300 text-gray-400 hover:border-teal-400 hover:text-teal-500'}`}
             disabled={task.instances.length === 0}
           >
-            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </td>
 
@@ -713,7 +713,7 @@ function TaskRow({
           className={`py-4 pr-2 sticky z-10 transition-colors ${stickyBg}`}
           style={{ left: STICKY2 }}
         >
-          <span className="font-mono text-[11px] text-gray-500 truncate block">{task.id}</span>
+          <span className="block truncate font-mono text-sm text-gray-600">{task.id}</span>
         </td>
 
         {/* Col 3 — Exp Name (sticky) — has right-side shadow to indicate stickiness */}
@@ -722,19 +722,19 @@ function TaskRow({
           style={{ left: STICKY3, position: 'sticky' }}
         >
           <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="text-sm font-medium text-gray-800 group-hover:text-teal-600 transition-colors truncate block">{task.taskName}</span>
+            <span className="block truncate text-base font-semibold text-gray-900 transition-colors group-hover:text-teal-600">{task.taskName}</span>
             {task.instances.length > 0 && (
-              <span className="text-[10px] text-slate-400">{task.instances.length} run{task.instances.length > 1 ? 's' : ''}</span>
+              <span className="text-xs text-slate-500">{task.instances.length} run{task.instances.length > 1 ? 's' : ''}</span>
             )}
           </div>
         </td>
 
         {/* Col 4 — Model */}
         <td className="py-4 pr-2">
-          <div className="flex items-center gap-1 flex-wrap overflow-hidden">
-            <span className="font-mono text-[11px] text-gray-700 truncate">{task.modelName}</span>
+          <div className="flex flex-wrap items-center gap-1 overflow-hidden">
+            <span className="truncate font-mono text-sm text-gray-800">{task.modelName}</span>
             {task.modelVersion && (
-              <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-100 leading-tight">
+              <span className="shrink-0 rounded border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold leading-tight text-teal-700">
                 {task.modelVersion}
               </span>
             )}
@@ -745,16 +745,16 @@ function TaskRow({
         {/* Col 5 — Owner */}
         <td className="py-4 pr-2">
           <div className="flex items-center gap-1 overflow-hidden">
-            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white text-[9px] font-medium shrink-0">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-[10px] font-medium text-white">
               {task.owner[0].toUpperCase()}
             </div>
-            <span className="text-xs text-gray-600 truncate">{task.owner}</span>
+            <span className="truncate text-sm text-gray-700">{task.owner}</span>
           </div>
         </td>
 
         {/* Col 6 — Biz Team */}
         <td className="py-4 pr-2">
-          <span className="inline-block px-2 py-0.5 text-xs bg-purple-50 text-purple-600 rounded-md border border-purple-100 truncate max-w-full">{task.bizTeam ?? '—'}</span>
+          <span className="inline-block max-w-full truncate rounded-md border border-purple-100 bg-purple-50 px-2 py-0.5 text-sm text-purple-700">{task.bizTeam ?? '—'}</span>
         </td>
 
         {/* Col 7 — Description */}
@@ -764,7 +764,7 @@ function TaskRow({
 
         {/* Col 8 — Update Time */}
         <td className="py-4 pr-2">
-          <span className="text-xs text-gray-500 font-mono truncate block">{task.updateTime}</span>
+          <span className="block truncate font-mono text-sm text-gray-600">{task.updateTime}</span>
         </td>
 
         {/* Col 9 — Actions */}
@@ -796,7 +796,7 @@ function TaskRow({
           <td colSpan={9} className="p-0 align-top">
             <div className="ml-10 mr-4 my-2 rounded-lg border border-slate-200 overflow-hidden shadow-inner bg-white">
               <div className="overflow-x-auto">
-              <table className="table-fixed border-collapse w-full" style={{ minWidth: 920 }}>
+              <table className="w-full table-fixed border-collapse" style={{ minWidth: 1000 }}>
                 <colgroup>
                   <col style={{ width: 160 }} />
                   <col style={{ width: 95 }} />
@@ -819,7 +819,7 @@ function TaskRow({
                       { label: 'Duration',     cls: 'px-3' },
                       { label: 'Actions',      cls: 'pl-3 pr-4' },
                     ].map(h => (
-                      <th key={h.label} className={`py-2.5 ${h.cls} text-left text-xs text-slate-500 tracking-wide whitespace-nowrap`}>
+                      <th key={h.label} className={`py-3 ${h.cls} text-left text-sm font-medium tracking-wide text-slate-600 whitespace-nowrap`}>
                         {h.label}
                       </th>
                     ))}
@@ -828,7 +828,7 @@ function TaskRow({
                 <tbody className="divide-y divide-slate-100">
                   {task.instances.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-xs text-gray-400">No runs found for this experiment.</td>
+                      <td colSpan={8} className="py-8 text-center text-sm text-gray-500">No runs found for this experiment.</td>
                     </tr>
                   ) : (
                     task.instances.map((inst) => (
@@ -865,23 +865,23 @@ interface ToolbarProps {
 
 export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, ownByMe, onOwnByMeChange }: ToolbarProps) {
   return (
-    <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-100">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="w-1 h-4 bg-teal-500 rounded-full shrink-0" />
-        <span className="text-sm text-gray-700">
+    <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-6 py-4 sm:px-8">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="h-5 w-1 shrink-0 rounded-full bg-teal-500" />
+        <span className="text-base text-gray-800">
           Model Experiments List
-          <span className="ml-2 text-xs text-gray-400">
-            (Showing <strong className="text-gray-600 font-medium">{filtered}</strong> of{' '}
-            <strong className="text-gray-600 font-medium">{total}</strong>)
+          <span className="ml-2 text-sm text-gray-500">
+            (Showing <strong className="font-semibold text-gray-700">{filtered}</strong> of{' '}
+            <strong className="font-semibold text-gray-700">{total}</strong>)
           </span>
         </span>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={() => onOwnByMeChange(!ownByMe)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-all select-none ${
+          className={`flex select-none items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-all ${
             ownByMe
               ? 'bg-teal-50 border-teal-300 text-teal-700'
               : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
@@ -907,15 +907,15 @@ export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, 
           title="Refresh list"
           className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
         >
-          <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          <RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} />
         </button>
 
         <button
           type="button"
           onClick={onCreateTask}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-teal-500 rounded-lg hover:bg-teal-600 transition-all shadow-sm shadow-teal-200"
+          className="flex items-center gap-2 rounded-lg bg-teal-500 px-5 py-2.5 text-[15px] font-medium text-white shadow-sm shadow-teal-200 transition-all hover:bg-teal-600"
         >
-          <Plus size={14} />
+          <Plus size={16} />
           Create Exp.
         </button>
       </div>
@@ -939,31 +939,31 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex items-center justify-between px-1">
-      <span className="text-sm text-slate-500">
+    <div className="flex items-center justify-between px-1 py-1">
+      <span className="text-[15px] text-slate-600">
         {total === 0 ? 'No results' : `${start}–${end} of ${total} experiments`}
       </span>
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 text-sm text-slate-500">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-[15px] text-slate-600">
           <span>Per page:</span>
           <div className="relative">
             <select
-              className="h-8 pl-2 pr-6 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 appearance-none cursor-pointer focus:outline-none focus:border-[#13c2c2]/50"
+              className="h-9 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-7 text-[15px] text-slate-800 focus:border-[#13c2c2]/50 focus:outline-none"
               value={pageSize}
               onChange={(e) => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
             >
               {[5, 10, 20, 50].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
         </div>
 
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page === 1}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-all hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ChevronRight size={14} className="rotate-180" />
+          <ChevronRight size={16} className="rotate-180" />
         </button>
 
         <div className="flex items-center gap-1">
@@ -971,8 +971,8 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
             <button
               key={p}
               onClick={() => onPageChange(p)}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm transition-all
-                ${p === page ? 'bg-[#13c2c2] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200'}`}
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-[15px] transition-all
+                ${p === page ? 'bg-[#13c2c2] text-white shadow-sm' : 'border border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
             >
               {p}
             </button>
@@ -982,9 +982,9 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={page === totalPages}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-all hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ChevronRight size={14} />
+          <ChevronRight size={16} />
         </button>
       </div>
     </div>
@@ -1014,7 +1014,7 @@ export function TaskTable({
 }: TaskTableProps) {
   const paginated = tasks.slice((page - 1) * pageSize, page * pageSize);
 
-  const thCls = "py-3 px-3 text-left text-xs text-gray-500 tracking-wide whitespace-nowrap";
+  const thCls = 'whitespace-nowrap px-3 py-3.5 text-left text-sm font-semibold tracking-wide text-gray-600';
 
   return (
     <div className="w-full overflow-x-auto">
@@ -1023,7 +1023,7 @@ export function TaskTable({
         This is the ONLY reliable way to prevent content overflow between columns.
         min-w ensures the table never collapses below a usable size.
       */}
-      <table className="w-full table-fixed border-collapse" style={{ minWidth: 880 }}>
+      <table className="w-full table-fixed border-collapse" style={{ minWidth: 1240 }}>
         <colgroup>
           {/* Col 1: toggle */}
           <col style={{ width: COL.toggle }} />
@@ -1032,23 +1032,23 @@ export function TaskTable({
           {/* Col 3: Exp Name */}
           <col style={{ width: COL.expName }} />
           {/* Col 4: Model */}
-          <col style={{ width: 152 }} />
+          <col style={{ width: 200 }} />
           {/* Col 5: Owner */}
-          <col style={{ width: 112 }} />
+          <col style={{ width: 140 }} />
           {/* Col 6: Biz Team */}
-          <col style={{ width: 96 }} />
+          <col style={{ width: 120 }} />
           {/* Col 7: Description */}
-          <col style={{ width: 160 }} />
+          <col style={{ width: 220 }} />
           {/* Col 8: Update Time */}
-          <col style={{ width: 138 }} />
+          <col style={{ width: 168 }} />
           {/* Col 9: Actions */}
-          <col style={{ width: 152 }} />
+          <col style={{ width: 180 }} />
         </colgroup>
 
         <thead>
-          <tr className="bg-gray-50 border-b border-gray-100">
+          <tr className="border-b border-gray-100 bg-gray-50">
             {/* Col 1 — toggle header (sticky) */}
-            <th className="w-10 py-3 pl-4 pr-3 sticky left-0 z-20 bg-gray-50" />
+            <th className="sticky left-0 z-20 w-11 bg-gray-50 py-3.5 pl-4 pr-3" />
 
             {/* Col 2 — Exp ID (sticky) */}
             <th
@@ -1081,8 +1081,8 @@ export function TaskTable({
               <td colSpan={9} className="py-20 text-center">
                 <div className="flex flex-col items-center gap-3 text-gray-400">
                   <Settings size={36} className="opacity-20 mb-2" />
-                  <p className="text-base font-medium text-gray-500">No model experiments found</p>
-                  <p className="text-sm">Try adjusting your filters to find what you&apos;re looking for</p>
+                  <p className="text-lg font-semibold text-gray-600">No model experiments found</p>
+                  <p className="text-base text-gray-500">Try adjusting your filters to find what you&apos;re looking for</p>
                 </div>
               </td>
             </tr>

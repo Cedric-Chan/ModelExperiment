@@ -25,7 +25,7 @@ export function TaskStatusBadge({ status }: TaskStatusBadgeProps) {
   }[status];
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${config.className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-medium ${config.className}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
       {config.label}
     </span>
@@ -84,7 +84,7 @@ export function InstanceStatusBadge({ status }: InstanceStatusBadgeProps) {
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${config.className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-medium ${config.className}`}>
       <span className={`relative flex h-1.5 w-1.5`}>
         {config.pulse && (
           <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${config.dot} opacity-75`} />
@@ -102,7 +102,7 @@ interface RegionBadgeProps {
 
 export function RegionBadge({ region }: RegionBadgeProps) {
   return (
-    <span className="inline-block px-2 py-0.5 text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-md shrink-0">
+    <span className="inline-block shrink-0 rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-sm text-indigo-700">
       {region}
     </span>
   );
