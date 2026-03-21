@@ -10,7 +10,7 @@ import {
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
-  Pencil, Flag, Search
+  Pencil, Flag
 } from 'lucide-react';
 import { TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
@@ -612,9 +612,6 @@ function parseCronEnglish(expr: string): { valid: boolean; english: string } {
   }
   return { valid: true, english: 'Schedule active (English preview is simplified in prototype)' };
 }
-interface InputField { id: string; name: string; type: 'int' | 'string' | 'float' | 'bool' | 'date'; }
-interface OutputVariable { id: string; name: string; sourceVar: string; }
-
 /* ─────────────── Exp Meta Edit Modal (topbar) ─────────────── */
 function ExpMetaEditModal({ task, onUpdateTask, onClose }: {
   task: TrainingTask;
@@ -741,10 +738,6 @@ function ExecuteConfigModal({
   onSaveExec,
   scheduleConfig,
   onUpdateSchedule,
-  inputFields,
-  onUpdateInputFields,
-  outputVariables,
-  onUpdateOutputVariables,
   readOnly,
 }: {
   onClose: () => void;
@@ -752,10 +745,6 @@ function ExecuteConfigModal({
   onSaveExec: (patch: Partial<TaskConfigState>) => void;
   scheduleConfig: ScheduleConfig;
   onUpdateSchedule: (cfg: ScheduleConfig) => void;
-  inputFields: InputField[];
-  onUpdateInputFields: (fields: InputField[]) => void;
-  outputVariables: OutputVariable[];
-  onUpdateOutputVariables: (vars: OutputVariable[]) => void;
   readOnly?: boolean;
 }) {
   const [resourceTier, setResourceTier] = useState<ResourceTier>(execConfig.resourceTier);
@@ -763,7 +752,6 @@ function ExecuteConfigModal({
   const [schedMode, setSchedMode] = useState<'once' | 'cron'>(scheduleConfig.mode);
   const [cronExpr, setCronExpr] = useState(scheduleConfig.cronExpr);
   const cron = parseCronEnglish(cronExpr);
-  const FIELD_TYPES = ['int', 'string', 'float', 'bool', 'date'] as const;
 
   useEffect(() => {
     setResourceTier(execConfig.resourceTier);
@@ -777,32 +765,6 @@ function ExecuteConfigModal({
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
   }, [onClose]);
-
-  const addField = () => {
-    if (readOnly) return;
-    onUpdateInputFields([...inputFields, { id: `f${Date.now()}`, name: '', type: 'string' }]);
-  };
-  const removeField = (id: string) => {
-    if (readOnly) return;
-    onUpdateInputFields(inputFields.filter(f => f.id !== id));
-  };
-  const updateField = (id: string, patch: Partial<InputField>) => {
-    if (readOnly) return;
-    onUpdateInputFields(inputFields.map(f => f.id === id ? { ...f, ...patch } : f));
-  };
-
-  const addOut = () => {
-    if (readOnly) return;
-    onUpdateOutputVariables([...outputVariables, { id: `ov${Date.now()}`, name: '', sourceVar: '' }]);
-  };
-  const removeOut = (id: string) => {
-    if (readOnly) return;
-    onUpdateOutputVariables(outputVariables.filter(v => v.id !== id));
-  };
-  const updateOut = (id: string, patch: Partial<OutputVariable>) => {
-    if (readOnly) return;
-    onUpdateOutputVariables(outputVariables.map(v => v.id === id ? { ...v, ...patch } : v));
-  };
 
   const handleSave = () => {
     onSaveExec({ resourceTier, queuePriority });
@@ -877,73 +839,6 @@ function ExecuteConfigModal({
             )}
             {schedMode === 'once' && (
               <p className="text-[10px] text-slate-400 mt-2">Manual trigger only — no automatic schedule</p>
-            )}
-          </div>
-
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Pipeline Input Fields</p>
-            {inputFields.length === 0 && (
-              <p className="text-[11px] text-slate-400 mb-2">No input parameters</p>
-            )}
-            <div className="flex flex-col gap-2">
-              {inputFields.map((field, idx) => (
-                <div key={field.id} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                  <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1">
-                    <span className="text-[9px] font-semibold text-slate-400 w-4 shrink-0">{idx + 1}</span>
-                    <input
-                      type="text"
-                      value={field.name}
-                      disabled={readOnly}
-                      onChange={e => updateField(field.id, { name: e.target.value })}
-                      placeholder="field name"
-                      className="flex-1 min-w-0 h-6 px-1.5 rounded border border-slate-200 bg-slate-50/60 text-xs font-mono focus:outline-none focus:border-teal-400/60"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 pb-1.5">
-                    <select
-                      value={field.type}
-                      disabled={readOnly}
-                      onChange={e => updateField(field.id, { type: e.target.value as InputField['type'] })}
-                      className="flex-1 h-6 pl-2 rounded border border-slate-200 bg-slate-50/60 text-xs"
-                    >
-                      {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    {!readOnly && (
-                      <button type="button" onClick={() => removeField(field.id)} className="text-slate-300 hover:text-rose-400">
-                        <Trash2 size={11} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {!readOnly && (
-              <button type="button" onClick={addField} className="mt-2 w-full h-8 rounded-lg border border-dashed border-slate-300 text-xs text-slate-500 hover:border-teal-400 flex items-center justify-center gap-1">
-                <Plus size={13} /> Add field
-              </button>
-            )}
-          </div>
-
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Output Variables</p>
-            {outputVariables.length === 0 && <p className="text-[11px] text-slate-400 mb-2">No output variables</p>}
-            <div className="flex flex-col gap-2">
-              {outputVariables.map((v, idx) => (
-                <OutputVarRow
-                  key={v.id}
-                  variable={v}
-                  index={idx}
-                  readOnly={readOnly}
-                  onChangeName={name => updateOut(v.id, { name })}
-                  onChangeSource={sourceVar => updateOut(v.id, { sourceVar })}
-                  onDelete={() => removeOut(v.id)}
-                />
-              ))}
-            </div>
-            {!readOnly && (
-              <button type="button" onClick={addOut} className="mt-2 w-full h-8 rounded-lg border border-dashed border-slate-300 text-xs text-slate-500 hover:border-orange-300 flex items-center justify-center gap-1">
-                <Plus size={13} /> Add variable
-              </button>
             )}
           </div>
         </div>
@@ -2706,158 +2601,6 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
 
 /* ─────────────── End Node panel ─────────────── */
 
-const SYSTEM_VARIABLES: { name: string; type: 'String' | 'Number' }[] = [
-  { name: 'sys.user_id',       type: 'String' },
-  { name: 'sys.app_id',        type: 'String' },
-  { name: 'sys.workflow_id',   type: 'String' },
-  { name: 'sys.workflow_run_id', type: 'String' },
-  { name: 'sys.timestamp',     type: 'Number' },
-];
-
-function OutputVarRow({
-  variable, index, readOnly,
-  onChangeName, onChangeSource, onDelete,
-}: {
-  variable: OutputVariable;
-  index: number;
-  readOnly?: boolean;
-  onChangeName: (val: string) => void;
-  onChangeSource: (val: string) => void;
-  onDelete: () => void;
-}) {
-  const [dropOpen, setDropOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const dropRef = useRef<HTMLDivElement>(null);
-  const btnRef  = useRef<HTMLButtonElement>(null);
-  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node) &&
-          btnRef.current && !btnRef.current.contains(e.target as Node)) {
-        setDropOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-
-  const openDrop = () => {
-    if (readOnly) return;
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setDropPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, width: r.width });
-    }
-    setSearch('');
-    setDropOpen(v => !v);
-  };
-
-  const filtered = SYSTEM_VARIABLES.filter(v =>
-    v.name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const selectVar = (name: string) => {
-    onChangeSource(name);
-    setDropOpen(false);
-  };
-
-  const displaySource = variable.sourceVar || 'Set variable';
-
-  const dropdown = dropOpen ? ReactDOM.createPortal(
-    <div
-      ref={dropRef}
-      style={{ position: 'absolute', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 200), zIndex: 9999 }}
-      className="bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden"
-    >
-      {/* Search */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
-        <Search size={11} className="text-slate-400 shrink-0" />
-        <input
-          autoFocus
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search variable"
-          className="flex-1 text-xs text-slate-700 placeholder-slate-300 outline-none bg-transparent"
-        />
-      </div>
-      {/* System variables */}
-      <div className="py-1.5 max-h-48 overflow-y-auto">
-        <p className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-widest">System</p>
-        {filtered.map(v => (
-          <button
-            key={v.name}
-            onClick={() => selectVar(v.name)}
-            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-slate-50 transition-colors gap-4"
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-orange-100 border border-orange-200 shrink-0">
-                <span className="text-[8px] font-bold text-orange-500">{'{x}'}</span>
-              </span>
-              <span className="text-xs text-slate-700 font-mono">{v.name}</span>
-            </div>
-            <span className="text-[10px] text-slate-400 shrink-0">{v.type}</span>
-          </button>
-        ))}
-        {filtered.length === 0 && (
-          <p className="px-3 py-3 text-xs text-slate-400 text-center">No variables found</p>
-        )}
-      </div>
-    </div>,
-    document.body
-  ) : null;
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-      {/* Row 1: index + variable name */}
-      <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1">
-        <span className="text-[9px] font-semibold text-slate-400 w-4 shrink-0 select-none">{index + 1}</span>
-        <input
-          type="text"
-          value={variable.name}
-          disabled={readOnly}
-          onChange={e => onChangeName(e.target.value)}
-          placeholder="variable name"
-          className="flex-1 min-w-0 h-6 px-1.5 rounded border border-slate-200 bg-slate-50/60 text-xs text-slate-700 font-mono placeholder-slate-300
-            focus:outline-none focus:border-orange-300 focus:bg-white disabled:bg-transparent disabled:border-transparent disabled:text-slate-500"
-        />
-      </div>
-      {/* Row 2: set variable btn + delete */}
-      <div className="flex items-center gap-1.5 px-2 pb-1.5">
-        <span className="text-[9px] text-slate-300 w-4 shrink-0 select-none">→</span>
-        <div className="relative flex-1 min-w-0">
-          <button
-            ref={btnRef}
-            onClick={openDrop}
-            disabled={readOnly}
-            className={`w-full h-6 pl-2.5 pr-2 rounded border text-xs flex items-center gap-1.5 transition-colors text-left
-              ${variable.sourceVar
-                ? 'border-orange-200 bg-orange-50 text-orange-700'
-                : 'border-slate-200 bg-slate-50/60 text-slate-400'
-              }
-              disabled:opacity-60 disabled:cursor-default`}
-          >
-            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded bg-orange-100 border border-orange-200 shrink-0">
-              <span className="text-[7px] font-bold text-orange-500">{'{x}'}</span>
-            </span>
-            <span className="flex-1 truncate">{displaySource}</span>
-            {!readOnly && <ChevronDown size={9} className="text-slate-400 shrink-0" />}
-          </button>
-          {dropdown}
-        </div>
-        {!readOnly ? (
-          <button onClick={onDelete}
-            className="w-5 h-5 flex items-center justify-center rounded text-slate-300 hover:text-rose-400 hover:bg-rose-50 transition-colors shrink-0">
-            <Trash2 size={11} />
-          </button>
-        ) : (
-          <span className="w-5 shrink-0" />
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ─────────────── Property panel dispatcher ─────────────── */
 function PropertyPanel({ node, lastRunMap, propOverrides, readOnly }: {
   node: DagNode | null;
@@ -2923,8 +2666,10 @@ function Minimap({
   const padX = 12, padY = 8;
   const innerW = MM_W - padX * 2;
   const innerH = MM_H - padY * 2;
-  const scaleX = innerW / maxX;
-  const scaleY = innerH / maxY;
+  const boundsW = Math.max(1, maxX);
+  const boundsH = Math.max(1, maxY);
+  const scaleX = innerW / boundsW;
+  const scaleY = innerH / boundsH;
   const sc = Math.min(scaleX, scaleY, 1);
 
   const nodeTypeColor: Record<NodeType, string> = {
@@ -2946,8 +2691,8 @@ function Minimap({
   // Clamp viewport rect to world bounds for display
   const rx = Math.max(0, vpX) * sc + padX;
   const ry = Math.max(0, vpY) * sc + padY;
-  const rw = Math.min(vpW, maxX - Math.max(0, vpX)) * sc;
-  const rh = Math.min(vpH, maxY - Math.max(0, vpY)) * sc;
+  const rw = Math.min(vpW, boundsW - Math.max(0, vpX)) * sc;
+  const rh = Math.min(vpH, boundsH - Math.max(0, vpY)) * sc;
 
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
@@ -3678,9 +3423,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
   const [zoom, setZoom]             = useState(0.72);
   const [pan, setPan]               = useState({ x: 32, y: 80 });
   const [execConfig, setExecConfig] = useState<TaskConfigState>({ resourceTier: 'Medium', queuePriority: 'Normal' });
-  const [inputFields, setInputFields] = useState<InputField[]>([]);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ mode: 'once', cronExpr: '0 6 * * *', time: '00:00', timezone: 'UTC+8' });
-  const [outputVariables, setOutputVariables] = useState<OutputVariable[]>([]);
   const [showExpMetaEditModal, setShowExpMetaEditModal] = useState(false);
   const [showExecuteConfigModal, setShowExecuteConfigModal] = useState(false);
   const [checking, setChecking]       = useState(false);
@@ -3863,7 +3606,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
   const maxY = Math.max(...effectiveNodes.map(n => n.y + NODE_H)) + 140;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
+    <div className="min-h-screen min-h-0 flex flex-col overflow-hidden bg-slate-100">
       {/* ── Top bar ── */}
       <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center shrink-0">
         {/* Left */}
@@ -3908,10 +3651,6 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
             onSaveExec={patch => setExecConfig(prev => ({ ...prev, ...patch }))}
             scheduleConfig={scheduleConfig}
             onUpdateSchedule={setScheduleConfig}
-            inputFields={inputFields}
-            onUpdateInputFields={setInputFields}
-            outputVariables={outputVariables}
-            onUpdateOutputVariables={setOutputVariables}
             readOnly={isRunHistoryView || isRunView}
           />
         )}
@@ -4076,9 +3815,9 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
       )}
 
       {/* Canvas + panel */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* DAG canvas */}
-        <div ref={canvasRef} className="flex-1 relative overflow-hidden cursor-default"
+        <div ref={canvasRef} className="flex-1 min-h-0 relative overflow-hidden cursor-default"
           onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onMouseDown={handleCanvasMouseDown} onContextMenu={e => e.preventDefault()}>
 
@@ -4180,7 +3919,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
         )}
 
         {/* Right panel */}
-        <div className="w-64 bg-white border-l border-slate-200 flex flex-col shrink-0">
+        <div className="w-64 min-h-0 h-full overflow-hidden bg-white border-l border-slate-200 flex flex-col shrink-0">
           <PropertyPanel
             node={selectedNode}
             lastRunMap={effectiveLastRunMap}
