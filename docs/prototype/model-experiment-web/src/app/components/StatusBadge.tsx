@@ -102,7 +102,7 @@ interface RegionBadgeProps {
 
 export function RegionBadge({ region }: RegionBadgeProps) {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border bg-slate-100 text-slate-600 border-slate-200">
+    <span className="inline-block px-2 py-0.5 text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-md shrink-0">
       {region}
     </span>
   );

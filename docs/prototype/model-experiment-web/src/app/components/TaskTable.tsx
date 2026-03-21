@@ -10,10 +10,10 @@ import { TaskStatusBadge, InstanceStatusBadge, RegionBadge } from './StatusBadge
 /* ─── Description Tooltip ─── */
 function DescTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
-  if (!text) return <span className="text-xs text-slate-400 italic">—</span>;
+  if (!text) return <span className="text-xs text-gray-300 italic">—</span>;
   return (
-    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <p className="text-xs text-slate-500 truncate cursor-default">{text}</p>
+    <div className="relative max-w-full" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <p className="text-xs text-gray-500 truncate cursor-default">{text}</p>
       {show && (
         <div className="absolute left-0 top-full mt-1.5 z-50 w-64 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-relaxed pointer-events-none">
           <div className="absolute -top-1.5 left-4 w-3 h-3 bg-slate-800 rotate-45 rounded-sm" />
@@ -53,7 +53,7 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
   }
 
   return (
-    <button onClick={onClick} className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-[#13c2c2] hover:bg-[#13c2c2]/10 transition-colors cursor-pointer ${className}`}>
+    <button onClick={onClick} className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50/80 transition-colors cursor-pointer ${className}`}>
         {label}
       </button>
   );
@@ -611,23 +611,19 @@ function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps)
   ];
 
   return (
-    <tr className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 last:border-0">
-      <td className="py-2 pl-4 pr-2">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-3.5 bg-[#13c2c2]/40 rounded-full shrink-0" />
-          <span className="font-mono text-[11px] text-slate-700 truncate">{instance.id}</span>
-        </div>
+    <tr className="group hover:bg-blue-50/30 transition-colors border-b border-slate-100 last:border-0">
+      <td className="py-3 pl-14 pr-3 text-xs text-blue-600 font-medium whitespace-nowrap font-mono">
+        {instance.id}
       </td>
-      <td className="py-2 pl-3 pr-2"><InstanceStatusBadge status={instance.status} /></td>
-      {/* Notes */}
-      <td className="py-2 pl-3 pr-2">
+      <td className="py-3 px-3 whitespace-nowrap"><InstanceStatusBadge status={instance.status} /></td>
+      <td className="py-3 px-3 text-xs text-gray-500 max-w-[160px]">
         <DescTooltip text={instance.notes ?? ''} />
       </td>
-      <td className="py-2 pl-3 pr-2 text-[11px] text-slate-500 font-mono truncate">{instance.triggerTime}</td>
-      <td className="py-2 pl-3 pr-2 text-[11px] text-slate-500 font-mono truncate">{instance.startTime}</td>
-      <td className="py-2 pl-3 pr-2 text-[11px] text-slate-500 font-mono truncate">{instance.finishTime}</td>
-      <td className="py-2 pl-3 pr-2 text-[11px] text-slate-600 font-mono truncate">{instance.duration}</td>
-      <td className="py-2 pl-3 pr-4">
+      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.triggerTime}</td>
+      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.startTime}</td>
+      <td className="py-3 px-3 text-xs text-gray-500 font-mono truncate whitespace-nowrap">{instance.finishTime}</td>
+      <td className="py-3 px-3 text-xs text-gray-600 font-mono truncate whitespace-nowrap">{instance.duration}</td>
+      <td className="py-3 pl-3 pr-4">
         <div className="flex items-center gap-0.5 flex-nowrap">
           {/* View — always available */}
           <ActionBtn label="View" onClick={onView} />
@@ -642,7 +638,7 @@ function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps)
           {/* More ▾ — Artifact + Log */}
           <Dropdown
             trigger={
-              <button className="inline-flex items-center gap-0.5 px-2 py-1 rounded text-xs font-medium text-[#13c2c2] hover:bg-[#13c2c2]/10 transition-all">
+              <button className="inline-flex items-center gap-0.5 px-2 py-1 rounded text-xs font-medium text-teal-600 hover:bg-teal-50/80 transition-all">
                 More <ChevronDown size={10} />
               </button>
             }
@@ -688,42 +684,45 @@ function TaskRow({
 
   // Shared cell bg classes (sticky cells need explicit bg to cover content behind them)
   const stickyBg = expanded
-    ? 'bg-[#f6fcfc]'
-    : 'bg-white group-hover:bg-[#f6fcfc]';
+    ? 'bg-teal-50/60'
+    : 'bg-white group-hover:bg-gray-50';
 
   return (
     <>
-      <tr className={`border-b border-slate-100 transition-colors group ${expanded ? 'bg-[#f6fcfc]' : 'hover:bg-[#f6fcfc]'}`}>
+      <tr className={`border-b border-gray-50 transition-colors group cursor-default ${expanded ? 'bg-teal-50/60' : 'hover:bg-gray-50'}`}>
 
         {/* Col 1 — toggle (sticky) */}
-        <td className={`py-2.5 pl-3 pr-1 sticky left-0 z-10 transition-colors ${stickyBg}`}>
+        <td className={`py-4 pl-4 pr-3 sticky left-0 z-10 transition-colors ${stickyBg}`}>
           <button
-            onClick={() => setExpanded(!expanded)}
-            className={`w-6 h-6 flex items-center justify-center rounded transition-all
-              ${task.instances.length > 0
-                ? 'text-slate-400 hover:text-[#13c2c2] hover:bg-[#13c2c2]/10'
-                : 'text-slate-200 cursor-default'}`}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); if (task.instances.length > 0) setExpanded(!expanded); }}
+            className={`flex items-center justify-center w-6 h-6 rounded-md border transition-all
+              ${task.instances.length === 0
+                ? 'border-gray-200 text-gray-200 cursor-default'
+                : expanded
+                  ? 'bg-teal-500 border-teal-500 text-white'
+                  : 'border-gray-300 text-gray-400 hover:border-teal-400 hover:text-teal-500'}`}
             disabled={task.instances.length === 0}
           >
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
         </td>
 
         {/* Col 2 — Exp ID (sticky) */}
         <td
-          className={`py-2.5 pr-2 sticky z-10 transition-colors ${stickyBg}`}
+          className={`py-4 pr-2 sticky z-10 transition-colors ${stickyBg}`}
           style={{ left: STICKY2 }}
         >
-          <span className="font-mono text-[11px] text-slate-500 truncate block">{task.id}</span>
+          <span className="font-mono text-[11px] text-gray-500 truncate block">{task.id}</span>
         </td>
 
         {/* Col 3 — Exp Name (sticky) — has right-side shadow to indicate stickiness */}
         <td
-          className={`py-2.5 pr-3 sticky z-10 transition-colors ${stickyBg} after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-slate-200`}
+          className={`py-4 pr-3 sticky z-10 transition-colors ${stickyBg} after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200`}
           style={{ left: STICKY3, position: 'sticky' }}
         >
           <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="text-xs font-medium text-slate-800 group-hover:text-[#10a3a3] transition-colors truncate block">{task.taskName}</span>
+            <span className="text-sm font-medium text-gray-800 group-hover:text-teal-600 transition-colors truncate block">{task.taskName}</span>
             {task.instances.length > 0 && (
               <span className="text-[10px] text-slate-400">{task.instances.length} run{task.instances.length > 1 ? 's' : ''}</span>
             )}
@@ -731,11 +730,11 @@ function TaskRow({
         </td>
 
         {/* Col 4 — Model */}
-        <td className="py-2.5 pr-2">
+        <td className="py-4 pr-2">
           <div className="flex items-center gap-1 flex-wrap overflow-hidden">
-            <span className="font-mono text-[11px] text-slate-700 truncate">{task.modelName}</span>
+            <span className="font-mono text-[11px] text-gray-700 truncate">{task.modelName}</span>
             {task.modelVersion && (
-              <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#13c2c2]/10 text-[#0e9e9e] border border-[#13c2c2]/20 leading-tight">
+              <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-100 leading-tight">
                 {task.modelVersion}
               </span>
             )}
@@ -744,32 +743,32 @@ function TaskRow({
         </td>
 
         {/* Col 5 — Owner */}
-        <td className="py-2.5 pr-2">
+        <td className="py-4 pr-2">
           <div className="flex items-center gap-1 overflow-hidden">
-            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-[#13c2c2] to-teal-500 flex items-center justify-center text-white text-[9px] font-medium shrink-0">
+            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white text-[9px] font-medium shrink-0">
               {task.owner[0].toUpperCase()}
             </div>
-            <span className="text-[11px] text-slate-600 truncate">{task.owner}</span>
+            <span className="text-xs text-gray-600 truncate">{task.owner}</span>
           </div>
         </td>
 
         {/* Col 6 — Biz Team */}
-        <td className="py-2.5 pr-2">
-          <span className="text-[11px] text-slate-600 truncate block">{task.bizTeam ?? '—'}</span>
+        <td className="py-4 pr-2">
+          <span className="inline-block px-2 py-0.5 text-xs bg-purple-50 text-purple-600 rounded-md border border-purple-100 truncate max-w-full">{task.bizTeam ?? '—'}</span>
         </td>
 
         {/* Col 7 — Description */}
-        <td className="py-2.5 pr-2">
+        <td className="py-4 pr-2">
           <DescTooltip text={task.description} />
         </td>
 
         {/* Col 8 — Update Time */}
-        <td className="py-2.5 pr-2">
-          <span className="text-[11px] text-slate-500 font-mono truncate block">{task.updateTime}</span>
+        <td className="py-4 pr-2">
+          <span className="text-xs text-gray-500 font-mono truncate block">{task.updateTime}</span>
         </td>
 
         {/* Col 9 — Actions */}
-        <td className="py-2.5 pl-1 pr-3">
+        <td className="py-4 pl-1 pr-3">
           <div className="flex items-center gap-0.5 flex-nowrap">
             <ActionBtn label="Edit" onClick={onEdit} />
             <ActionBtn label="Copy" onClick={onCopy} />
@@ -793,10 +792,11 @@ function TaskRow({
 
       {/* Expanded run sub-table */}
       {expanded && (
-        <tr className="bg-[#f0fafa] border-b border-slate-200">
-          <td colSpan={9} className="py-3 px-4">
-            <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-x-auto">
-              <table className="table-fixed border-collapse" style={{ minWidth: 920 }}>
+        <tr className="bg-slate-50/80 border-b border-gray-100">
+          <td colSpan={9} className="p-0 align-top">
+            <div className="ml-10 mr-4 my-2 rounded-lg border border-slate-200 overflow-hidden shadow-inner bg-white">
+              <div className="overflow-x-auto">
+              <table className="table-fixed border-collapse w-full" style={{ minWidth: 920 }}>
                 <colgroup>
                   <col style={{ width: 160 }} />
                   <col style={{ width: 95 }} />
@@ -808,27 +808,27 @@ function TaskRow({
                   <col style={{ width: 129 }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200/80">
+                  <tr className="bg-slate-100/80 border-b border-slate-200">
                     {[
-                      { label: 'Run ID',       cls: 'pl-4 pr-2' },
-                      { label: 'Run Status',   cls: 'pl-3 pr-2' },
-                      { label: 'Notes',        cls: 'pl-3 pr-2' },
-                      { label: 'Trigger Time', cls: 'pl-3 pr-2' },
-                      { label: 'Start Time',   cls: 'pl-3 pr-2' },
-                      { label: 'Finish Time',  cls: 'pl-3 pr-2' },
-                      { label: 'Duration',     cls: 'pl-3 pr-2' },
+                      { label: 'Run ID',       cls: 'pl-14 pr-3' },
+                      { label: 'Run Status',   cls: 'px-3' },
+                      { label: 'Notes',        cls: 'px-3' },
+                      { label: 'Trigger Time', cls: 'px-3' },
+                      { label: 'Start Time',   cls: 'px-3' },
+                      { label: 'Finish Time',  cls: 'px-3' },
+                      { label: 'Duration',     cls: 'px-3' },
                       { label: 'Actions',      cls: 'pl-3 pr-4' },
                     ].map(h => (
-                      <th key={h.label} className={`py-2 ${h.cls} text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider`}>
+                      <th key={h.label} className={`py-2.5 ${h.cls} text-left text-xs text-slate-500 tracking-wide whitespace-nowrap`}>
                         {h.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {task.instances.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-sm text-slate-400">No runs found for this experiment.</td>
+                      <td colSpan={8} className="py-6 text-center text-xs text-gray-400">No runs found for this experiment.</td>
                     </tr>
                   ) : (
                     task.instances.map((inst) => (
@@ -843,6 +843,7 @@ function TaskRow({
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </td>
         </tr>
@@ -864,65 +865,57 @@ interface ToolbarProps {
 
 export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, ownByMe, onOwnByMeChange }: ToolbarProps) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      {/* Left: count */}
-      <div className="flex items-center gap-2 text-sm text-slate-500 shrink-0">
-        <span>
-          Showing <strong className="text-slate-700">{filtered}</strong> of{' '}
-          <strong className="text-slate-700">{total}</strong> experiments
+    <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-100">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-1 h-4 bg-teal-500 rounded-full shrink-0" />
+        <span className="text-sm text-gray-700">
+          Model Experiments List
+          <span className="ml-2 text-xs text-gray-400">
+            (Showing <strong className="text-gray-600 font-medium">{filtered}</strong> of{' '}
+            <strong className="text-gray-600 font-medium">{total}</strong>)
+          </span>
         </span>
       </div>
 
-      {/* Right: controls */}
-      <div className="flex items-center gap-3">
-        {/* Own by me checkbox */}
-        <label className="flex items-center gap-2 cursor-pointer select-none group">
-          <div className="relative">
-            <input
-              type="checkbox"
-              checked={ownByMe}
-              onChange={(e) => onOwnByMeChange(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div
-              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all
-                ${ownByMe
-                  ? 'bg-[#13c2c2] border-[#13c2c2]'
-                  : 'bg-white border-slate-300 group-hover:border-[#13c2c2]/60'
-                }`}
-            >
-              {ownByMe && (
-                <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                  <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </div>
-          </div>
-          <span className={`text-sm transition-colors ${ownByMe ? 'text-[#0e9e9e]' : 'text-slate-500 group-hover:text-slate-700'}`}>
-            Owned by me
-          </span>
-        </label>
-
-        {/* Divider */}
-        <div className="w-px h-5 bg-slate-200" />
-
-        {/* Refresh */}
+      <div className="flex items-center gap-2 shrink-0">
         <button
+          type="button"
+          onClick={() => onOwnByMeChange(!ownByMe)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-all select-none ${
+            ownByMe
+              ? 'bg-teal-50 border-teal-300 text-teal-700'
+              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+          }`}
+        >
+          <span
+            className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all ${
+              ownByMe ? 'bg-teal-500 border-teal-500' : 'border-gray-300 bg-white'
+            }`}
+          >
+            {ownByMe && (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1.5 4L3.2 5.8L6.5 2.2" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </span>
+          Owned by me
+        </button>
+
+        <button
+          type="button"
           onClick={onRefresh}
           title="Refresh list"
-          className={`w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white
-            text-slate-400 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 transition-all
-            ${refreshing ? 'text-[#13c2c2] border-[#13c2c2]/40' : ''}`}
+          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
         >
           <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
         </button>
 
-        {/* Create Exp. */}
         <button
+          type="button"
           onClick={onCreateTask}
-          className="flex items-center gap-2 h-9 px-4 rounded-lg bg-[#13c2c2] text-white text-sm font-medium hover:bg-[#10a3a3] shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-teal-500 rounded-lg hover:bg-teal-600 transition-all shadow-sm shadow-teal-200"
         >
-          <Plus size={15} />
+          <Plus size={14} />
           Create Exp.
         </button>
       </div>
@@ -1021,10 +1014,10 @@ export function TaskTable({
 }: TaskTableProps) {
   const paginated = tasks.slice((page - 1) * pageSize, page * pageSize);
 
-  const thCls = "py-3 pr-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider";
+  const thCls = "py-3 px-3 text-left text-xs text-gray-500 tracking-wide whitespace-nowrap";
 
   return (
-    <div className="w-full overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div className="w-full overflow-x-auto">
       {/*
         table-fixed: column widths are governed by <colgroup> — not by content.
         This is the ONLY reliable way to prevent content overflow between columns.
@@ -1053,13 +1046,13 @@ export function TaskTable({
         </colgroup>
 
         <thead>
-          <tr className="bg-slate-50 border-b border-slate-200">
+          <tr className="bg-gray-50 border-b border-gray-100">
             {/* Col 1 — toggle header (sticky) */}
-            <th className="py-2.5 pl-3 pr-1 sticky left-0 z-20 bg-slate-50" />
+            <th className="w-10 py-3 pl-4 pr-3 sticky left-0 z-20 bg-gray-50" />
 
             {/* Col 2 — Exp ID (sticky) */}
             <th
-              className={`${thCls} sticky z-20 bg-slate-50`}
+              className={`${thCls} sticky z-20 bg-gray-50`}
               style={{ left: STICKY2 }}
             >
               Exp Id
@@ -1067,7 +1060,7 @@ export function TaskTable({
 
             {/* Col 3 — Exp Name (sticky) */}
             <th
-              className={`${thCls} sticky z-20 bg-slate-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-slate-200`}
+              className={`${thCls} sticky z-20 bg-gray-50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200`}
               style={{ left: STICKY3, position: 'sticky' }}
             >
               Exp Name
@@ -1082,14 +1075,14 @@ export function TaskTable({
           </tr>
         </thead>
 
-        <tbody>
+        <tbody className="divide-y divide-gray-50">
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={9} className="py-20 text-center">
-                <div className="flex flex-col items-center gap-3 text-slate-400">
+                <div className="flex flex-col items-center gap-3 text-gray-400">
                   <Settings size={36} className="opacity-20 mb-2" />
-                  <p className="text-base font-medium text-slate-500">No model experiments found</p>
-                  <p className="text-sm">Try adjusting your filters to find what you're looking for</p>
+                  <p className="text-base font-medium text-gray-500">No model experiments found</p>
+                  <p className="text-sm">Try adjusting your filters to find what you&apos;re looking for</p>
                 </div>
               </td>
             </tr>

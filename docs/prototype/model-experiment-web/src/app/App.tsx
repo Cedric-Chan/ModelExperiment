@@ -175,41 +175,37 @@ export default function App() {
     );
   } else {
     main = (
-      <div className="flex min-h-full flex-col bg-[#f0f2f5]">
-        <div className="border-b border-[#e8e8e8] bg-white">
-          <div className="w-full px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#14b8a6] to-[#08979c] shadow-sm">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-[1.25rem] font-semibold text-[#333]">Model Experiments</h1>
-              </div>
+      <div className="flex min-h-full flex-col bg-[#f5f7fa]">
+        <header className="bg-white border-b border-gray-100 px-6 py-3 shadow-sm">
+          <div className="flex items-center gap-2.5 max-w-screen-2xl mx-auto w-full">
+            <div className="w-7 h-7 rounded-lg bg-[#13c2c2] flex items-center justify-center shadow-sm shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
             </div>
+            <h1 className="text-gray-800 font-semibold leading-tight" style={{ fontSize: '15px' }}>
+              Model Experiments
+            </h1>
           </div>
-        </div>
+        </header>
 
-        <div className="flex w-full flex-col gap-4 px-6 py-5">
+        <div className="flex w-full flex-col gap-4 max-w-screen-2xl mx-auto p-5">
           <FilterBar
             filters={filters}
             onChange={(f) => { setFilters(f); setPage(1); }}
             onReset={handleFilterReset}
           />
 
-          <div className="flex flex-col gap-4 overflow-hidden rounded-[6px] border border-[#e8e8e8] bg-white shadow-sm">
-            <div className="px-5 pt-4">
-              <Toolbar
-                total={tasks.length}
-                filtered={filteredTasks.length}
-                onRefresh={handleRefresh}
-                onCreateTask={() => setModal({ type: 'create' })}
-                refreshing={refreshing}
-                ownByMe={ownByMe}
-                onOwnByMeChange={(v) => { setOwnByMe(v); setPage(1); }}
-              />
-            </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+            <Toolbar
+              total={tasks.length}
+              filtered={filteredTasks.length}
+              onRefresh={handleRefresh}
+              onCreateTask={() => setModal({ type: 'create' })}
+              refreshing={refreshing}
+              ownByMe={ownByMe}
+              onOwnByMeChange={(v) => { setOwnByMe(v); setPage(1); }}
+            />
 
             <TaskTable
               tasks={filteredTasks}
@@ -228,17 +224,15 @@ export default function App() {
               page={page}
               pageSize={pageSize}
             />
-
-            <div className="border-t border-[#e8e8e8] px-5 pb-4 pt-4">
-              <Pagination
-                total={filteredTasks.length}
-                page={page}
-                pageSize={pageSize}
-                onPageChange={setPage}
-                onPageSizeChange={setPageSize}
-              />
-            </div>
           </div>
+
+          <Pagination
+            total={filteredTasks.length}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
     );
