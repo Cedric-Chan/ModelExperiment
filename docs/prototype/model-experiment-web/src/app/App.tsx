@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { TrainingTask, TaskInstance, initialMockTasks, CURRENT_USER } from './components/data';
+import {
+  TrainingTask, TaskInstance, initialMockTasks, CURRENT_USER,
+  filterExperimentsVisibleToOperator,
+} from './components/data';
 import { FilterBar, FilterValues, defaultFilters } from './components/FilterBar';
 import { Toolbar, TaskTable, Pagination } from './components/TaskTable';
 import {
@@ -33,6 +36,11 @@ export default function App() {
   const [ownByMe, setOwnByMe] = useState(false);
   const { toasts, show: showToast } = useToast();
 
+  const visibleExperiments = useMemo(
+    () => filterExperimentsVisibleToOperator(tasks),
+    [tasks],
+  );
+
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
       const nameMatch  = !filters.expName || t.taskName.toLowerCase().includes(filters.expName.toLowerCase());
@@ -51,7 +59,7 @@ export default function App() {
     }, 800);
   };
 
-  const handleCreateTask = (data: Partial<TrainingTask>) => {
+  const handleCreateTask = (data: Partial<TrainingTask>): TrainingTask => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -59,9 +67,10 @@ export default function App() {
       id: `t${Date.now()}`,
       taskName: data.taskName || 'Untitled Task',
       modelName: data.modelName || '',
+      modelVersion: data.modelVersion,
       region: data.region || 'SG',
       status: 'DRAFT',
-      framework: data.framework || 'XGBoost',
+      framework: data.framework || 'LightGBM',
       owner: data.owner || 'unknown',
       bizTeam: data.bizTeam || 'DataSci',
       description: data.description || '',
@@ -69,9 +78,14 @@ export default function App() {
       updateTime: nowStr,
       instances: [],
       history: [],
+      ...(data.templateExperimentName
+        ? { templateExperimentName: data.templateExperimentName }
+        : {}),
+      pipelineEnv: data.pipelineEnv ?? [],
     };
     setTasks((prev) => [newTask, ...prev]);
     showToast(`Task "${newTask.taskName}" created`, 'success');
+    return newTask;
   };
 
   const handleEditTask = (data: Partial<TrainingTask>, taskId: string) => {
@@ -151,8 +165,10 @@ export default function App() {
       <ConfigDetailPage
         task={view.task}
         onBack={() => setView({ type: 'list' })}
+        onPersistDraft={(t) => setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)))}
         onSave={(task) => {
           handleSaveConfig(task);
+          setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
           setView({ type: 'list' });
         }}
         onRunCreated={(instance) => {
@@ -244,12 +260,14 @@ export default function App() {
 
       {modal?.type === 'create' && (
         <CreateEditModal
+          visibleExperiments={visibleExperiments}
           onClose={() => setModal(null)}
           onSubmit={handleCreateTask}
         />
       )}
       {modal?.type === 'edit' && (
         <CreateEditModal
+          visibleExperiments={visibleExperiments}
           task={modal.task}
           onClose={() => setModal(null)}
           onSubmit={(data) => handleEditTask(data, modal.task.id)}
@@ -257,15 +275,13 @@ export default function App() {
       )}
       {modal?.type === 'copy' && (
         <CreateEditModal
+          visibleExperiments={visibleExperiments}
           task={modal.task}
           isCopy
           onClose={() => setModal(null)}
           onSubmit={(data) => {
-            handleCreateTask(data);
-            setTimeout(() => {
-              const newTask = tasks.find(t => t.taskName === data.taskName);
-              if (newTask) setView({ type: 'config', task: newTask });
-            }, 100);
+            const created = handleCreateTask(data);
+            setView({ type: 'config', task: created });
           }}
         />
       )}

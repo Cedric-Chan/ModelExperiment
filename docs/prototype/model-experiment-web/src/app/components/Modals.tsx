@@ -4,7 +4,7 @@ import {
   Check, Info, Copy, Clock, User,
   Search, AlertTriangle, ChevronRight, Tag
 } from 'lucide-react';
-import { TrainingTask, TaskInstance, HistoryVersion, BIZ_TEAMS, BizTeam, Template, TEMPLATES, REGISTERED_MODELS, ALL_OWNERS, Framework, Region } from './data';
+import { TrainingTask, TaskInstance, HistoryVersion, BIZ_TEAMS, BizTeam, REGISTERED_MODELS, ALL_OWNERS, Framework, Region } from './data';
 
 /* ─── Modal Shell ─── */
 interface ModalProps {
@@ -272,13 +272,14 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
   );
 }
 
-/* ─── Template Select ─── */
-interface TemplateSelectProps {
-  value: Template | '';
-  onChange: (v: Template | '') => void;
+/* ─── Template = optional experiment name (visible list) ─── */
+interface ExperimentTemplateSelectProps {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
   error?: string;
 }
-function TemplateSelect({ value, onChange, error }: TemplateSelectProps) {
+function ExperimentTemplateSelect({ value, onChange, options, error }: ExperimentTemplateSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -296,8 +297,8 @@ function TemplateSelect({ value, onChange, error }: TemplateSelectProps) {
         className={`flex items-center gap-2 h-9 px-3 w-full rounded-lg border bg-white text-sm transition-all
           ${error ? 'border-rose-400 ring-2 ring-rose-400/20' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/15' : 'border-slate-200 hover:border-[#13c2c2]/60'}`}
       >
-        <span className={`flex-1 text-left truncate ${!value ? 'text-slate-400' : 'text-slate-800 font-mono'}`}>
-          {value || 'Select template…'}
+        <span className={`flex-1 text-left truncate ${!value ? 'text-slate-400' : 'text-slate-800'}`}>
+          {value || 'Optional — select experiment…'}
         </span>
         {value
           ? <X size={12} className="text-slate-300 hover:text-slate-500 shrink-0" onClick={(e) => { e.stopPropagation(); onChange(''); }} />
@@ -307,17 +308,21 @@ function TemplateSelect({ value, onChange, error }: TemplateSelectProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg py-1">
-            {TEMPLATES.map((t) => (
-              <div
-                key={t}
-                className={`px-3 py-2 text-sm cursor-pointer transition-colors font-mono
-                  ${value === t ? 'bg-[#13c2c2]/8 text-[#0e9e9e]' : 'text-slate-700 hover:bg-slate-50'}`}
-                onClick={() => { onChange(t); setOpen(false); }}
-              >
-                {t}
-              </div>
-            ))}
+          <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg py-1 max-h-48 overflow-y-auto">
+            {options.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-slate-400">No experiments available</p>
+            ) : (
+              options.map((name) => (
+                <div
+                  key={name}
+                  className={`px-3 py-2 text-sm cursor-pointer transition-colors truncate
+                    ${value === name ? 'bg-[#13c2c2]/8 text-[#0e9e9e]' : 'text-slate-700 hover:bg-slate-50'}`}
+                  onClick={() => { onChange(name); setOpen(false); }}
+                >
+                  {name}
+                </div>
+              ))
+            )}
           </div>
         </>
       )}
@@ -461,17 +466,22 @@ function MultiOwnerSelect({ value, onChange, error }: MultiOwnerSelectProps) {
 interface CreateEditModalProps {
   task?: TrainingTask;
   isCopy?: boolean;
+  visibleExperiments: TrainingTask[];
   onClose: () => void;
   onSubmit: (data: Partial<TrainingTask>) => void;
 }
 
-export function CreateEditModal({ task, isCopy, onClose, onSubmit }: CreateEditModalProps) {
+export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onSubmit }: CreateEditModalProps) {
   const isEdit = !!task && !isCopy;
+
+  const templateOptionNames = visibleExperiments
+    .map((t) => t.taskName)
+    .filter((name) => !isEdit || name !== task?.taskName);
 
   const [form, setForm] = useState({
     expName:     isCopy ? `${task?.taskName || ''} (Copy)` : (task?.taskName || ''),
-    model:       task?.modelName || '',
-    template:    '' as Template | '',
+    model:       task?.modelName ? `${task.modelName}${task.modelVersion ? ` @ ${task.modelVersion}` : ''}` : '',
+    templateExperimentName: isCopy ? (task?.taskName || '') : (task?.templateExperimentName || ''),
     owners:      task?.owner ? task.owner.split(',').map(s => s.trim()).filter(Boolean) : [] as string[],
     bizTeam:     (task?.bizTeam || '') as BizTeam | '',
     description: task?.description || '',
@@ -483,23 +493,37 @@ export function CreateEditModal({ task, isCopy, onClose, onSubmit }: CreateEditM
     const e: Record<string, string> = {};
     if (!form.expName.trim())     e.expName  = 'Experiment name is required';
     if (!form.model.trim())       e.model    = 'Model is required';
-    if (!form.template)           e.template = 'Template is required';
     if (form.owners.length === 0) e.owners   = 'At least one owner is required';
     if (!form.bizTeam)            e.bizTeam  = 'Biz team is required';
     if (!form.description.trim()) e.description = 'Description is required';
+    if (form.templateExperimentName && !templateOptionNames.includes(form.templateExperimentName)) {
+      e.templateExperimentName = 'Selected template experiment is not in your visible list';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  const resolveFramework = (): Framework => {
+    if (task && (isEdit || isCopy)) return task.framework;
+    return 'LightGBM';
+  };
+
   const handleSubmit = () => {
     if (!validate()) return;
+    const modelParts = form.model.split(' @ ').map((s) => s.trim());
+    const modelName = modelParts[0] || form.model;
+    const modelVersion = modelParts[1];
     onSubmit({
       taskName:    form.expName,
-      modelName:   form.model,
-      framework:   form.template as unknown as Framework,
+      modelName,
+      ...(modelVersion ? { modelVersion } : {}),
+      framework:   resolveFramework(),
       owner:       form.owners.join(', '),
       bizTeam:     form.bizTeam as BizTeam,
       description: form.description,
+      ...(form.templateExperimentName.trim()
+        ? { templateExperimentName: form.templateExperimentName.trim() }
+        : { templateExperimentName: undefined }),
     });
     onClose();
   };
@@ -535,13 +559,19 @@ export function CreateEditModal({ task, isCopy, onClose, onSubmit }: CreateEditM
             {errors.model && <p className="text-xs text-rose-500 mt-0.5">{errors.model}</p>}
           </Field>
 
-          <Field label="Template" required>
-            <TemplateSelect
-              value={form.template}
-              onChange={(v) => setForm({ ...form, template: v })}
-              error={errors.template}
+          <Field
+            label="Template"
+            hint="Optional — use another experiment you can access as a starting reference"
+          >
+            <ExperimentTemplateSelect
+              value={form.templateExperimentName}
+              onChange={(v) => setForm({ ...form, templateExperimentName: v })}
+              options={templateOptionNames}
+              error={errors.templateExperimentName}
             />
-            {errors.template && <p className="text-xs text-rose-500 mt-0.5">{errors.template}</p>}
+            {errors.templateExperimentName && (
+              <p className="text-xs text-rose-500 mt-0.5">{errors.templateExperimentName}</p>
+            )}
           </Field>
         </div>
 

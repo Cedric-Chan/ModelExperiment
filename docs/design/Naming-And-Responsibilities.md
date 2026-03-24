@@ -18,7 +18,7 @@
 | Create Task / Create Pipeline | Create Experiment / Create Exp. | 创建实验 |
 | Instance Artifacts / Run Artifacts | Run Artifacts | 运行产物（绑定 Run id） |
 
-**界面用语**（与 [Figma Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) / [`model-experiment-web`](../prototype/model-experiment-web/README.md) 对齐）：列表 **Model Experiments**、列 **Exp Id / Exp Name**、运行列 **Run ID**；配置页 **Action → Trigger Run**、**Run History**。领域文档仍统一写 **Experiment / Run**。
+**界面用语**（与 [Figma Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) / [`model-experiment-web`](../prototype/model-experiment-web/README.md) 对齐）：列表 **Model Experiments**、列 **Exp Id / Exp Name**、运行列 **Run ID**；配置页 **Action → Trigger Run**、**Run History**、**ENV**（实验级全局变量表）。创建实验时 **Template** 为可选，枚举为当前操作者有权限的实验名称（用于从既有实验继承/对齐配置语义）。领域文档仍统一写 **Experiment / Run**。合作方只读节点规范：[`frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。
 
 产品/模块名可后续考虑「Model Lab」；本轮仅做上述命名统一。
 

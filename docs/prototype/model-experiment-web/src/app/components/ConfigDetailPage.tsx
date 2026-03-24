@@ -10,15 +10,17 @@ import {
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
-  Pencil, Flag
+  Pencil, Flag, Inbox
 } from 'lucide-react';
-import { TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus } from './data';
+import { TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
 
 interface ConfigDetailPageProps {
   task: TrainingTask;
   onBack: () => void;
+  /** Optional: merge current canvas task into app state (e.g. pipeline ENV) before leaving */
+  onPersistDraft?: (task: TrainingTask) => void;
   onSave: (task: TrainingTask) => void;
   /** When provided, the page enters read-only Run View mode */
   runInstance?: TaskInstance;
@@ -33,12 +35,11 @@ interface ConfigDetailPageProps {
 /* ─────────────── Node types ─────────────── */
 type NodeType =
   | 'data_source'
-  | 'woe_process'
-  | 'woe_update'
-  | 'feature_sel'
-  | 'model_tune'
-  | 'model_inference'
-  | 'model_calibrate';
+  | 'woe_fit'
+  | 'woe_transform'
+  | 'feature_selection'
+  | 'tune_train'
+  | 'infer';
 
 interface DagNode {
   id: string;
@@ -81,7 +82,7 @@ interface VersionSnapshot {
 /* ─────────────── Constants ─────────────── */
 const NODE_W = 164;
 const NODE_H  = 62;
-const GX = 206;
+const GX = 200;
 const MID = 240;
 const X0  = 50;
 
@@ -96,69 +97,61 @@ const NODE_STYLES: Record<NodeType, {
     iconBg: 'bg-blue-100',
     icon: <Database size={14} className="text-blue-500" />,
   },
-  woe_process: {
+  woe_fit: {
     bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
     iconBg: 'bg-blue-100',
     icon: <Sliders size={14} className="text-blue-500" />,
   },
-  woe_update: {
+  woe_transform: {
     bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
     iconBg: 'bg-blue-100',
     icon: <RotateCcw size={14} className="text-blue-500" />,
   },
-  feature_sel: {
+  feature_selection: {
     bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
     iconBg: 'bg-blue-100',
     icon: <Filter size={14} className="text-blue-500" />,
   },
-  model_tune: {
+  tune_train: {
     bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700',
     iconBg: 'bg-amber-100',
     icon: <Settings size={14} className="text-amber-500" />,
   },
-  model_inference: {
+  infer: {
     bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700',
     iconBg: 'bg-amber-100',
     icon: <Cpu size={14} className="text-amber-500" />,
-  },
-  model_calibrate: {
-    bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700',
-    iconBg: 'bg-amber-100',
-    icon: <TrendingUp size={14} className="text-amber-500" />,
   },
 };
 
 /* ─────────────── Default DAG builder ─────────────── */
 function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
   const nodes: DagNode[] = [
-    { id: 'n1', type: 'data_source',    label: 'DataSource',         sublabel: 'Feature Store · Label source',               x: X0+GX*0, y: MID, status: 'ready'   },
-    { id: 'n2', type: 'woe_process',    label: 'WOE Process',        sublabel: 'Fit_Transform_Merge · All Features',         x: X0+GX*1, y: MID, status: 'ready'   },
-    { id: 'n3', type: 'feature_sel',    label: 'Feature Selection',  sublabel: 'Filter · Fine Feature Report',               x: X0+GX*2, y: MID, status: 'ready'   },
-    { id: 'n4', type: 'woe_update',     label: 'WOE Update',         sublabel: 'Update_Fit_Transform · Selected Feats',      x: X0+GX*3, y: MID, status: 'ready'   },
-    { id: 'n5', type: 'model_tune',     label: 'Model Tune · Train', sublabel: 'Tune + Train · Best params',                 x: X0+GX*4, y: MID, status: 'pending' },
-    { id: 'n6', type: 'model_inference',label: 'Model Inference',    sublabel: 'Score · Predict · Export',                   x: X0+GX*5, y: MID, status: 'pending' },
-    { id: 'n7', type: 'model_calibrate',label: 'Calibrate',          sublabel: 'Platt Scaling · Score mapping',              x: X0+GX*6, y: MID, status: 'locked'  },
+    { id: 'n1', type: 'data_source',       label: 'data source',       sublabel: 'Hive · Partition · Label',                    x: X0+GX*0, y: MID, status: 'ready'   },
+    { id: 'n2', type: 'woe_fit',           label: 'WOE fit',           sublabel: 'Encoder training · Bins',                   x: X0+GX*1, y: MID, status: 'ready'   },
+    { id: 'n3', type: 'woe_transform',     label: 'WOE Transform',     sublabel: 'Apply encoder · WOE features',              x: X0+GX*2, y: MID, status: 'ready'   },
+    { id: 'n4', type: 'feature_selection', label: 'Feature selection', sublabel: 'IV · Corr · Selection report',              x: X0+GX*3, y: MID, status: 'ready'   },
+    { id: 'n5', type: 'tune_train',        label: 'Tune & Train',      sublabel: 'HPO · Best trial · Final model',            x: X0+GX*4, y: MID, status: 'pending' },
+    { id: 'n6', type: 'infer',             label: 'infer',             sublabel: 'Batch predict · Score output',              x: X0+GX*5, y: MID, status: 'pending' },
   ];
   const edges: DagEdge[] = [
     { from: 'n1', to: 'n2' },
-    { from: 'n2', to: 'n3', label: 'SavePoint' },
+    { from: 'n2', to: 'n3' },
     { from: 'n3', to: 'n4' },
-    { from: 'n4', to: 'n5', label: 'SavePoint' },
+    { from: 'n4', to: 'n5' },
     { from: 'n5', to: 'n6' },
-    { from: 'n6', to: 'n7' },
   ];
   return { nodes, edges };
 }
 
 /* ─────────────── Default (current) last-run data ─────────────── */
 const CURRENT_LAST_RUN: LastRunMap = {
-  data_source:     { runId: 'run-20250305-0841', status: 'SUCCESS', finishedTime: '2025-03-05 08:41:22', duration: '3m 12s',  artifact: [{ label: 'Rows loaded',  value: '4,821,306' }, { label: 'Feature cols', value: '218' },         { label: 'Label col',    value: 'is_default_30d' },         { label: 'Output path', value: 'hdfs://data/feat/v12'        }] },
-  woe_process:     { runId: 'run-20250305-0844', status: 'SUCCESS', finishedTime: '2025-03-05 08:49:07', duration: '4m 45s',  artifact: [{ label: 'Features in',  value: '218' },        { label: 'Bins created', value: '1,940' },        { label: 'Avg IV',       value: '0.132' },                  { label: 'Output path', value: 'hdfs://woe/v12/all'          }] },
-  feature_sel:     { runId: 'run-20250305-0849', status: 'SUCCESS', finishedTime: '2025-03-05 08:52:31', duration: '3m 24s',  artifact: [{ label: 'Features in',  value: '218' },        { label: 'Features out', value: '64' },          { label: 'IV threshold', value: '≥ 0.02' },                { label: 'Report path', value: 'hdfs://report/feat_fine_v12' }] },
-  woe_update:      { runId: 'run-20250305-0850', status: 'SUCCESS', finishedTime: '2025-03-05 08:51:43', duration: '1m 36s',  artifact: [{ label: 'Features in',  value: '64' },         { label: 'Updated bins', value: '12' },          { label: 'WOE overrides',value: '3' },                      { label: 'Output path', value: 'hdfs://woe/v12/updated'      }] },
-  model_tune:      { runId: 'run-20250305-0853', status: 'SUCCESS', finishedTime: '2025-03-05 09:41:18', duration: '74m 25s', artifact: [{ label: 'Best AUC',     value: '0.8923' },     { label: 'Best trial',   value: '#37 / 50' },     { label: 'Train AUC',    value: '0.9104' },                 { label: 'Model path',  value: 'mlflow://models/lgbm-v12'    }] },
-  model_inference: { runId: 'run-20250305-1011', status: 'SUCCESS', finishedTime: '2025-03-05 10:24:39', duration: '13m 37s', artifact: [{ label: 'Rows scored',  value: '2,104,887' }, { label: 'Score range',  value: '[0.001, 0.982]' }, { label: 'Score mean',   value: '0.087' },                  { label: 'Output table',value: 'hive://score.lgbm_v12_0305'  }] },
-  model_calibrate: { runId: 'run-20250305-1025', status: 'SUCCESS', finishedTime: '2025-03-05 10:31:14', duration: '5m 35s',  artifact: [{ label: 'Method',       value: 'Platt Scaling' }, { label: 'Brier score',value: '0.0413' },        { label: 'ECE',          value: '0.0082' },                 { label: 'Model path',  value: 'mlflow://calib/lgbm-v12'     }] },
+  data_source:        { runId: 'run-20250305-0841', status: 'SUCCESS', finishedTime: '2025-03-05 08:41:22', duration: '3m 12s',  artifact: [{ label: 'Rows loaded', value: '4,821,306' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v12' }] },
+  woe_fit:            { runId: 'run-20250305-0844', status: 'SUCCESS', finishedTime: '2025-03-05 08:49:07', duration: '4m 45s',  artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,940' }, { label: 'Avg IV', value: '0.132' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v12.pkl' }] },
+  woe_transform:      { runId: 'run-20250305-0846', status: 'SUCCESS', finishedTime: '2025-03-05 08:51:02', duration: '2m 01s',  artifact: [{ label: 'Rows out', value: '4,821,306' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v12' }] },
+  feature_selection: { runId: 'run-20250305-0849', status: 'SUCCESS', finishedTime: '2025-03-05 08:52:31', duration: '3m 24s',  artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '64' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v12' }] },
+  tune_train:         { runId: 'run-20250305-0853', status: 'SUCCESS', finishedTime: '2025-03-05 09:41:18', duration: '74m 25s', artifact: [{ label: 'Best AUC', value: '0.8923' }, { label: 'Best trial', value: '#37 / 50' }, { label: 'Train AUC', value: '0.9104' }, { label: 'Model path', value: 'mlflow://models/lgbm-v12' }] },
+  infer:              { runId: 'run-20250305-1011', status: 'SUCCESS', finishedTime: '2025-03-05 10:24:39', duration: '13m 37s', artifact: [{ label: 'Rows scored', value: '2,104,887' }, { label: 'Score range', value: '[0.001, 0.982]' }, { label: 'Score mean', value: '0.087' }, { label: 'Output table', value: 'hive://score.lgbm_v12_0305' }] },
 };
 
 /* ─────────────── Version history mock data ─────────────── */
@@ -167,38 +160,36 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     version: 'v3',
     runId: 'run-20250221-1140',
     createdAt: '2025-02-21 11:40',
-    nodePatches: { n4: { sublabel: 'Update_Fit_Transform · v3 feats' } },
+    nodePatches: { n4: { sublabel: 'IV filter · v3 list' } },
     propOverrides: {
-      feature_sel: [{ label: 'Selection Method', value: 'IV filter only' }, { label: 'IV Threshold', value: '≥ 0.03' }, { label: 'Corr Threshold', value: '< 0.90' }, { label: 'Output', value: 'Feature list v3' }],
-      model_tune:  [{ label: 'HPO Trials', value: '40' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '15 rounds' }],
+      feature_selection: [{ label: 'Selection Method', value: 'IV filter only' }, { label: 'IV Threshold', value: '≥ 0.03' }, { label: 'Corr Threshold', value: '< 0.90' }, { label: 'Output', value: 'Feature list v3' }],
+      tune_train: [{ label: 'HPO Trials', value: '40' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '15 rounds' }],
     },
     lastRunMap: {
-      data_source:     { runId: 'run-20250221-0910', status: 'SUCCESS', finishedTime: '2025-02-21 09:14:08', duration: '4m 01s',   artifact: [{ label: 'Rows loaded',  value: '4,613,220' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v11' }] },
-      woe_process:     { runId: 'run-20250221-0914', status: 'SUCCESS', finishedTime: '2025-02-21 09:19:42', duration: '5m 34s',   artifact: [{ label: 'Features in',  value: '218' },        { label: 'Bins created', value: '1,890' }, { label: 'Avg IV', value: '0.119' }, { label: 'Output path', value: 'hdfs://woe/v11/all' }] },
-      feature_sel:     { runId: 'run-20250221-0919', status: 'SUCCESS', finishedTime: '2025-02-21 09:23:55', duration: '4m 13s',   artifact: [{ label: 'Features in',  value: '218' },        { label: 'Features out', value: '71' }, { label: 'IV threshold', value: '≥ 0.03' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v11' }] },
-      woe_update:      { runId: 'run-20250221-0928', status: 'SUCCESS', finishedTime: '2025-02-21 09:30:11', duration: '1m 16s',   artifact: [{ label: 'Features in',  value: '71' },         { label: 'Updated bins', value: '9' },  { label: 'WOE overrides', value: '2' }, { label: 'Output path', value: 'hdfs://woe/v11/updated' }] },
-      model_tune:      { runId: 'run-20250221-0924', status: 'SUCCESS', finishedTime: '2025-02-21 10:48:11', duration: '112m 7s',  artifact: [{ label: 'Best AUC',     value: '0.8811' },     { label: 'Best trial',   value: '#29 / 40' }, { label: 'Train AUC', value: '0.9012' }, { label: 'Model path', value: 'mlflow://models/lgbm-v11' }] },
-      model_inference: { runId: 'run-20250221-1121', status: 'SUCCESS', finishedTime: '2025-02-21 11:35:47', duration: '14m 14s',  artifact: [{ label: 'Rows scored',  value: '2,087,341' }, { label: 'Score range',  value: '[0.002, 0.971]' }, { label: 'Score mean', value: '0.091' }, { label: 'Output table', value: 'hive://score.lgbm_v11_0221' }] },
-      model_calibrate: { runId: 'run-20250221-1136', status: 'SUCCESS', finishedTime: '2025-02-21 11:41:29', duration: '5m 42s',   artifact: [{ label: 'Method',       value: 'Platt Scaling' }, { label: 'Brier score', value: '0.0441' }, { label: 'ECE', value: '0.0097' }, { label: 'Model path', value: 'mlflow://calib/lgbm-v11' }] },
+      data_source: { runId: 'run-20250221-0910', status: 'SUCCESS', finishedTime: '2025-02-21 09:14:08', duration: '4m 01s', artifact: [{ label: 'Rows loaded', value: '4,613,220' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v11' }] },
+      woe_fit: { runId: 'run-20250221-0914', status: 'SUCCESS', finishedTime: '2025-02-21 09:19:42', duration: '5m 34s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,890' }, { label: 'Avg IV', value: '0.119' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v11.pkl' }] },
+      woe_transform: { runId: 'run-20250221-0916', status: 'SUCCESS', finishedTime: '2025-02-21 09:22:10', duration: '2m 28s', artifact: [{ label: 'Rows out', value: '4,613,220' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v11' }] },
+      feature_selection: { runId: 'run-20250221-0919', status: 'SUCCESS', finishedTime: '2025-02-21 09:23:55', duration: '4m 13s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '71' }, { label: 'IV threshold', value: '≥ 0.03' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v11' }] },
+      tune_train: { runId: 'run-20250221-0924', status: 'SUCCESS', finishedTime: '2025-02-21 10:48:11', duration: '112m 7s', artifact: [{ label: 'Best AUC', value: '0.8811' }, { label: 'Best trial', value: '#29 / 40' }, { label: 'Train AUC', value: '0.9012' }, { label: 'Model path', value: 'mlflow://models/lgbm-v11' }] },
+      infer: { runId: 'run-20250221-1121', status: 'SUCCESS', finishedTime: '2025-02-21 11:35:47', duration: '14m 14s', artifact: [{ label: 'Rows scored', value: '2,087,341' }, { label: 'Score range', value: '[0.002, 0.971]' }, { label: 'Score mean', value: '0.091' }, { label: 'Output table', value: 'hive://score.lgbm_v11_0221' }] },
     },
   },
   {
     version: 'v2',
     runId: 'run-20250207-0830',
     createdAt: '2025-02-07 08:30',
-    nodePatches: { n2: { sublabel: 'Fit_Transform_Merge · All (v2)' } },
+    nodePatches: { n2: { sublabel: 'Monotone bins · v2' } },
     propOverrides: {
-      model_tune:  [{ label: 'HPO Trials', value: '30' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '2400 s' }, { label: 'Early Stop', value: '10 rounds' }],
+      tune_train: [{ label: 'HPO Trials', value: '30' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '2400 s' }, { label: 'Early Stop', value: '10 rounds' }],
       data_source: [{ label: 'Source Type', value: 'Feature Store' }, { label: 'Lookback', value: '60 days' }, { label: 'Sampling', value: '80%' }, { label: 'Partition', value: 'dt=2025-01-31' }, { label: 'Label Source', value: 'Event Log · 60d' }],
     },
     lastRunMap: {
-      data_source:     { runId: 'run-20250207-0600', status: 'SUCCESS', finishedTime: '2025-02-07 06:08:14', duration: '8m 14s',   artifact: [{ label: 'Rows loaded',  value: '8,104,992' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v10' }] },
-      woe_process:     { runId: 'run-20250207-0608', status: 'SUCCESS', finishedTime: '2025-02-07 06:16:47', duration: '8m 33s',   artifact: [{ label: 'Features in',  value: '218' },        { label: 'Bins created', value: '1,832' }, { label: 'Avg IV', value: '0.108' }, { label: 'Output path', value: 'hdfs://woe/v10/all' }] },
-      feature_sel:     { runId: 'run-20250207-0617', status: 'SUCCESS', finishedTime: '2025-02-07 06:22:05', duration: '5m 18s',   artifact: [{ label: 'Features in',  value: '218' },        { label: 'Features out', value: '58' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v10' }] },
-      woe_update:      { runId: 'run-20250207-0622', status: 'SUCCESS', finishedTime: '2025-02-07 06:24:18', duration: '2m 13s',   artifact: [{ label: 'Features in',  value: '58' },         { label: 'Updated bins', value: '7' },  { label: 'WOE overrides', value: '1' }, { label: 'Output path', value: 'hdfs://woe/v10/updated' }] },
-      model_tune:      { runId: 'run-20250207-0625', status: 'FAILED',  finishedTime: '2025-02-07 07:39:11', duration: '74m 53s',  artifact: [{ label: 'Best AUC',     value: '0.8643 (partial)' }, { label: 'Completed trials', value: '22 / 30' }, { label: 'Error', value: 'OOM at trial #23' }, { label: 'Params path', value: 'mlflow://tune/run-0207' }] },
-      model_inference: { runId: 'run-20250207-0742', status: 'SUCCESS', finishedTime: '2025-02-07 07:58:04', duration: '15m 36s',  artifact: [{ label: 'Rows scored',  value: '2,031,774' }, { label: 'Score range',  value: '[0.003, 0.964]' }, { label: 'Score mean', value: '0.096' }, { label: 'Output table', value: 'hive://score.lgbm_v10_0207' }] },
-      model_calibrate: { runId: 'run-20250207-0759', status: 'SUCCESS', finishedTime: '2025-02-07 08:05:22', duration: '6m 18s',   artifact: [{ label: 'Method',       value: 'Platt Scaling' }, { label: 'Brier score', value: '0.0468' }, { label: 'ECE', value: '0.0114' }, { label: 'Model path', value: 'mlflow://calib/lgbm-v10' }] },
+      data_source: { runId: 'run-20250207-0600', status: 'SUCCESS', finishedTime: '2025-02-07 06:08:14', duration: '8m 14s', artifact: [{ label: 'Rows loaded', value: '8,104,992' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v10' }] },
+      woe_fit: { runId: 'run-20250207-0608', status: 'SUCCESS', finishedTime: '2025-02-07 06:16:47', duration: '8m 33s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,832' }, { label: 'Avg IV', value: '0.108' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v10.pkl' }] },
+      woe_transform: { runId: 'run-20250207-0610', status: 'SUCCESS', finishedTime: '2025-02-07 06:19:12', duration: '2m 25s', artifact: [{ label: 'Rows out', value: '8,104,992' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v10' }] },
+      feature_selection: { runId: 'run-20250207-0617', status: 'SUCCESS', finishedTime: '2025-02-07 06:22:05', duration: '5m 18s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '58' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v10' }] },
+      tune_train: { runId: 'run-20250207-0625', status: 'FAILED', finishedTime: '2025-02-07 07:39:11', duration: '74m 53s', artifact: [{ label: 'Best AUC', value: '0.8643 (partial)' }, { label: 'Completed trials', value: '22 / 30' }, { label: 'Error', value: 'OOM at trial #23' }, { label: 'Params path', value: 'mlflow://tune/run-0207' }] },
+      infer: { runId: 'run-20250207-0742', status: 'SUCCESS', finishedTime: '2025-02-07 07:58:04', duration: '15m 36s', artifact: [{ label: 'Rows scored', value: '2,031,774' }, { label: 'Score range', value: '[0.003, 0.964]' }, { label: 'Score mean', value: '0.096' }, { label: 'Output table', value: 'hive://score.lgbm_v10_0207' }] },
     },
   },
   {
@@ -207,30 +198,28 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     createdAt: '2025-01-20 15:30',
     nodePatches: { n5: { sublabel: 'RandomSearch · Tune+Train (v1)' } },
     propOverrides: {
-      model_tune:  [{ label: 'HPO Trials', value: '20' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '1800 s' }, { label: 'Early Stop', value: '10 rounds' }],
-      woe_process: [{ label: 'WOE Bins', value: '8 (fixed)' }, { label: 'Min Bin Rate', value: '3%' }, { label: 'Merge Strategy', value: 'Adjacent' }, { label: 'Output', value: 'IV + WOE-encoded features' }],
+      tune_train: [{ label: 'HPO Trials', value: '20' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '1800 s' }, { label: 'Early Stop', value: '10 rounds' }],
+      woe_fit: [{ label: 'WOE Bins', value: '8 (fixed)' }, { label: 'Min Bin Rate', value: '3%' }, { label: 'Method', value: 'Optimal' }, { label: 'Output', value: 'Encoder .pkl' }],
     },
     lastRunMap: {
-      data_source:     { runId: 'run-20250120-1100', status: 'SUCCESS', finishedTime: '2025-01-20 11:09:31', duration: '9m 31s',   artifact: [{ label: 'Rows loaded',  value: '3,940,118' }, { label: 'Feature cols', value: '200' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v9' }] },
-      woe_process:     { runId: 'run-20250120-1110', status: 'SUCCESS', finishedTime: '2025-01-20 11:21:07', duration: '11m 36s',  artifact: [{ label: 'Features in',  value: '200' },        { label: 'Bins created', value: '1,600' }, { label: 'Avg IV', value: '0.098' }, { label: 'Output path', value: 'hdfs://woe/v9/all' }] },
-      feature_sel:     { runId: 'run-20250120-1121', status: 'SUCCESS', finishedTime: '2025-01-20 11:27:44', duration: '6m 37s',   artifact: [{ label: 'Features in',  value: '200' },        { label: 'Features out', value: '52' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v9' }] },
-      woe_update:      { runId: 'run-20250120-1128', status: 'SUCCESS', finishedTime: '2025-01-20 11:30:05', duration: '2m 21s',   artifact: [{ label: 'Features in',  value: '52' },         { label: 'Updated bins', value: '5' },  { label: 'WOE overrides', value: '0' }, { label: 'Output path', value: 'hdfs://woe/v9/updated' }] },
-      model_tune:      { runId: 'run-20250120-1132', status: 'SUCCESS', finishedTime: '2025-01-20 12:42:19', duration: '70m 14s',  artifact: [{ label: 'Best AUC',     value: '0.8574' },     { label: 'Best trial',   value: '#18 / 20' }, { label: 'Train AUC', value: '0.8801' }, { label: 'Model path', value: 'mlflow://models/lgbm-v9' }] },
-      model_inference: { runId: 'run-20250120-1246', status: 'SUCCESS', finishedTime: '2025-01-20 13:02:38', duration: '16m 28s',  artifact: [{ label: 'Rows scored',  value: '1,988,445' }, { label: 'Score range',  value: '[0.005, 0.956]' }, { label: 'Score mean', value: '0.102' }, { label: 'Output table', value: 'hive://score.lgbm_v9_0120' }] },
-      model_calibrate: { runId: 'run-20250120-1303', status: 'SKIPPED', finishedTime: '2025-01-20 13:03:09', duration: '0m 31s',   artifact: [{ label: 'Method',       value: 'Platt Scaling' }, { label: 'Brier score', value: 'N/A' }, { label: 'ECE', value: 'N/A' }, { label: 'Model path', value: 'mlflow://calib/lgbm-v9 (no calib)' }] },
+      data_source: { runId: 'run-20250120-1100', status: 'SUCCESS', finishedTime: '2025-01-20 11:09:31', duration: '9m 31s', artifact: [{ label: 'Rows loaded', value: '3,940,118' }, { label: 'Feature cols', value: '200' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v9' }] },
+      woe_fit: { runId: 'run-20250120-1110', status: 'SUCCESS', finishedTime: '2025-01-20 11:21:07', duration: '11m 36s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Bins created', value: '1,600' }, { label: 'Avg IV', value: '0.098' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v9.pkl' }] },
+      woe_transform: { runId: 'run-20250120-1118', status: 'SUCCESS', finishedTime: '2025-01-20 11:25:02', duration: '3m 55s', artifact: [{ label: 'Rows out', value: '3,940,118' }, { label: 'WOE cols', value: '200' }, { label: 'Output path', value: 'hdfs://woe/xform/v9' }] },
+      feature_selection: { runId: 'run-20250120-1121', status: 'SUCCESS', finishedTime: '2025-01-20 11:27:44', duration: '6m 37s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Features out', value: '52' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v9' }] },
+      tune_train: { runId: 'run-20250120-1132', status: 'SUCCESS', finishedTime: '2025-01-20 12:42:19', duration: '70m 14s', artifact: [{ label: 'Best AUC', value: '0.8574' }, { label: 'Best trial', value: '#18 / 20' }, { label: 'Train AUC', value: '0.8801' }, { label: 'Model path', value: 'mlflow://models/lgbm-v9' }] },
+      infer: { runId: 'run-20250120-1246', status: 'SKIPPED', finishedTime: '2025-01-20 13:02:38', duration: '0m 10s', artifact: [{ label: 'Rows scored', value: 'N/A' }, { label: 'Note', value: 'Infer skipped' }, { label: 'Output table', value: '—' }] },
     },
   },
 ];
 
 /* ─────────────── Default config props per node type ─────────────── */
 const DEFAULT_PROPS: Record<NodeType, { label: string; value: string }[]> = {
-  data_source:      [{ label: 'Source Type', value: 'Feature Store' }, { label: 'Lookback', value: '30 days' }, { label: 'Sampling', value: '100%' }, { label: 'Partition', value: 'dt=2025-03-01' }, { label: 'Label Source', value: 'Event Log · 30d' }],
-  woe_process:      [{ label: 'WOE Bins', value: '10 (auto)' }, { label: 'Min Bin Rate', value: '5%' }, { label: 'Merge Strategy', value: 'Monotone' }, { label: 'Output', value: 'IV + WOE-encoded features' }],
-  woe_update:       [{ label: 'Mode', value: 'Update_Fit_Transform' }, { label: 'Input', value: 'Selected Features' }, { label: 'ws_list Override', value: 'Optional' }, { label: 'Output', value: 'Updated encoder + merged result' }],
-  feature_sel:      [{ label: 'Selection Method', value: 'IV + Corr filter' }, { label: 'IV Threshold', value: '≥ 0.02' }, { label: 'Corr Threshold', value: '< 0.85' }, { label: 'Output', value: 'Fine Feature Report + list' }],
-  model_tune:      [{ label: 'HPO Trials', value: '50' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '20 rounds' }],
-  model_inference: [{ label: 'Mode', value: 'Batch scoring' }, { label: 'Input', value: 'Best model artifact' }, { label: 'Output', value: 'Score CSV / Hive table' }, { label: 'Partition', value: 'dt=today' }],
-  model_calibrate:  [{ label: 'Method', value: 'Platt Scaling' }, { label: 'CV Folds', value: '5' }, { label: 'Output', value: 'Calibrated probability' }, { label: 'Registry', value: 'MLFlow · Staging' }],
+  data_source:       [{ label: 'data_source', value: 'Hive' }, { label: 'table_name', value: 'risk.feature_store_v12' }, { label: 'schema', value: 'risk' }, { label: 'partition_filter', value: "grass_date >= '2024-01-01'" }, { label: 'label_column', value: 'label_dpd30_3term' }],
+  woe_fit:           [{ label: 'n_bins', value: '10' }, { label: 'min_bin_rate', value: '5%' }, { label: 'method', value: 'OptimalBinning' }, { label: 'encoder_output', value: 's3://…/encoder.pkl' }],
+  woe_transform:     [{ label: 'encoder_path', value: 'upstream' }, { label: 'output_format', value: 'Parquet' }, { label: 'parallelism', value: 'auto' }],
+  feature_selection: [{ label: 'Selection Method', value: 'IV + Corr filter' }, { label: 'IV Threshold', value: '≥ 0.02' }, { label: 'Corr Threshold', value: '< 0.85' }, { label: 'Output', value: 'selection_report.csv' }],
+  tune_train:        [{ label: 'HPO Trials', value: '50' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '20 rounds' }],
+  infer:             [{ label: 'Mode', value: 'Batch scoring' }, { label: 'Input', value: 'Best model artifact' }, { label: 'Output', value: 'Hive / Parquet' }, { label: 'Partition', value: 'dt=today' }],
 };
 
 /* ─────────────── Run View — Node Execution Status ─────────────── */
@@ -238,10 +227,9 @@ type NodeRunStatus = 'success' | 'running' | 'failed' | 'skipped' | 'pending';
 
 function deriveNodeRunStatuses(instance: TaskInstance): Record<string, NodeRunStatus> {
   const { status } = instance;
-  // DAG pipeline segments (linear: n1→…→n7)
   const earlyNodes = ['n1', 'n2', 'n3', 'n4'];
   const midNodes   = ['n5'];
-  const lateNodes  = ['n6', 'n7'];
+  const lateNodes  = ['n6'];
   const result: Record<string, NodeRunStatus> = {};
 
   switch (status as InstanceStatus) {
@@ -425,12 +413,11 @@ function deriveNodeRunStatusesFromLastRunMap(lastRunMap: LastRunMap): Record<str
   };
   return {
     n1: to(lastRunMap.data_source?.status),
-    n2: to(lastRunMap.woe_process?.status),
-    n3: to(lastRunMap.feature_sel?.status),
-    n4: to(lastRunMap.woe_update?.status),
-    n5: to(lastRunMap.model_tune?.status),
-    n6: to(lastRunMap.model_inference?.status),
-    n7: to(lastRunMap.model_calibrate?.status),
+    n2: to(lastRunMap.woe_fit?.status),
+    n3: to(lastRunMap.woe_transform?.status),
+    n4: to(lastRunMap.feature_selection?.status),
+    n5: to(lastRunMap.tune_train?.status),
+    n6: to(lastRunMap.infer?.status),
   };
 }
 
@@ -1112,7 +1099,7 @@ function SampleUseColSection({
   );
 }
 
-/* ─────────────── WOE Process Config Panel ─────────────── */
+/* ─────────────── WOE Fit Config Panel ─────────────── */
 const WOE_ADVANCED_CONFIG = `woe_config:
   mode: fit_transform_merge
   label_col: is_default_30d
@@ -1126,7 +1113,7 @@ const WOE_ADVANCED_CONFIG = `woe_config:
     iv_table: true
     bin_table: true`;
 
-function WoeProcessConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
   const [woeBins, setWoeBins] = useState<5 | 10 | 15>(10);
   const [minBinSize, setMinBinSize] = useState(50);
   const [minMissingBadCnt, setMinMissingBadCnt] = useState(30);
@@ -1291,7 +1278,7 @@ function WoeProcessConfigPanel({ readOnly }: { readOnly?: boolean }) {
   );
 }
 
-/* ─────────────── WOE Update Config Panel ─────────────── */
+/* ─────────────── WOE Transform Config Panel ─────────────── */
 const WOE_UPDATE_WS_LIST_DEFAULT = JSON.stringify({
   feature_name: "mock_feature_income",
   data_path: "s3://bucket/woe/data/features/training_features_mock_feature_income",
@@ -1402,7 +1389,7 @@ function JsonToggleBlock({
   );
 }
 
-function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function WoeTransformConfigPanel({ readOnly }: { readOnly?: boolean }) {
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const DEFAULT_ENCODER_PATH = 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl';
   const [encoderPath, setEncoderPath] = useState(DEFAULT_ENCODER_PATH);
@@ -1412,7 +1399,7 @@ function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
       {/* Guide */}
       <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">WOE Update_Fit_Transform</span>
+        <span className="font-mono tracking-wide">WOE Transform</span>
       </div>
 
       {/* ── Section: Data Inputs ── */}
@@ -1433,7 +1420,7 @@ function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
         <div>
           <p className={labelCls}>
             Load Encoder Result
-            <FieldTooltip text="Encoder artifact path from an upstream WOE Process node. Defaults to WOE Process encoder_save_filepath output; you can override this with any valid encoder path." />
+            <FieldTooltip text="Encoder artifact path from the upstream WOE Fit node. Defaults to encoder_save_filepath output; you can override with any valid encoder path." />
           </p>
           <div className="flex items-center gap-1.5">
             <input
@@ -1450,7 +1437,7 @@ function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
             {!readOnly && encoderPath !== DEFAULT_ENCODER_PATH && (
               <button
                 onClick={() => setEncoderPath(DEFAULT_ENCODER_PATH)}
-                title="Reset to WOE Process default"
+                title="Reset to WOE Fit default"
                 className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5 transition-all"
               >
                 <RotateCcw size={11} />
@@ -1458,7 +1445,7 @@ function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
             )}
           </div>
           <p className="mt-1 text-[10px] text-slate-300 font-mono leading-relaxed pl-0.5">
-            from WOE Process · encoder_save_filepath
+            from WOE Fit · encoder_save_filepath
           </p>
         </div>
       </div>
@@ -1466,7 +1453,7 @@ function WoeUpdateConfigPanel({ readOnly }: { readOnly?: boolean }) {
       {/* Section divider — data inputs / update config */}
       <div className="flex items-center gap-2 mt-5 mb-4">
         <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Update Config</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Transform Config</span>
         <div className="h-px flex-1 bg-slate-100" />
       </div>
 
@@ -1564,7 +1551,7 @@ function CopyPathField({ label, path, labelCls }: { label: string; path: string;
 /* ─────────────── Feature Selection Config Panel ─────────────── */
 const UPSTREAM_OUTPUTS = [
   { nodeLabel: 'WOE Process',  path: 's3://mlops-artifacts/woe/merge/v12/woe_merge_result.parquet' },
-  { nodeLabel: 'WOE Update',   path: 's3://mlops-artifacts/woe/merge/v12/woe_update_result.parquet' },
+  { nodeLabel: 'WOE Transform', path: 's3://mlops-artifacts/woe/merge/v12/woe_update_result.parquet' },
 ];
 
 const SELECT_METHODS = ['by_iv', 'by_corr', 'by_psi', 'by_gini', 'by_stability'] as const;
@@ -2499,15 +2486,15 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
         {activeTab === 'config' && (
           node.type === 'data_source' ? (
             <DataSourceConfigPanel readOnly={readOnly} />
-          ) : node.type === 'woe_process' ? (
-            <WoeProcessConfigPanel readOnly={readOnly} />
-          ) : node.type === 'woe_update' ? (
-            <WoeUpdateConfigPanel readOnly={readOnly} />
-          ) : node.type === 'feature_sel' ? (
+          ) : node.type === 'woe_fit' ? (
+            <WoeFitConfigPanel readOnly={readOnly} />
+          ) : node.type === 'woe_transform' ? (
+            <WoeTransformConfigPanel readOnly={readOnly} />
+          ) : node.type === 'feature_selection' ? (
             <FeatureSelectionConfigPanel readOnly={readOnly} />
-          ) : node.type === 'model_tune' ? (
+          ) : node.type === 'tune_train' ? (
             <ModelTuneConfigPanel readOnly={readOnly} />
-          ) : node.type === 'model_inference' ? (
+          ) : node.type === 'infer' ? (
             <ModelInferenceConfigPanel readOnly={readOnly} />
           ) : (
             <div className="px-4 py-3">
@@ -2526,8 +2513,8 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
 
         {activeTab === 'lastrun' && (
           <div className="px-4 py-3 flex flex-col gap-3">
-            {/* View WOE Binning — only for woe_process */}
-            {node.type === 'woe_process' && (
+            {/* View WOE Binning — WOE fit / transform */}
+            {(node.type === 'woe_fit' || node.type === 'woe_transform') && (
               <>
                 <button
                   onClick={() => setShowBinning(true)}
@@ -2622,8 +2609,8 @@ interface CheckResult { passed: boolean; items: { label: string; ok: boolean; de
 
 function runFrontendCheck(nodes: DagNode[], edges: DagEdge[]): CheckResult {
   const hasSource    = nodes.some(n => n.type === 'data_source');
-  const hasTrain     = nodes.some(n => n.type === 'model_tune');
-  const hasOutput    = nodes.some(n => n.type === 'model_calibrate');
+  const hasTrain     = nodes.some(n => n.type === 'tune_train');
+  const hasOutput    = nodes.some(n => n.type === 'infer');
   const connectedIds = new Set<string>();
   edges.forEach(e => { connectedIds.add(e.from); connectedIds.add(e.to); });
   const allConnected = nodes.every(n => connectedIds.has(n.id));
@@ -2641,8 +2628,8 @@ function runFrontendCheck(nodes: DagNode[], edges: DagEdge[]): CheckResult {
   })();
   const items = [
     { label: 'DataSource node exists',  ok: hasSource,    detail: hasSource    ? 'At least one source configured' : 'Add a DataSource node' },
-    { label: 'Model Tune·Train exists', ok: hasTrain,     detail: hasTrain     ? 'Tune & Train node found'        : 'Add a Model Tune · Train node' },
-    { label: 'Calibrate node exists',   ok: hasOutput,    detail: hasOutput    ? 'Output calibration configured'  : 'Add a Calibrate node' },
+    { label: 'Tune & Train exists',     ok: hasTrain,     detail: hasTrain     ? 'Tune & Train node found'          : 'Add a Tune & Train node' },
+    { label: 'Infer node exists',       ok: hasOutput,    detail: hasOutput    ? 'Prediction node configured'       : 'Add an infer node' },
     { label: 'All nodes connected',     ok: allConnected, detail: allConnected ? 'No isolated nodes'              : 'Some nodes are disconnected' },
     { label: 'No cyclic dependencies',  ok: !hasCycle,    detail: !hasCycle    ? 'DAG is acyclic'                 : 'Cycle detected in graph' },
   ];
@@ -2673,13 +2660,12 @@ function Minimap({
   const sc = Math.min(scaleX, scaleY, 1);
 
   const nodeTypeColor: Record<NodeType, string> = {
-    data_source:      '#93c5fd',
-    woe_process:      '#93c5fd',
-    woe_update:       '#93c5fd',
-    feature_sel:      '#93c5fd',
-    model_tune:       '#fcd34d',
-    model_inference:  '#fcd34d',
-    model_calibrate:  '#fcd34d',
+    data_source:       '#93c5fd',
+    woe_fit:           '#93c5fd',
+    woe_transform:     '#93c5fd',
+    feature_selection: '#93c5fd',
+    tune_train:        '#fcd34d',
+    infer:             '#fcd34d',
   };
 
   // Viewport rect in world coords
@@ -2975,14 +2961,13 @@ function validateRunPath(
 
   for (const node of reachable) {
     // Rule 1: BayesOpt HPO needs ≥ 100 trials (currently 50 in default config)
-    if (node.type === 'model_tune' && node.sublabel.toLowerCase().includes('bayesopt')) {
+    if (node.type === 'tune_train' && node.sublabel.toLowerCase().includes('bayesopt')) {
       errorMessages.push({
         nodeId: node.id,
         message: 'BayesOpt requires ≥ 100 trials for reliable convergence (currently 50)',
       });
     }
-    // Rule 2: locked nodes cannot be executed (Calibrate is exempt — optional post-processing)
-    if (node.status === 'locked' && mode === 'from_start' && node.type !== 'model_calibrate') {
+    if (node.status === 'locked' && mode === 'from_start') {
       errorMessages.push({
         nodeId: node.id,
         message: `Node "${node.label}" is locked and cannot be executed`,
@@ -3287,6 +3272,150 @@ function CheckResultPanel({ result, onClose }: { result: CheckResult; onClose: (
   );
 }
 
+function PipelineEnvModal({
+  rows,
+  onChangeRows,
+  onClose,
+  onApply,
+}: {
+  rows: PipelineEnvRow[];
+  onChangeRows: React.Dispatch<React.SetStateAction<PipelineEnvRow[]>>;
+  onClose: () => void;
+  onApply: () => void;
+}) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">Pipeline ENV</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">Parameters · Description · Value</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
+                  <th className="px-3 py-2.5 w-[22%]">Parameters</th>
+                  <th className="px-3 py-2.5 w-[38%]">Description</th>
+                  <th className="px-3 py-2.5 w-[32%]">Value</th>
+                  <th className="px-3 py-2.5 w-[8%]" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-16 text-center">
+                      <Inbox size={36} className="mx-auto text-slate-200 mb-2" strokeWidth={1.25} />
+                      <p className="text-sm text-slate-400">No Data</p>
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row, index) => (
+                    <tr key={index} className="border-b border-slate-100 last:border-0 align-top">
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={e =>
+                            onChangeRows(prev =>
+                              prev.map((r, j) => (j === index ? { ...r, name: e.target.value } : r))
+                            )
+                          }
+                          placeholder="PARAM_NAME"
+                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.description}
+                          onChange={e =>
+                            onChangeRows(prev =>
+                              prev.map((r, j) => (j === index ? { ...r, description: e.target.value } : r))
+                            )
+                          }
+                          placeholder="Description"
+                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] text-slate-600 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.value}
+                          onChange={e =>
+                            onChangeRows(prev =>
+                              prev.map((r, j) => (j === index ? { ...r, value: e.target.value } : r))
+                            )
+                          }
+                          placeholder="Value"
+                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          title="Remove row"
+                          onClick={() => onChangeRows(prev => prev.filter((_, j) => j !== index))}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-slate-100 shrink-0 bg-slate-50/50">
+          <button
+            type="button"
+            onClick={() => onChangeRows(prev => [...prev, { name: '', description: '', value: '' }])}
+            className="h-8 px-3 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-white hover:border-[#13c2c2]/40 flex items-center gap-1.5 transition-colors"
+          >
+            <Plus size={13} className="text-[#13c2c2]" />
+            Add row
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-8 px-4 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onApply}
+              className="h-8 px-5 rounded-lg bg-[#13c2c2] text-white text-xs font-semibold hover:bg-[#10a3a3] transition-colors shadow-sm"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ─────────────── Save Update Popover ─────────────── */
 function SaveUpdatePopover({
   anchorRef,
@@ -3404,9 +3533,12 @@ function SaveUpdatePopover({
 }
 
 /* ─────────────── Main Canvas Page ─────────────── */
-export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstance, onBackToConfig, onKill, onRunCreated }: ConfigDetailPageProps) {
+export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, onSave, runInstance, onBackToConfig, onKill, onRunCreated }: ConfigDetailPageProps) {
   const { nodes: initNodes, edges } = buildDefaultDag();
   const [task, setTask]             = useState<TrainingTask>(initialTask);
+  useEffect(() => {
+    setTask(initialTask);
+  }, [initialTask.id]);
   // Guard: if stored nodes contain stale types (e.g. from HMR state preservation), reset to fresh DAG
   const [nodes, setNodes]           = useState<DagNode[]>(() => {
     return initNodes;
@@ -3426,6 +3558,8 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ mode: 'once', cronExpr: '0 6 * * *', time: '00:00', timezone: 'UTC+8' });
   const [showExpMetaEditModal, setShowExpMetaEditModal] = useState(false);
   const [showExecuteConfigModal, setShowExecuteConfigModal] = useState(false);
+  const [showEnvModal, setShowEnvModal] = useState(false);
+  const [envModalRows, setEnvModalRows] = useState<PipelineEnvRow[]>([]);
   const [checking, setChecking]       = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [showCheckPanel, setShowCheckPanel] = useState(false);
@@ -3508,12 +3642,13 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
       // Close any open overlay in priority order; stop at the first one found
       if (showTriggerModal)         { setShowTriggerModal(false); return; }
       if (showExecuteConfigModal)   { setShowExecuteConfigModal(false); return; }
+      if (showEnvModal)             { setShowEnvModal(false); return; }
       if (showExpMetaEditModal)     { setShowExpMetaEditModal(false); return; }
       if (showCheckPanel)           { setShowCheckPanel(false); return; }
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [showTriggerModal, showExecuteConfigModal, showExpMetaEditModal, showCheckPanel]);
+  }, [showTriggerModal, showExecuteConfigModal, showEnvModal, showExpMetaEditModal, showCheckPanel]);
 
   // Track canvas container size for minimap viewport rect
   useEffect(() => {
@@ -3611,7 +3746,13 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
       <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center shrink-0">
         {/* Left */}
         <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#13c2c2] transition-colors group shrink-0">
+          <button
+            onClick={() => {
+              if (!isRunView && !isRunHistoryView) onPersistDraft?.(task);
+              onBack();
+            }}
+            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#13c2c2] transition-colors group shrink-0"
+          >
             <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
             <span>Back</span>
           </button>
@@ -3652,6 +3793,17 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
             scheduleConfig={scheduleConfig}
             onUpdateSchedule={setScheduleConfig}
             readOnly={isRunHistoryView || isRunView}
+          />
+        )}
+        {showEnvModal && (
+          <PipelineEnvModal
+            rows={envModalRows}
+            onChangeRows={setEnvModalRows}
+            onClose={() => setShowEnvModal(false)}
+            onApply={() => {
+              setTask(prev => ({ ...prev, pipelineEnv: envModalRows.map(r => ({ ...r })) }));
+              setShowEnvModal(false);
+            }}
           />
         )}
 
@@ -3733,6 +3885,17 @@ export function ConfigDetailPage({ task: initialTask, onBack, onSave, runInstanc
                 activeRunId={activeRunHistorySnap?.runId}
                 onSelectRun={snap => { setActiveRunHistorySnap(snap); setSelectedId(null); }}
               />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEnvModalRows((task.pipelineEnv ?? []).map(r => ({ ...r })));
+                  setShowEnvModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 border border-slate-200 bg-white rounded-lg hover:border-[#13c2c2]/60 hover:text-[#0d9e9e] transition-all shadow-sm"
+              >
+                ENV
+              </button>
 
               <button
                 type="button"

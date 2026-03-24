@@ -4,6 +4,27 @@
 
 ---
 
+## Partner spec v2.0（2025）— 当前原型画布基准
+
+合作方只读规范：[`docs/architecture/frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。**本里程碑下** [`model-experiment-web`](../prototype/model-experiment-web/) 画布采用 **6 个线性管道节点**（与规范节点总览一致）：
+
+1. **data source**（规范：Data Source / Data Load）  
+2. **WOE fit**  
+3. **WOE Transform**  
+4. **Feature selection**  
+5. **Tune & Train**（规范：Hyperparameter Tuning + Model Training，合并为单节点）  
+6. **infer**（规范：Model Prediction）
+
+**Pipeline / 实验级**：规范中的 `model_level`、`base_train_path`、`label_column`、全局排除列等仍在 **非画布** 区域配置；**ENV（全局变量表：Parameters / Description / Value）** 在画布顶栏入口配置，与「pipeline 级别、各节点共享」语义一致（详见规范「pipeline级别配置」与 ENV UI）。
+
+**SavePoint / CheckPoint 边标签**：本 6 节点线性原型 **不展示** 旧版边侧 SavePoint 标签；多 SavePoint、多 CheckPoint 的完整语义见下文「Superseded / deferred」，后端落地时可再挂接。
+
+### Superseded / deferred（相对下方「修订版」九节点叙述）
+
+以下能力仍可作为产品与后端长期目标，**不与当前 6 节点原型互斥**，但 **不在本里程碑画布上展开**：合并式 **WOE All / WOE Selected**、**独立 Model Tune 与 Model Train**、**CheckPoint（择优）**、画布上的 **Calibrate**、多子路径并行 Tune+Train。若实现回归多节点拓扑，需同步更新本文与 `Task-Canvas-Config.md`。
+
+---
+
 ## 一、Experiment 画布超简化流程与节点划分
 
 **术语**：**Experiment** = Model Experiment（模型实验）；画布节点 = **Experiment Component**（实验物料，基于 **Component Template**）；**Run** = 一次有顺序的执行记录，绑定配置与产物，改配置后执行 = 新 Run。

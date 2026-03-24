@@ -2,6 +2,8 @@
 
 本文档基于 [MODEL_PIPELINE.md](../MODEL_PIPELINE.md)、[分布式训练使用手册_v1.3.md](../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)，以 **LightGBM（LGBM）** 为例，说明：① 原始 Python Sample 的完整 Step 与主要 Function；② 当前 **Experiment 画布**的节点划分、配置要点及与 Python Step 的映射关系。单域、不涉及多域。画布配置入口在 **Experiment 层级**；Experiment 保留当前/最新画布配置，每次 Run 携带配置快照，中间产物与配置均绑定 **Run id**。见 [Naming-And-Responsibilities.md](./Naming-And-Responsibilities.md)。
 
+**Partner v2.0 与当前原型**：合作方节点说明见 [`docs/architecture/frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。[`model-experiment-web`](../prototype/model-experiment-web/) 画布现为 **6 节点线性 DAG**（data source → WOE fit → WOE Transform → Feature selection → Tune & Train → infer）及顶栏 **ENV**；下文「合并节点 / 九节点 SOP」仍描述 Python 全量 Step 与历史产品设计，实现映射时以 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 *Partner spec v2.0* 与 *Superseded / deferred* 为准。
+
 ---
 
 ## 一、原始 Python Sample（以 LGBM 为例）：完整 Step 与主要 Function

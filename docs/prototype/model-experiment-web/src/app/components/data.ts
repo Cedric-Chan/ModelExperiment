@@ -1,8 +1,15 @@
+export type TaskStatus = 'DRAFT' | 'ENABLED' | 'DISABLED';
 export type InstanceStatus = 'QUEUING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'KILLED';
 export type Region = 'SG' | 'ID' | 'TH' | 'MY' | 'PH' | 'VN';
 export type Framework = 'XGBoost' | 'LightGBM' | 'TensorFlow' | 'PyTorch' | 'Benchmark';
 export type BizTeam = 'DataSci' | 'Policy' | 'AntiFraud' | 'RiskData' | 'Aimos' | 'MoneeAlgo';
-export type Template = 'woe_tune_train' | 'model_inference' | 'Custom';
+
+/** Model Experiment–level ENV row (Parameters / Description / Value). */
+export interface PipelineEnvRow {
+  name: string;
+  description: string;
+  value: string;
+}
 
 export interface RegisteredModel {
   name: string;
@@ -51,12 +58,15 @@ export interface TrainingTask {
   updateTime: string;
   instances: TaskInstance[];
   history: HistoryVersion[];
+  /** Optional: copy-from / align-with experiment name (visible experiments only). */
+  templateExperimentName?: string;
+  /** Pipeline-level global variables for this experiment. */
+  pipelineEnv?: PipelineEnvRow[];
 }
 
 export const REGIONS: Region[] = ['SG', 'ID', 'TH', 'MY', 'PH', 'VN'];
 export const FRAMEWORKS: Framework[] = ['XGBoost', 'LightGBM', 'TensorFlow', 'PyTorch', 'Benchmark'];
 export const BIZ_TEAMS: BizTeam[] = ['DataSci', 'Policy', 'AntiFraud', 'RiskData', 'Aimos', 'MoneeAlgo'];
-export const TEMPLATES: Template[] = ['woe_tune_train', 'model_inference', 'Custom'];
 
 export const ALL_OWNERS = ['alice', 'bob', 'carol', 'david', 'eve', 'frank', 'grace', 'henry'];
 
@@ -76,6 +86,15 @@ export const REGISTERED_MODELS: RegisteredModel[] = [
 
 export const CURRENT_USER = 'alice';
 export const IS_ADMIN = false;
+
+/** Experiments the current operator may use as Template (same visibility as list). */
+export function filterExperimentsVisibleToOperator(allTasks: TrainingTask[]): TrainingTask[] {
+  if (IS_ADMIN) return allTasks;
+  return allTasks.filter((t) => {
+    const owners = t.owner.split(',').map((s) => s.trim()).filter(Boolean);
+    return owners.includes(CURRENT_USER);
+  });
+}
 
 export const initialMockTasks: TrainingTask[] = [
   {
