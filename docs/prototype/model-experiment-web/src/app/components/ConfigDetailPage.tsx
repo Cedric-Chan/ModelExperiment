@@ -10,7 +10,7 @@ import {
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
-  Pencil, Flag, Inbox
+  Pencil, Flag, Inbox, BarChart3, Brackets, Percent, Hash, ShieldAlert,
 } from 'lucide-react';
 import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
@@ -942,17 +942,85 @@ const MOCK_HIVE_COLUMNS = [
   'is_default_30d', 'sample_flag',
 ];
 
-function FieldTooltip({ text }: { text: string }) {
+function FieldTooltip({ text, detach }: { text: string; detach?: boolean }) {
   const [visible, setVisible] = useState(false);
-  return (
-    <span className="relative inline-flex items-center" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)}>
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLSpanElement>(null);
+
+  const show = useCallback(() => {
+    if (detach && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setPos({ top: r.top, left: r.left + r.width / 2 });
+    }
+    setVisible(true);
+  }, [detach]);
+
+  const hide = useCallback(() => setVisible(false), []);
+
+  useEffect(() => {
+    if (!detach || !visible) return;
+    const onScrollOrResize = () => hide();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [detach, visible, hide]);
+
+  const trigger = (
+    <span
+      ref={detach ? triggerRef : undefined}
+      className="relative inline-flex items-center"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={detach ? show : undefined}
+      onBlur={detach ? hide : undefined}
+      tabIndex={detach ? 0 : undefined}
+    >
       <HelpCircle size={12} className="text-slate-400 hover:text-slate-600 cursor-help transition-colors" />
-      {visible && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-44 bg-slate-800 text-white text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-lg z-50 pointer-events-none whitespace-normal text-center">
-          {text}
-          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
-        </span>
-      )}
+    </span>
+  );
+
+  const inlineBubble = visible && !detach && (
+    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-44 bg-slate-800 text-white text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-lg z-50 pointer-events-none whitespace-normal text-center">
+      {text}
+      <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+    </span>
+  );
+
+  const portaledBubble =
+    visible &&
+    detach &&
+    ReactDOM.createPortal(
+      <span
+        role="tooltip"
+        className="fixed z-[280] max-w-xs min-w-[200px] bg-slate-800 text-white text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl pointer-events-none whitespace-normal text-left"
+        style={{
+          left: pos.left,
+          top: pos.top - 8,
+          transform: 'translate(-50%, -100%)',
+        }}
+      >
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+      </span>,
+      document.body,
+    );
+
+  if (detach) {
+    return (
+      <>
+        {trigger}
+        {portaledBubble}
+      </>
+    );
+  }
+
+  return (
+    <span className="relative inline-flex items-center" onMouseEnter={show} onMouseLeave={hide}>
+      <HelpCircle size={12} className="text-slate-400 hover:text-slate-600 cursor-help transition-colors" />
+      {inlineBubble}
     </span>
   );
 }
@@ -1365,6 +1433,14 @@ const ALGO_DICT_META: Record<AlgoDictKey, { label: string; doc: string; example:
   },
 };
 
+const ALGO_DICT_ICONS: Record<AlgoDictKey, typeof BarChart3> = {
+  dict_nbins: BarChart3,
+  dict_missing_values: Brackets,
+  dict_min_bin_rate: Percent,
+  dict_min_bin_size: Hash,
+  dict_min_missing_bad_cnt: ShieldAlert,
+};
+
 const SAMPLE_WOE_MODIFICATIONS = `[
   {
     "bin_name": "01.(-0.15, 0.05]",
@@ -1393,15 +1469,14 @@ function AlgoDictFieldRow({
   value,
   onChange,
   readOnly,
-  labelCls,
 }: {
   dictKey: AlgoDictKey;
   value: string | null;
   onChange: (v: string | null) => void;
   readOnly?: boolean;
-  labelCls: string;
 }) {
   const meta = ALGO_DICT_META[dictKey];
+  const Icon = ALGO_DICT_ICONS[dictKey];
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -1473,43 +1548,59 @@ function AlgoDictFieldRow({
   );
 
   return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <p className={`${labelCls} mb-0 flex-1 min-w-0`}>
-        {meta.label}
+    <div className="flex items-center gap-2 min-h-[48px] px-2 py-1.5 rounded-lg border border-slate-100 bg-white hover:border-slate-200 transition-colors">
+      <div
+        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#13c2c2]/10 text-[#0d9e9e] shrink-0"
+        title={meta.label}
+      >
+        <Icon size={16} strokeWidth={2} aria-hidden />
+      </div>
+      <span className="sr-only">{meta.label}</span>
+      <div className="flex items-center shrink-0">
         <FieldTooltip text={meta.doc} />
-      </p>
+      </div>
+      <div className="flex-1 min-w-0" />
       <div className="flex items-center gap-1 shrink-0">
         {value ? (
           <>
+            <span
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-100 text-emerald-700"
+              title={value}
+            >
+              <CheckCircle2 size={11} strokeWidth={2.2} className="shrink-0" aria-hidden />
+              <span className="text-[9px] font-semibold uppercase tracking-wide">OK</span>
+            </span>
             {!readOnly && (
               <>
                 <button
                   type="button"
                   onClick={openEdit}
-                  className="h-7 px-2 rounded-md border border-slate-200 text-[10px] font-semibold text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#0d9e9e]"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#0d9e9e] hover:bg-[#13c2c2]/5 transition-colors"
+                  title="Edit JSON"
+                  aria-label={`Edit ${meta.label}`}
                 >
-                  Edit
+                  <Pencil size={13} />
                 </button>
                 <button
                   type="button"
                   onClick={() => onChange(null)}
-                  className="h-7 px-2 rounded-md border border-slate-200 text-[10px] font-semibold text-rose-500 hover:bg-rose-50"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 text-rose-500 hover:bg-rose-50 transition-colors"
+                  title="Remove override"
+                  aria-label={`Delete ${meta.label}`}
                 >
-                  Delete
+                  <Trash2 size={13} />
                 </button>
               </>
             )}
-            <span className="text-[9px] font-mono text-emerald-600 max-w-[80px] truncate" title={value}>
-              set
-            </span>
           </>
         ) : (
           !readOnly && (
             <button
               type="button"
               onClick={openAdd}
-              className="h-7 w-7 flex items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5"
-              title="Add"
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5 transition-colors"
+              title="Add JSON override"
+              aria-label={`Add ${meta.label}`}
             >
               <Plus size={14} />
             </button>
@@ -1964,11 +2055,6 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
 
   return (
     <div className="px-4 py-3 flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
-        <Settings size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">WOE Fit · encoder training</span>
-      </div>
-
       <NodeConfigBand title="Input data path">
         <div className="flex flex-col gap-2">
           <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
@@ -2188,13 +2274,15 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-2 py-2 flex flex-col gap-0.5">
-            <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Per-feature overrides</p>
-            <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} labelCls={labelCls} />
-            <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} labelCls={labelCls} />
-            <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} labelCls={labelCls} />
-            <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} labelCls={labelCls} />
-            <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} labelCls={labelCls} />
+          <div className="flex flex-col gap-2 pt-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Per-feature overrides</p>
+            <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
+              <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} />
+              <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} />
+              <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} />
+              <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} />
+              <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} />
+            </div>
           </div>
 
           <div className="border border-slate-200 rounded-lg overflow-hidden mt-1">
@@ -2209,7 +2297,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
               <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
                 <SlidersHorizontal size={11} />
                 woe_update
-                <FieldTooltip text="Post-fit overrides per feature: set WOE, replace boundaries, or insert cutoff." />
+                <FieldTooltip
+                  detach
+                  text="Post-fit overrides per feature: set WOE, replace boundaries, or insert cutoff."
+                />
               </span>
               <div className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${woeUpdateEnabled ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}>
                 <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${woeUpdateEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
