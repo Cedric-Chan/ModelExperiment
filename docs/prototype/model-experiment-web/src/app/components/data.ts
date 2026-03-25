@@ -300,6 +300,92 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: 'true',
     },
     {
+      name: 'feature_selection_input_binding',
+      description:
+        'Feature Selection input.data_path binding `upstreamNodeId|portKey`; default n3|data_save_path when WOE Transform is n3.',
+      value: 'n3|data_save_path',
+    },
+    {
+      name: 'feature_selection_fixed_data_path',
+      description: 'Manual S3 path when binding empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_sample_scope',
+      description: 'JSON array train / test / val / all for selection input filter.',
+      value: '["train"]',
+    },
+    {
+      name: 'feature_selection_label_column',
+      description: 'Override label; empty inherits label_column.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_categorical_features',
+      description: 'JSON override; empty inherits categorical_columns.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_woe_missing_values',
+      description: 'JSON override; empty inherits woe_missing_value.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_woe_missing_logic',
+      description: 'Override; empty inherits woe_missing_logic.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_exclude_columns',
+      description: 'JSON override; empty inherits exclude_columns.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_select_methods',
+      description: 'JSON array of fs_methods: by_iv, by_corr, by_gini, by_psi.',
+      value: '["by_iv","by_corr"]',
+    },
+    {
+      name: 'feature_selection_stability_params',
+      description: 'YAML/text stability block when by_stability is selected; empty uses UI default template until edited.',
+      value: '',
+    },
+    {
+      name: 'feature_selection_iv_threshold',
+      description: 'IV filter threshold.',
+      value: '0.02',
+    },
+    {
+      name: 'feature_selection_corr_threshold',
+      description: 'Correlation filter threshold.',
+      value: '0.7',
+    },
+    {
+      name: 'feature_selection_psi_threshold',
+      description: 'PSI threshold when by_psi is used.',
+      value: '0.1',
+    },
+    {
+      name: 'feature_selection_feature_report',
+      description: 'Emit feature report during selection (true/false).',
+      value: 'true',
+    },
+    {
+      name: 'feature_selection_stability_dim',
+      description: 'Hive column for stability analysis dimension.',
+      value: 'user_id',
+    },
+    {
+      name: 'feature_selection_report_tabs',
+      description: 'JSON array: performance, trend, stability, mono.',
+      value: '["performance","trend","stability","mono"]',
+    },
+    {
+      name: 'feature_selection_checkpoint_after_node',
+      description: 'Pause for checkpoint after Feature Selection completes.',
+      value: 'false',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',

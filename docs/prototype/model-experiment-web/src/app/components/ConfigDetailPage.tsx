@@ -44,6 +44,8 @@ type NodePanelEnvProps = {
   woeFitDagContext?: { woeFitNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
   /** When set (WOE Transform on canvas), enables upstream cascades from DAG. */
   woeTransformDagContext?: { woeTransformNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
+  /** When set (Feature Selection on canvas), enables upstream data_path cascade from DAG. */
+  featureSelectionDagContext?: { featureSelectionNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
 };
 
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
@@ -76,6 +78,15 @@ const WOE_TRANSFORM_FEATURE_REPORT_ENV = 'woe_transform_feature_report';
 const WOE_TRANSFORM_STABILITY_DIM_ENV = 'woe_transform_stability_dim';
 const WOE_TRANSFORM_REPORT_TABS_ENV = 'woe_transform_report_tabs';
 const WOE_TRANSFORM_CHECKPOINT_AFTER_NODE_ENV = 'woe_transform_checkpoint_after_node';
+const FEATURE_SELECTION_INPUT_BINDING_ENV = 'feature_selection_input_binding';
+const FEATURE_SELECTION_FIXED_DATA_PATH_ENV = 'feature_selection_fixed_data_path';
+const FEATURE_SELECTION_SAMPLE_SCOPE_ENV = 'feature_selection_sample_scope';
+const FEATURE_SELECTION_EXCLUDE_COLUMNS_ENV = 'feature_selection_exclude_columns';
+const FEATURE_SELECTION_SELECT_METHODS_ENV = 'feature_selection_select_methods';
+const FEATURE_SELECTION_IV_THRESHOLD_ENV = 'feature_selection_iv_threshold';
+const FEATURE_SELECTION_CORR_THRESHOLD_ENV = 'feature_selection_corr_threshold';
+const FEATURE_SELECTION_PSI_THRESHOLD_ENV = 'feature_selection_psi_threshold';
+const FEATURE_SELECTION_CHECKPOINT_AFTER_NODE_ENV = 'feature_selection_checkpoint_after_node';
 
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
@@ -98,16 +109,23 @@ function getUpstreamNodesForTarget(edges: DagEdge[], nodes: DagNode[], targetId:
 
 type WoeCascadePort = { key: string; label: string; typeLabel: string; disabled?: boolean };
 
-type WoeCascadeKind = 'fit_data' | 'transform_data' | 'transform_encoder';
+type WoeCascadeKind =
+  | 'fit_data'
+  | 'transform_data'
+  | 'transform_encoder'
+  | 'feature_selection_data';
 
 function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCascadePort[] {
-  if (kind === 'fit_data' || kind === 'transform_data') {
+  if (kind === 'fit_data' || kind === 'transform_data' || kind === 'feature_selection_data') {
     if (nodeType === 'data_source') {
       return [
         { key: 'features_data_path', label: 'features_data_path', typeLabel: 'string' },
         { key: 'loaded_data_path', label: 'loaded_data_path', typeLabel: 'string' },
         { key: 'row_count', label: 'row_count', typeLabel: 'int', disabled: true },
       ];
+    }
+    if (kind === 'feature_selection_data' && nodeType === 'woe_transform') {
+      return [{ key: 'data_save_path', label: 'data_save_path', typeLabel: 'string' }];
     }
     return [{ key: 'output', label: 'output', typeLabel: 'string', disabled: true }];
   }
@@ -140,10 +158,13 @@ function resolveCascadePortPath(
   kind: WoeCascadeKind,
 ): string {
   const node = nodes.find((n) => n.id === nodeId);
-  if (kind === 'fit_data' || kind === 'transform_data') {
+  if (kind === 'fit_data' || kind === 'transform_data' || kind === 'feature_selection_data') {
     if (node?.type === 'data_source') {
       if (portKey === 'features_data_path') return buildDataSourceFeaturesInputPath(task, pipelineEnv);
       if (portKey === 'loaded_data_path') return buildDataSourceLoadedOutputPath(task, pipelineEnv);
+    }
+    if (kind === 'feature_selection_data' && node?.type === 'woe_transform' && portKey === 'data_save_path') {
+      return buildWoeTransformDataSavePathDisplay(task, pipelineEnv);
     }
     return buildDataSourceFeaturesInputPath(task, pipelineEnv);
   }
@@ -2095,7 +2116,9 @@ function WoeCascadeBindingField({
             <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
               {cascadeKind === 'transform_encoder'
                 ? 'Select upstream WOE Fit for encoder .pkl — pick encoder_save_path on the right when a WoeFit node is selected on the left.'
-                : 'No outputs available for this node.'}
+                : cascadeKind === 'feature_selection_data'
+                  ? 'Pick upstream WOE Transform (or DataSource) on the left, then choose data_save_path or features path.'
+                  : 'No outputs available for this node.'}
             </p>
           ) : (
             rightPorts.map((port) => {
@@ -3195,126 +3218,81 @@ function CopyPathField({ label, path, labelCls }: { label: string; path: string;
 }
 
 /* ─────────────── Feature Selection Config Panel ─────────────── */
-const UPSTREAM_OUTPUTS = [
-  { nodeLabel: 'WOE Process',  path: 's3://mlops-artifacts/woe/merge/v12/woe_merge_result.parquet' },
-  { nodeLabel: 'WOE Transform', path: 's3://mlops-artifacts/woe/merge/v12/woe_update_result.parquet' },
-];
+const FS_METHODS = ['by_iv', 'by_corr', 'by_gini', 'by_psi'] as const;
+type FsMethod = (typeof FS_METHODS)[number];
 
-const SELECT_METHODS = ['by_iv', 'by_corr', 'by_psi', 'by_gini', 'by_stability'] as const;
-type SelectMethod = typeof SELECT_METHODS[number];
-
-const STABILITY_PARAMS_JSON = `stability:
-  lambda_grid: [0.001, 0.01, 0.1]
-  stability_threshold: 0.05
-  n_resampling: 50
-  random_state: 42
-  bootstrap: true`;
-
-/* ─────────────── Stability Params Editor ─────────────── */
-function StabilityParamsEditor({ readOnly }: { readOnly?: boolean }) {
-  const [value, setValue] = useState(STABILITY_PARAMS_JSON);
-  const [parseError, setParseError] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize textarea to fit content
-  const autoResize = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  };
-
-  useEffect(() => { autoResize(); }, [value]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const v = e.target.value;
-    setValue(v);
-    // Lightweight structural check: flag if indentation/keys look broken
-    const hasKeys = ['lambda_grid', 'stability_threshold', 'n_resampling'].every(k => v.includes(k));
-    setParseError(!hasKeys);
-  };
-
-  const handleReset = () => {
-    setValue(STABILITY_PARAMS_JSON);
-    setParseError(false);
-  };
-
-  return (
-    <div className={`rounded-lg border overflow-hidden transition-colors ${parseError ? 'border-rose-300' : 'border-amber-200'}`}>
-      {/* Header */}
-      <div className={`flex items-center justify-between px-2.5 py-1.5 border-b ${parseError ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50/60'}`}>
-        <div className="flex items-center gap-1.5">
-          <SlidersHorizontal size={10} className={parseError ? 'text-rose-400 shrink-0' : 'text-amber-500 shrink-0'} />
-          <span className={`text-[10px] font-semibold uppercase tracking-wide ${parseError ? 'text-rose-600' : 'text-amber-700'}`}>
-            Stability Params
-          </span>
-          {parseError && (
-            <span className="text-[9px] font-semibold text-rose-500 bg-rose-100 border border-rose-200 rounded px-1 py-px">
-              invalid
-            </span>
-          )}
-        </div>
-        {!readOnly && (
-          <button
-            onClick={handleReset}
-            title="Reset to defaults"
-            className="flex items-center gap-1 text-[9px] text-slate-400 hover:text-[#13c2c2] transition-colors px-1.5 py-0.5 rounded hover:bg-white/70"
-          >
-            <RotateCcw size={9} />
-            <span className="font-semibold">Reset</span>
-          </button>
-        )}
-      </div>
-
-      {/* Editable code area */}
-      <div className={`relative ${parseError ? 'bg-rose-50/40' : 'bg-[#1e1e2e]'}`}>
-        {/* Line numbers */}
-        <div className="flex">
-          <div className="select-none shrink-0 pt-2.5 pb-2.5 pl-2 pr-1.5 flex flex-col gap-0 text-right"
-            style={{ minWidth: 28 }}>
-            {value.split('\n').map((_, i) => (
-              <span key={i} className="text-[9px] font-mono leading-[1.6] text-slate-500/50">{i + 1}</span>
-            ))}
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={value}
-            readOnly={readOnly}
-            onChange={handleChange}
-            onInput={autoResize}
-            spellCheck={false}
-            rows={value.split('\n').length}
-            className={`flex-1 resize-none outline-none bg-transparent text-[10px] font-mono leading-[1.6]
-              pt-2.5 pb-2.5 pr-3 min-w-0 w-full
-              ${parseError
-                ? 'text-rose-700 caret-rose-400'
-                : 'text-[#cdd6f4] caret-[#13c2c2]'}
-              ${readOnly ? 'cursor-default' : 'cursor-text'}
-              focus:outline-none`}
-            style={{ overflowY: 'hidden', overflowX: 'auto' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
+function parseFsMethodsJson(raw: string): FsMethod[] {
+  try {
+    const a = JSON.parse(raw || '[]') as unknown;
+    if (!Array.isArray(a)) return ['by_iv', 'by_corr'];
+    const ok = a.filter(
+      (x): x is FsMethod => typeof x === 'string' && (FS_METHODS as readonly string[]).includes(x),
+    );
+    return ok.length ? ok : ['by_iv', 'by_corr'];
+  } catch {
+    return ['by_iv', 'by_corr'];
+  }
 }
 
-function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
+function stringifyFsMethodsJson(methods: FsMethod[]): string {
+  return JSON.stringify(methods);
+}
+
+function FeatureSelectionConfigPanel({
+  task,
+  onPatchPipelineEnvRow,
+  readOnly,
+  featureSelectionDagContext,
+}: NodePanelEnvProps) {
+  const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const bindingRaw = getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_INPUT_BINDING_ENV);
+  const fixedPathRaw = getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_FIXED_DATA_PATH_ENV);
+  const [fixedMenuChosen, setFixedMenuChosen] = useState(false);
+
+  useEffect(() => {
+    if (bindingRaw.trim()) setFixedMenuChosen(false);
+  }, [bindingRaw]);
+
+  useEffect(() => {
+    if (!bindingRaw.trim() && fixedPathRaw.trim()) setFixedMenuChosen(true);
+  }, [task.id, bindingRaw, fixedPathRaw]);
+
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
 
-  const [mergeResultPath, setMergeResultPath] = useState(UPSTREAM_OUTPUTS[0].path);
-
-  const [methods, setMethods] = useState<SelectMethod[]>(['by_iv', 'by_corr']);
+  const methods = parseFsMethodsJson(getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_SELECT_METHODS_ENV));
   const [methodOpen, setMethodOpen] = useState(false);
   const methodRef = useRef<HTMLDivElement>(null);
-  const hasStability = methods.includes('by_stability');
 
-  const [ivThreshold, setIvThreshold]     = useState(0.02);
-  const [corrThreshold, setCorrThreshold] = useState(0.7);
-  const [psiThreshold, setPsiThreshold]   = useState(0.1);
+  const ivThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_IV_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.02;
+  })();
+  const corrThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_CORR_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.7;
+  })();
+  const psiThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_PSI_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.1;
+  })();
+
+  const fsCheckpointAfterNode =
+    getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_CHECKPOINT_AFTER_NODE_ENV).toLowerCase() === 'true';
+
+  const selectionReportPath = buildFeatureSelectionSelectionReportPathDisplay(task, task.pipelineEnv);
+  const featureListPath = buildFeatureSelectionFeatureListPathDisplay(task, task.pipelineEnv);
+  const fallbackDataPath = buildWoeTransformDataSavePathDisplay(task, task.pipelineEnv);
+
+  const upstreamForFs = featureSelectionDagContext
+    ? getUpstreamNodesForTarget(
+        featureSelectionDagContext.edges,
+        featureSelectionDagContext.nodes,
+        featureSelectionDagContext.featureSelectionNodeId,
+      )
+    : [];
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -3326,154 +3304,217 @@ function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const toggleMethod = (m: SelectMethod) => {
+  const toggleFsMethod = (m: FsMethod) => {
     if (readOnly) return;
-    setMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+    const next = methods.includes(m) ? methods.filter((x) => x !== m) : [...methods, m];
+    onPatchPipelineEnvRow(FEATURE_SELECTION_SELECT_METHODS_ENV, stringifyFsMethodsJson(next));
   };
 
   return (
     <div className="px-4 py-3 flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
-        <Filter size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">Feature Selection</span>
-      </div>
-
       <NodeConfigBand title="Input data path">
-        {/* 1. Load WOE Merge Result */}
-        <div>
-          <p className={labelCls}>
-            Load WOE Merge Result
-            <FieldTooltip text="woe_merge_result_path — Auto-resolved from the upstream WOE Process node. You can override the path by editing directly." />
-          </p>
-          {/* auto-resolved badge */}
-          <div className="flex items-center gap-1 mb-1.5">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-[#13c2c2]/8 text-[#0d9e9e] border border-[#13c2c2]/20">
-              <Database size={8} className="shrink-0" />
-              Auto-resolved · WOE Process
-            </span>
-          </div>
-          <input
-            type="text"
-            disabled={readOnly}
-            value={mergeResultPath}
-            onChange={e => setMergeResultPath(e.target.value)}
-            className={`${numInputCls} text-[10px]`}
-          />
+        <div className="flex flex-col gap-2">
+          {featureSelectionDagContext ? (
+            <WoeCascadeBindingField
+              task={task}
+              readOnly={readOnly}
+              upstreamNodes={upstreamForFs}
+              allNodes={featureSelectionDagContext.nodes}
+              bindingRaw={bindingRaw}
+              fixedPathRaw={fixedPathRaw}
+              fixedMenuChosen={fixedMenuChosen}
+              onFixedMenuChosen={setFixedMenuChosen}
+              onBindingChange={(raw) => {
+                onPatchPipelineEnvRow(FEATURE_SELECTION_INPUT_BINDING_ENV, raw);
+                if (raw.trim()) onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, '');
+              }}
+              onFixedPathChange={(path) => {
+                onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, path);
+                if (path.trim()) onPatchPipelineEnvRow(FEATURE_SELECTION_INPUT_BINDING_ENV, '');
+              }}
+              onClearAll={() => {
+                onPatchPipelineEnvRow(FEATURE_SELECTION_INPUT_BINDING_ENV, '');
+                onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, '');
+                setFixedMenuChosen(false);
+              }}
+              numInputCls={numInputCls}
+              fieldName="data_path"
+              typeBadge="data"
+              cascadeKind="feature_selection_data"
+              cardNoUpstreamHint={`No upstream node linked to Feature Selection. Connect WOE Transform (recommended for data_save_path), or use ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+              portalNoUpstreamHint={`No upstream nodes — connect an upstream node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+            />
+          ) : (
+            <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+              <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+              <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{fallbackDataPath}</span>
+            </div>
+          )}
         </div>
       </NodeConfigBand>
 
       <NodeConfigBand title="Node configuration">
-      <div className="flex flex-col gap-3.5">
-      {/* 2. Select Method multi-select */}
-      <div ref={methodRef}>
-        <p className={labelCls}>Select Method</p>
-        <div className="relative">
-          <button
-            disabled={readOnly}
-            onClick={() => !readOnly && setMethodOpen(v => !v)}
-            className={`w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between
-              text-xs transition-colors
-              focus:outline-none focus:border-[#13c2c2]/60
-              disabled:bg-slate-50 disabled:cursor-not-allowed
-              ${methodOpen ? 'border-[#13c2c2]/60 ring-1 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
-          >
-            <span className="truncate text-left font-mono text-[10px] text-slate-700">
-              {methods.length === 0
-                ? <span className="text-slate-400">— select methods —</span>
-                : methods.join(', ')}
-            </span>
-            <ChevronDown size={11} className={`shrink-0 text-slate-400 ml-1 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {methodOpen && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-              {SELECT_METHODS.map(m => {
-                const checked = methods.includes(m);
-                return (
-                  <button
-                    key={m}
-                    onClick={() => toggleMethod(m)}
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
-                  >
-                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all
-                      ${checked ? 'bg-[#13c2c2] border-[#13c2c2]' : 'border-slate-300 bg-white'}`}>
-                      {checked && <CheckIcon size={9} strokeWidth={3} className="text-white" />}
-                    </div>
-                    <span className="text-[11px] font-mono text-slate-700">{m}</span>
-                  </button>
-                );
-              })}
+        <div className="flex flex-col gap-3">
+          <SampleScopeMultiSelect
+            value={parseSampleScopeJson(getPipelineEnvValue(mergedEnv, FEATURE_SELECTION_SAMPLE_SCOPE_ENV))}
+            readOnly={readOnly}
+            onChange={(next) => onPatchPipelineEnvRow(FEATURE_SELECTION_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
+            labelCls={labelCls}
+            tooltip="Scopes for selection input rows (train / test / val / all). Stored as feature_selection_sample_scope."
+          />
+          <div>
+            <p className={labelCls}>
+              exclude_cols
+              <FieldTooltip text="JSON list of columns to exclude; pre-filled from Pipeline ENV exclude_columns until you override (feature_selection_exclude_columns)." />
+            </p>
+            <textarea
+              value={woeFitEnvOrGlobal(mergedEnv, FEATURE_SELECTION_EXCLUDE_COLUMNS_ENV, 'exclude_columns')}
+              readOnly={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(FEATURE_SELECTION_EXCLUDE_COLUMNS_ENV, e.target.value)}
+              rows={5}
+              spellCheck={false}
+              className={`${numInputCls} min-h-[88px] resize-y py-1.5 text-[10px]`}
+            />
+          </div>
+          <div ref={methodRef}>
+            <p className={labelCls}>
+              fs_methods
+              <FieldTooltip text="Selection methods: by_iv, by_corr, by_gini, by_psi. Stored as JSON in feature_selection_select_methods." />
+            </p>
+            <div className="relative">
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => !readOnly && setMethodOpen((v) => !v)}
+                className={`w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between
+                  text-xs transition-colors
+                  focus:outline-none focus:border-[#13c2c2]/60
+                  disabled:bg-slate-50 disabled:cursor-not-allowed
+                  ${methodOpen ? 'border-[#13c2c2]/60 ring-1 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
+              >
+                <span className="truncate text-left font-mono text-[10px] text-slate-700">
+                  {methods.length === 0 ? (
+                    <span className="text-slate-400">— select methods —</span>
+                  ) : (
+                    methods.join(', ')
+                  )}
+                </span>
+                <ChevronDown
+                  size={11}
+                  className={`shrink-0 text-slate-400 ml-1 transition-transform ${methodOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {methodOpen && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+                  {FS_METHODS.map((m) => {
+                    const checked = methods.includes(m);
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => toggleFsMethod(m)}
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+                      >
+                        <div
+                          className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all
+                          ${checked ? 'bg-[#13c2c2] border-[#13c2c2]' : 'border-slate-300 bg-white'}`}
+                        >
+                          {checked && <CheckIcon size={9} strokeWidth={3} className="text-white" />}
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-700">{m}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+          <div>
+            <p className={labelCls}>
+              iv_threshold
+              <FieldTooltip text="IV filter threshold (default 0.02)." />
+            </p>
+            <input
+              type="number"
+              step={0.001}
+              min={0}
+              max={1}
+              value={ivThreshold}
+              disabled={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(FEATURE_SELECTION_IV_THRESHOLD_ENV, String(Number(e.target.value)))}
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              corr_threshold
+              <FieldTooltip text="Correlation threshold (default 0.7)." />
+            </p>
+            <input
+              type="number"
+              step={0.01}
+              min={0}
+              max={1}
+              value={corrThreshold}
+              disabled={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(FEATURE_SELECTION_CORR_THRESHOLD_ENV, String(Number(e.target.value)))}
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              psi_threshold
+              <FieldTooltip text="PSI threshold when by_psi is selected (default 0.1)." />
+            </p>
+            <input
+              type="number"
+              step={0.01}
+              min={0}
+              max={1}
+              value={psiThreshold}
+              disabled={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(FEATURE_SELECTION_PSI_THRESHOLD_ENV, String(Number(e.target.value)))}
+              className={numInputCls}
+            />
+          </div>
         </div>
-      </div>
-
-      {/* 2.1 Stability params */}
-      {hasStability && (
-        <StabilityParamsEditor readOnly={readOnly} />
-      )}
-
-      {/* 3. IV Threshold */}
-      <div>
-        <p className={labelCls}>
-          IV Threshold
-          <FieldTooltip text="Information Value filter threshold. Features below this value will be dropped. Default: 0.02." />
-        </p>
-        <input
-          type="number" step={0.001} min={0} max={1}
-          value={ivThreshold}
-          disabled={readOnly}
-          onChange={e => setIvThreshold(Number(e.target.value))}
-          className={numInputCls}
-        />
-      </div>
-
-      {/* 4. Correlation Threshold */}
-      <div>
-        <p className={labelCls}>
-          Correlation Threshold
-          <FieldTooltip text="Pearson correlation threshold. For highly correlated feature pairs, the one with lower IV will be dropped. Default: 0.7." />
-        </p>
-        <input
-          type="number" step={0.01} min={0} max={1}
-          value={corrThreshold}
-          disabled={readOnly}
-          onChange={e => setCorrThreshold(Number(e.target.value))}
-          className={numInputCls}
-        />
-      </div>
-
-      {/* 5. PSI Threshold */}
-      <div>
-        <p className={labelCls}>
-          PSI Threshold
-          <FieldTooltip text="Population Stability Index threshold. Unstable features above this value will be dropped (effective only when by_psi is selected). Default: 0.1." />
-        </p>
-        <input
-          type="number" step={0.01} min={0} max={1}
-          value={psiThreshold}
-          disabled={readOnly}
-          onChange={e => setPsiThreshold(Number(e.target.value))}
-          className={numInputCls}
-        />
-      </div>
-      </div>
       </NodeConfigBand>
 
-      <NodeResourceAdvBlock
-        readOnly={readOnly}
-        pipelineEnv={task.pipelineEnv}
-        onPatchEnv={onPatchPipelineEnvRow}
-      />
+      <NodeResourceAdvBlock readOnly={readOnly} pipelineEnv={task.pipelineEnv} onPatchEnv={onPatchPipelineEnvRow} />
 
       <NodeConfigBand title="Output path">
-      <div className="pb-0.5">
-        <CopyPathField
-          label="feature_selection_report_path"
-          path="s3://mlops-artifacts/feature-selection/v12/feature_selection_report.xlsx"
-          labelCls={labelCls}
-        />
-      </div>
+        <div className="flex flex-col gap-2 pb-0.5">
+          <CopyPathField label="selection_report_path" path={selectionReportPath} labelCls={labelCls} />
+          <CopyPathField label="feature_list_path" path={featureListPath} labelCls={labelCls} />
+        </div>
       </NodeConfigBand>
+
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200/80 border-l-4 border-l-[#13c2c2]/40 bg-gradient-to-r from-[#13c2c2]/[0.07] to-white"
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`${labelCls} mb-0`}>
+            Node checkpoint
+            <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
+          </p>
+          <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">
+            Cached checkpoint lets you resume or re-run from this node without redoing upstream work.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() =>
+            !readOnly &&
+            onPatchPipelineEnvRow(FEATURE_SELECTION_CHECKPOINT_AFTER_NODE_ENV, fsCheckpointAfterNode ? 'false' : 'true')
+          }
+          className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 shrink-0 ${fsCheckpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+        >
+          <div
+            className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${fsCheckpointAfterNode ? 'translate-x-3.5' : 'translate-x-0'}`}
+          />
+        </button>
+      </div>
     </div>
   );
 }
@@ -3893,6 +3934,22 @@ function buildWoeTransformFeatureReportSavePathDisplay(task: TrainingTask, pipel
   return `${trimmed}/${task.modelName}{run_id}/reports/feature_report_${task.modelName}.html`;
 }
 
+function buildFeatureSelectionSelectionReportPathDisplay(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/feature_selection/selection_report.xlsx`;
+}
+
+function buildFeatureSelectionFeatureListPathDisplay(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/feature_selection/selected_feature_list.json`;
+}
+
 function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const mergedEnv = React.useMemo(
     () => mergePipelineEnvWithDefaults(task.pipelineEnv),
@@ -4155,7 +4212,12 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
               woeTransformDagContext={{ woeTransformNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
             />
           ) : node.type === 'feature_selection' ? (
-            <FeatureSelectionConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
+            <FeatureSelectionConfigPanel
+              task={task}
+              onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+              readOnly={readOnly}
+              featureSelectionDagContext={{ featureSelectionNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
+            />
           ) : node.type === 'tune_train' ? (
             <ModelTuneConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'infer' ? (
