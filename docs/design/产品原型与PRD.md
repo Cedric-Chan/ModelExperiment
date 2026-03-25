@@ -118,6 +118,14 @@ flowchart TD
     RunDetail -->|手动 Register Build| ModelDetail
 ```
 
+### 交互设计原则（全局，须遵守）
+
+以下适用于 **Model Experiment** 相关 Web 与同源 [Figma：Model-Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment)；**实现（含 [`model-experiment-web`](../prototype/model-experiment-web/README.md) 与后续生产前端）须一致落实**。
+
+1. **弹窗与 Esc 键**  
+   **所有**面向用户的**模态弹窗**（居中/侧栏对话框、全屏遮罩表单、二次确认、配置编辑浮层等）在打开且处于可关闭语义下时，**必须**支持通过键盘 **Esc** 关闭，效果与点击遮罩或「Cancel / 关闭」一致（是否丢弃未保存内容遵循该弹窗自身的产品定义）。  
+   - **例外**：仅当产品明确要求「不可一键退出」的阻断型弹窗（如强制阅读、合规确认）可不响应 Esc，且须在交互稿与本 PRD 中**单独标注**。
+
 ---
 
 ## 4. 核心功能场景与页面原型说明
@@ -169,7 +177,7 @@ flowchart TD
 | Use Cache 开关 | 是否优先复用未变更节点缓存（关=全量） |
 
 **配置页（画布）**：
-- 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 256px）。
+- 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 384px，较早期 256px 增宽 50% 以降低信息密度）。
 - 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉 + **Execute Config** + **Action**（**Trigger Run**；Run View 下 **Kill** 可用）。
 - **Trigger Run** 弹窗：**Use Cache**、**Run Notes**、**Run** 提交。
 - 节点链与 §4.1 一致；DAG **无 Start/End**；**Execute Config** 含 **Schedule：ONCE / Cron**（Cron 时填写表达式）及 **Pipeline Input Fields**。

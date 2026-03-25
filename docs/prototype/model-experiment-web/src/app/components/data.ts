@@ -142,6 +142,12 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: 'null',
     },
     {
+      name: 'woe_fit_input_binding',
+      description:
+        'Optional WOE Fit input.data_path cascade binding as `upstreamNodeId|outputPort` (e.g. n1|features_data_path). Empty uses default features path from base_train_path.',
+      value: '',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',

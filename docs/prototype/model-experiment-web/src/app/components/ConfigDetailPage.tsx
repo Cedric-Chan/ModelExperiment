@@ -5,7 +5,7 @@ import {
   Maximize2, GitBranch, Database,
   Settings, Lock, X,
   CheckCheck, AlertCircle, Loader2, ShieldCheck,
-  ChevronDown, Check as CheckIcon, SlidersHorizontal,
+  ChevronDown, ChevronRight, Check as CheckIcon, SlidersHorizontal,
   Filter, Cpu, TrendingUp, Sliders,
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
@@ -40,7 +40,72 @@ type NodePanelEnvProps = {
   task: TrainingTask;
   onPatchPipelineEnvRow: (key: string, value: string) => void;
   readOnly?: boolean;
+  /** When set (WOE Fit on canvas), enables upstream variable cascade picker from DAG. */
+  woeFitDagContext?: { woeFitNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
 };
+
+const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
+
+function workflowStepLabel(node: DagNode): string {
+  const p: Partial<Record<NodeType, string>> = {
+    data_source: 'DataSource',
+    woe_fit: 'WoeFit',
+    woe_transform: 'WoeTransform',
+    feature_selection: 'FeatureSelection',
+    tune_train: 'TuneTrain',
+    infer: 'Infer',
+  };
+  return `${p[node.type] ?? 'Node'}_${node.id}`;
+}
+
+function getUpstreamNodesForTarget(edges: DagEdge[], nodes: DagNode[], targetId: string): DagNode[] {
+  const fromIds = edges.filter((e) => e.to === targetId).map((e) => e.from);
+  return fromIds
+    .map((id) => nodes.find((n) => n.id === id))
+    .filter((n): n is DagNode => n !== undefined);
+}
+
+type WoeCascadePort = { key: string; label: string; typeLabel: string; disabled?: boolean };
+
+function outputPortsForUpstreamNode(nodeType: NodeType): WoeCascadePort[] {
+  if (nodeType === 'data_source') {
+    return [
+      { key: 'features_data_path', label: 'features_data_path', typeLabel: 'string' },
+      { key: 'loaded_data_path', label: 'loaded_data_path', typeLabel: 'string' },
+      { key: 'row_count', label: 'row_count', typeLabel: 'int', disabled: true },
+    ];
+  }
+  return [{ key: 'output', label: 'output', typeLabel: 'string', disabled: true }];
+}
+
+function parseWoeFitBinding(raw: string): { nodeId: string; portKey: string } | null {
+  if (!raw || !raw.includes('|')) return null;
+  const i = raw.indexOf('|');
+  const nodeId = raw.slice(0, i);
+  const portKey = raw.slice(i + 1);
+  if (!nodeId || !portKey) return null;
+  return { nodeId, portKey };
+}
+
+function formatWoeFitBinding(raw: string): string {
+  const p = parseWoeFitBinding(raw);
+  return p ? `${p.nodeId} / ${p.portKey}` : '';
+}
+
+function resolveWoeFitPortPath(
+  nodeId: string,
+  portKey: string,
+  nodes: DagNode[],
+  task: TrainingTask,
+  pipelineEnv: PipelineEnvRow[] | undefined,
+): string {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (node?.type === 'data_source') {
+    if (portKey === 'features_data_path') return buildDataSourceFeaturesInputPath(task, pipelineEnv);
+    if (portKey === 'loaded_data_path') return buildDataSourceLoadedOutputPath(task, pipelineEnv);
+  }
+  return buildDataSourceFeaturesInputPath(task, pipelineEnv);
+}
 
 /* ─────────────── Node types ─────────────── */
 type NodeType =
@@ -92,6 +157,8 @@ interface VersionSnapshot {
 /* ─────────────── Constants ─────────────── */
 const NODE_W = 164;
 const NODE_H  = 62;
+/** Canvas right PropertyPanel width (legacy w-64 256px × 1.5). */
+const CONFIG_PANEL_WIDTH_PX = 384;
 const GX = 200;
 const MID = 240;
 const X0  = 50;
@@ -1454,7 +1521,213 @@ function AlgoDictFieldRow({
   );
 }
 
-function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
+function WoeFitDifyCascadeSourceField({
+  task,
+  readOnly,
+  upstreamNodes,
+  allNodes,
+  bindingRaw,
+  onBindingChange,
+  onPickFixedMode,
+}: {
+  task: TrainingTask;
+  readOnly?: boolean;
+  upstreamNodes: DagNode[];
+  allNodes: DagNode[];
+  bindingRaw: string;
+  onBindingChange: (raw: string) => void;
+  onPickFixedMode: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [hoverLeftId, setHoverLeftId] = useState<string | null>(null);
+
+  const parsed = parseWoeFitBinding(bindingRaw);
+  const defaultUpstream = upstreamNodes[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    document.addEventListener('keydown', k);
+    return () => {
+      document.removeEventListener('mousedown', h);
+      document.removeEventListener('keydown', k);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setHoverLeftId(parsed?.nodeId ?? defaultUpstream?.id ?? '__start__');
+    }
+  }, [open, parsed?.nodeId, defaultUpstream?.id]);
+
+  const focusLeftId = open
+    ? (hoverLeftId ?? parsed?.nodeId ?? defaultUpstream?.id ?? '__start__')
+    : (parsed?.nodeId ?? defaultUpstream?.id ?? '__start__');
+
+  const breadcrumb = (() => {
+    if (!parsed) return '';
+    if (parsed.nodeId === '__start__') return 'Start / —';
+    if (parsed.nodeId === '__fixed__') return 'FixedValue / custom_s3_uri';
+    const n = allNodes.find((x) => x.id === parsed.nodeId);
+    if (!n) return formatWoeFitBinding(bindingRaw);
+    const ports = outputPortsForUpstreamNode(n.type);
+    const port = ports.find((p) => p.key === parsed.portKey);
+    return `${workflowStepLabel(n)} / ${port?.label ?? parsed.portKey}`;
+  })();
+
+  const resolvedPath =
+    parsed && parsed.nodeId !== '__start__' && parsed.nodeId !== '__fixed__'
+      ? resolveWoeFitPortPath(parsed.nodeId, parsed.portKey, allNodes, task, task.pipelineEnv)
+      : '';
+
+  const leftRows: { id: string; label: string; node?: DagNode }[] = [
+    { id: '__start__', label: 'Start' },
+    ...upstreamNodes.map((n) => ({ id: n.id, label: workflowStepLabel(n), node: n })),
+    { id: '__fixed__', label: 'FixedValue' },
+  ];
+
+  const rightPorts: WoeCascadePort[] = (() => {
+    if (focusLeftId === '__start__') {
+      return [
+        { key: 'workflow_context', label: 'workflow_context', typeLabel: 'object', disabled: true },
+        { key: 'trigger_payload', label: 'trigger_payload', typeLabel: 'string', disabled: true },
+      ];
+    }
+    if (focusLeftId === '__fixed__') {
+      return [{ key: 'custom_s3_uri', label: 'custom_s3_uri', typeLabel: 'string' }];
+    }
+    const n = allNodes.find((x) => x.id === focusLeftId);
+    return n ? outputPortsForUpstreamNode(n.type) : [];
+  })();
+
+  const handlePickPort = (leftId: string, port: WoeCascadePort) => {
+    if (readOnly || port.disabled) return;
+    if (leftId === '__fixed__' && port.key === 'custom_s3_uri') {
+      onBindingChange('');
+      onPickFixedMode();
+      setOpen(false);
+      return;
+    }
+    if (leftId === '__start__') return;
+    onBindingChange(`${leftId}|${port.key}`);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold text-slate-700">
+          Field: <span className="font-semibold">data_path</span>
+        </span>
+        <span className="text-[10px] text-slate-500">
+          type: <span className="font-mono text-slate-600">string</span>
+        </span>
+      </div>
+      <div className="flex items-start gap-2">
+        <span className="text-[10px] font-semibold text-slate-600 shrink-0 pt-2">Source:</span>
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          <div className="relative">
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => !readOnly && setOpen((o) => !o)}
+              className={`w-full min-h-9 pl-2.5 pr-9 py-1.5 rounded-lg border text-left text-[11px] font-mono transition-colors
+                ${open ? 'border-sky-400 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white hover:border-slate-300'}
+                disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <span className={`${breadcrumb ? 'text-slate-700' : 'text-slate-400'} break-all line-clamp-2`}>
+                {breadcrumb || 'Select upstream output…'}
+              </span>
+            </button>
+            {bindingRaw && !readOnly && (
+              <button
+                type="button"
+                title="Clear"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBindingChange('');
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={12} />
+              </button>
+            )}
+            {open && (
+              <div
+                className="absolute left-0 right-0 top-full mt-1 z-30 flex rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[200px] max-h-[min(320px,70vh)]"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <div className="w-[46%] min-w-[148px] border-r border-slate-200 overflow-y-auto py-1">
+                  {leftRows.map((row) => {
+                    const active = focusLeftId === row.id;
+                    const hasChildren = row.id === '__start__' || row.id === '__fixed__' || !!row.node;
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        disabled={readOnly}
+                        onMouseEnter={() => setHoverLeftId(row.id)}
+                        onFocus={() => setHoverLeftId(row.id)}
+                        onClick={() => {
+                          setHoverLeftId(row.id);
+                          if (row.id === '__fixed__') return;
+                          if (row.id === '__start__') return;
+                        }}
+                        className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 text-left text-[11px] transition-colors
+                          ${active ? 'bg-sky-50 text-sky-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'}
+                          disabled:opacity-50`}
+                      >
+                        <span className="truncate">{row.label}</span>
+                        {hasChildren && <ChevronRight size={12} className="shrink-0 text-slate-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex-1 min-w-[140px] overflow-y-auto py-1 bg-slate-50/40">
+                  {rightPorts.map((port) => {
+                    const sel =
+                      parsed &&
+                      parsed.nodeId === focusLeftId &&
+                      parsed.portKey === port.key &&
+                      !port.disabled;
+                    return (
+                      <button
+                        key={port.key}
+                        type="button"
+                        disabled={readOnly || !!port.disabled}
+                        onClick={() => handlePickPort(focusLeftId, port)}
+                        className={`w-full text-left px-2.5 py-2 text-[11px] transition-colors
+                          ${port.disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-700 hover:bg-white'}
+                          ${sel ? 'bg-sky-50 text-sky-900 font-semibold' : ''}`}
+                      >
+                        {port.label}{' '}
+                        <span className="text-slate-400 font-normal">({port.typeLabel})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          {resolvedPath && (
+            <p className="text-[9px] text-slate-400 font-mono break-all leading-relaxed px-0.5" title={resolvedPath}>
+              Resolves to: {resolvedPath}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagContext }: NodePanelEnvProps) {
   const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
   const upstreamDataPath = React.useMemo(
     () => buildDataSourceFeaturesInputPath(task, task.pipelineEnv),
@@ -1720,16 +1993,47 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelE
             <span className="text-[9px] text-slate-400 font-mono">parquet</span>
           </div>
           {inputMode === 'upstream' ? (
-            <div>
-              <p className={labelCls}>
-                data_path
-                <FieldTooltip text="Resolved from Data Source node output (train-filtered features path)." />
-              </p>
-              <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
-                <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
-                <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+            woeFitDagContext ? (
+              <div>
+                <p className={labelCls}>
+                  data_path
+                  <FieldTooltip text="Pick an upstream node output (Dify-style cascade). Unset uses the default features path from Pipeline ENV / Data Source." />
+                </p>
+                <WoeFitDifyCascadeSourceField
+                  task={task}
+                  readOnly={readOnly}
+                  upstreamNodes={getUpstreamNodesForTarget(
+                    woeFitDagContext.edges,
+                    woeFitDagContext.nodes,
+                    woeFitDagContext.woeFitNodeId,
+                  )}
+                  allNodes={woeFitDagContext.nodes}
+                  bindingRaw={getPipelineEnvValue(mergedEnv, WOE_FIT_INPUT_BINDING_ENV)}
+                  onBindingChange={(raw) => onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, raw)}
+                  onPickFixedMode={() => setInputMode('fixed')}
+                />
+                {!getPipelineEnvValue(mergedEnv, WOE_FIT_INPUT_BINDING_ENV) && (
+                  <div className="min-h-7 px-2 py-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 flex items-start gap-1.5 mt-1">
+                    <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Default (when unset)</p>
+                      <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div>
+                <p className={labelCls}>
+                  data_path
+                  <FieldTooltip text="Resolved from Data Source node output (train-filtered features path)." />
+                </p>
+                <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                  <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                  <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+                </div>
+              </div>
+            )
           ) : (
             <div>
               <p className={labelCls}>
@@ -3139,13 +3443,15 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
 }
 
 /* ────────���────── Regular node panel ─────────────── */
-function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow }: {
+function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow, dagNodes, dagEdges }: {
   node: DagNode;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
   task: TrainingTask;
   onPatchPipelineEnvRow: (key: string, value: string) => void;
+  dagNodes: DagNode[];
+  dagEdges: DagEdge[];
 }) {
   const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
@@ -3187,7 +3493,12 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
           node.type === 'data_source' ? (
             <DataSourceConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'woe_fit' ? (
-            <WoeFitConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
+            <WoeFitConfigPanel
+              task={task}
+              onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+              readOnly={readOnly}
+              woeFitDagContext={{ woeFitNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
+            />
           ) : node.type === 'woe_transform' ? (
             <WoeTransformConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'feature_selection' ? (
@@ -3289,13 +3600,15 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
 /* ─────────────── End Node panel ─────────────── */
 
 /* ─────────────── Property panel dispatcher ─────────────── */
-function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow }: {
+function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow, dagNodes, dagEdges }: {
   node: DagNode | null;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
   task: TrainingTask;
   onPatchPipelineEnvRow: (key: string, value: string) => void;
+  dagNodes: DagNode[];
+  dagEdges: DagEdge[];
 }) {
   if (!node) return (
     <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 px-6">
@@ -3311,6 +3624,8 @@ function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatc
       readOnly={readOnly}
       task={task}
       onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+      dagNodes={dagNodes}
+      dagEdges={dagEdges}
     />
   );
 }
@@ -4805,13 +5120,18 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
         )}
 
         {/* Right panel */}
-        <div className="w-64 min-h-0 h-full overflow-hidden bg-white border-l border-slate-200 flex flex-col shrink-0">
+        <div
+          className="min-h-0 h-full overflow-hidden bg-white border-l border-slate-200 flex flex-col shrink-0"
+          style={{ width: CONFIG_PANEL_WIDTH_PX }}
+        >
           <PropertyPanel
             node={selectedNode}
             lastRunMap={effectiveLastRunMap}
             propOverrides={effectivePropOverrides}
             readOnly={isRunHistoryView || isRunView}
             task={task}
+            dagNodes={effectiveNodes}
+            dagEdges={edges}
             onPatchPipelineEnvRow={(key, value) => {
               setTask(prev => ({ ...prev, pipelineEnv: upsertPipelineEnvRow(prev.pipelineEnv, key, value) }));
             }}
