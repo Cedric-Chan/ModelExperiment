@@ -93,6 +93,10 @@ const CATEGORICAL_COLUMNS_DEFAULT_JSON = JSON.stringify([
   'user_acct_status', 'user_is_email_verified', 'user_gender',
 ]);
 
+const WOE_MISSING_VALUE_DEFAULT_JSON = JSON.stringify([
+  -9999, -9998, -9997, -999998, -999999, 999999, -990000, -999990,
+]);
+
 /** Partner pipeline-level keys (frontend_node_config_spec_latest.md). */
 export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
   return [
@@ -125,6 +129,17 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       name: 'removed_features',
       description: 'Feature-group level removal list (manually defined).',
       value: REMOVED_FEATURES_DEFAULT_JSON,
+    },
+    {
+      name: 'woe_missing_value',
+      description:
+        'Values treated as missing for WOE binning; each is binned separately as a missing bucket.',
+      value: WOE_MISSING_VALUE_DEFAULT_JSON,
+    },
+    {
+      name: 'woe_missing_logic',
+      description: 'Risk mapping for missing bins (WOE of missing bucket); null uses platform default.',
+      value: 'null',
     },
     {
       name: 'default_cpu',

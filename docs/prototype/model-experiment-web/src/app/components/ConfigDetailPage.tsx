@@ -1263,172 +1263,733 @@ function SampleTypeColumnSection({
 }
 
 /* ─────────────── WOE Fit Config Panel ─────────────── */
-const WOE_ADVANCED_CONFIG = `woe_config:
-  mode: fit_transform_merge
-  label_col: is_default_30d
-  sample_use_col: sample_flag
-  handle_missing: separate_bin
-  handle_special: separate_bin
-  monotone_constraint: true
-  iv_filter: 0.02
-  output:
-    woe_encoded: true
-    iv_table: true
-    bin_table: true`;
+type AlgoDictKey =
+  | 'dict_nbins'
+  | 'dict_missing_values'
+  | 'dict_min_bin_rate'
+  | 'dict_min_bin_size'
+  | 'dict_min_missing_bad_cnt';
+
+const ALGO_DICT_META: Record<AlgoDictKey, { label: string; doc: string; example: string }> = {
+  dict_nbins: {
+    label: 'dict_nbins',
+    doc: 'Per-feature bin counts; overrides global n_bins for listed features only.',
+    example: '{"user_phone_update_change_cnt_180d": 4, "user_phone_update_unbind_cnt_180d": 6}',
+  },
+  dict_missing_values: {
+    label: 'dict_missing_values',
+    doc: 'Per-feature missing-value lists (override global missing list for specific features).',
+    example: '{"user_is_phone_verified": [-9999, -9998], "user_email_service": ["UNKNOWN"]}',
+  },
+  dict_min_bin_rate: {
+    label: 'dict_min_bin_rate',
+    doc: 'Per-feature minimum bin rate (fraction of samples).',
+    example: '{"feature_a": 0.03, "feature_b": 0.05}',
+  },
+  dict_min_bin_size: {
+    label: 'dict_min_bin_size',
+    doc: 'Per-feature minimum samples per bin.',
+    example: '{"feature_a": 80, "feature_b": 120}',
+  },
+  dict_min_missing_bad_cnt: {
+    label: 'dict_min_missing_bad_cnt',
+    doc: 'Per-feature minimum bad count in the missing bin before merge.',
+    example: '{"feature_a": 25, "feature_b": 40}',
+  },
+};
+
+const SAMPLE_WOE_MODIFICATIONS = `[
+  {
+    "bin_name": "01.(-0.15, 0.05]",
+    "woe_value": -0.214,
+    "reason": "Business adjustment"
+  }
+]`;
+
+const SAMPLE_WOE_BOUNDARIES = '[-inf, -0.15, 0.05, 0.20, inf]';
+
+type WoeUpdateMethod = 'set_woe' | 'update' | 'update_by_cutoff';
+
+interface WoeUpdateEntry {
+  id: string;
+  featureName: string;
+  method: WoeUpdateMethod;
+  payload: string;
+}
+
+function newWoeUpdateId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `wu-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function AlgoDictFieldRow({
+  dictKey,
+  value,
+  onChange,
+  readOnly,
+  labelCls,
+}: {
+  dictKey: AlgoDictKey;
+  value: string | null;
+  onChange: (v: string | null) => void;
+  readOnly?: boolean;
+  labelCls: string;
+}) {
+  const meta = ALGO_DICT_META[dictKey];
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const openAdd = () => {
+    setDraft('');
+    setOpen(true);
+  };
+  const openEdit = () => {
+    setDraft(value ?? '');
+    setOpen(true);
+  };
+  const save = () => {
+    const t = draft.trim();
+    if (!t) onChange(null);
+    else onChange(t);
+    setOpen(false);
+  };
+
+  const modal = open && ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} aria-label="Close" />
+      <div className="relative z-10 w-full max-w-lg max-h-[85vh] flex flex-col rounded-xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <span className="text-xs font-semibold text-slate-800 font-mono">{meta.label}</span>
+          <button type="button" onClick={() => setOpen(false)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto flex flex-col gap-2 text-xs text-slate-600">
+          <p className="leading-relaxed">{meta.doc}</p>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Example</p>
+          <pre className="text-[10px] font-mono bg-slate-900 text-emerald-300 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+            {meta.example}
+          </pre>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">JSON value</label>
+          <textarea
+            value={draft}
+            readOnly={readOnly}
+            onChange={e => setDraft(e.target.value)}
+            rows={8}
+            spellCheck={false}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-[10px] font-mono text-slate-700 resize-y min-h-[120px]
+              focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+              disabled:bg-slate-50"
+            placeholder="{ }"
+          />
+        </div>
+        <div className="px-4 py-2.5 border-t border-slate-100 flex justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="h-8 px-3 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={save}
+              className="h-8 px-3.5 rounded-lg bg-[#13c2c2] text-white text-xs font-semibold hover:bg-[#10a3a3]"
+            >
+              Save
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <p className={`${labelCls} mb-0 flex-1 min-w-0`}>
+        {meta.label}
+        <FieldTooltip text={meta.doc} />
+      </p>
+      <div className="flex items-center gap-1 shrink-0">
+        {value ? (
+          <>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={openEdit}
+                  className="h-7 px-2 rounded-md border border-slate-200 text-[10px] font-semibold text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#0d9e9e]"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange(null)}
+                  className="h-7 px-2 rounded-md border border-slate-200 text-[10px] font-semibold text-rose-500 hover:bg-rose-50"
+                >
+                  Delete
+                </button>
+              </>
+            )}
+            <span className="text-[9px] font-mono text-emerald-600 max-w-[80px] truncate" title={value}>
+              set
+            </span>
+          </>
+        ) : (
+          !readOnly && (
+            <button
+              type="button"
+              onClick={openAdd}
+              className="h-7 w-7 flex items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5"
+              title="Add"
+            >
+              <Plus size={14} />
+            </button>
+          )
+        )}
+      </div>
+      {modal}
+    </div>
+  );
+}
 
 function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
-  const [woeBins, setWoeBins] = useState<5 | 10 | 15>(10);
+  const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const upstreamDataPath = React.useMemo(
+    () => buildDataSourceFeaturesInputPath(task, task.pipelineEnv),
+    [task.modelName, task.pipelineEnv],
+  );
+
+  const [inputMode, setInputMode] = useState<'upstream' | 'fixed'>('upstream');
+  const [fixedDataPath, setFixedDataPath] = useState('s3://mlops-artifacts/features/custom.parquet');
+  const [dataConfigOpen, setDataConfigOpen] = useState(false);
+
+  const [nBins, setNBins] = useState<5 | 10 | 15>(10);
+  const [method, setMethod] = useState<'best_ks' | 'quantile'>('best_ks');
+  const [minBinRate, setMinBinRate] = useState(0.02);
   const [minBinSize, setMinBinSize] = useState(50);
   const [minMissingBadCnt, setMinMissingBadCnt] = useState(30);
-  const [method, setMethod] = useState<'best_ks' | 'quantile'>('best_ks');
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [dictNbins, setDictNbins] = useState<string | null>(null);
+  const [dictMissingValues, setDictMissingValues] = useState<string | null>(null);
+  const [dictMinBinRate, setDictMinBinRate] = useState<string | null>(null);
+  const [dictMinBinSize, setDictMinBinSize] = useState<string | null>(null);
+  const [dictMinMissingBadCnt, setDictMinMissingBadCnt] = useState<string | null>(null);
+
+  const [woeUpdateEnabled, setWoeUpdateEnabled] = useState(false);
+  const [woeUpdates, setWoeUpdates] = useState<WoeUpdateEntry[]>([]);
+  const [woeModal, setWoeModal] = useState<{ editId?: string } | null>(null);
+  const [woeModalFeature, setWoeModalFeature] = useState('');
+  const [woeModalMethod, setWoeModalMethod] = useState<WoeUpdateMethod>('set_woe');
+  const [woeModalText, setWoeModalText] = useState(SAMPLE_WOE_MODIFICATIONS);
+  const [woeModalCutoff, setWoeModalCutoff] = useState('0.15');
+  const [woeModalError, setWoeModalError] = useState('');
+
+  const [checkpointAfterNode, setCheckpointAfterNode] = useState(true);
 
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+  const selectCls = `w-full h-8 pl-2.5 pr-7 rounded-lg border border-slate-200 bg-white text-xs font-mono
+    appearance-none cursor-pointer transition-colors text-slate-700
+    focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+
+  const encoderPath = React.useMemo(
+    () => buildWoeEncoderSavePathDisplay(task, nBins, task.pipelineEnv),
+    [task, nBins, task.pipelineEnv],
+  );
+
+  const woeFeatureOptions = React.useMemo(() => MOCK_HIVE_COLUMNS.slice(0, 24), []);
+
+  const openWoeModalAdd = () => {
+    setWoeModal({ editId: undefined });
+    setWoeModalFeature(woeFeatureOptions[0] ?? '');
+    setWoeModalMethod('set_woe');
+    setWoeModalText(SAMPLE_WOE_MODIFICATIONS);
+    setWoeModalCutoff('0.15');
+    setWoeModalError('');
+  };
+
+  const openWoeModalEdit = (e: WoeUpdateEntry) => {
+    setWoeModal({ editId: e.id });
+    setWoeModalFeature(e.featureName);
+    setWoeModalMethod(e.method);
+    if (e.method === 'update_by_cutoff') setWoeModalCutoff(e.payload);
+    else setWoeModalText(e.payload);
+    setWoeModalError('');
+  };
+
+  const saveWoeModal = () => {
+    const taken = woeUpdates.filter(u => u.id !== woeModal?.editId).some(u => u.featureName === woeModalFeature);
+    if (taken) {
+      setWoeModalError('This feature already has a WOE update. Remove or edit the existing one.');
+      return;
+    }
+    let payload = '';
+    if (woeModalMethod === 'update_by_cutoff') {
+      if (woeModalCutoff.trim() === '' || Number.isNaN(Number(woeModalCutoff))) {
+        setWoeModalError('Enter a valid number for bin cutoff.');
+        return;
+      }
+      payload = woeModalCutoff.trim();
+    } else {
+      try {
+        JSON.parse(woeModalText);
+      } catch {
+        setWoeModalError('Invalid JSON. Check boundaries or modifications array.');
+        return;
+      }
+      payload = woeModalText;
+    }
+    const row: WoeUpdateEntry = {
+      id: woeModal?.editId ?? newWoeUpdateId(),
+      featureName: woeModalFeature,
+      method: woeModalMethod,
+      payload,
+    };
+    if (woeModal?.editId) {
+      setWoeUpdates(prev => prev.map(u => (u.id === woeModal.editId ? row : u)));
+    } else {
+      setWoeUpdates(prev => [...prev, row]);
+    }
+    setWoeModal(null);
+    setWoeModalError('');
+  };
+
+  const copyWoeRow = (e: WoeUpdateEntry) => {
+    let obj: Record<string, unknown>;
+    if (e.method === 'update_by_cutoff') {
+      obj = { feature_name: e.featureName, method: e.method, bin_cutoff: Number(e.payload) };
+    } else if (e.method === 'update') {
+      obj = { feature_name: e.featureName, method: e.method, boundaries: JSON.parse(e.payload) };
+    } else {
+      obj = { feature_name: e.featureName, method: e.method, modifications: JSON.parse(e.payload) };
+    }
+    const s = JSON.stringify(obj, null, 2);
+    navigator.clipboard?.writeText(s).catch(() => {});
+  };
+
+  const deleteWoeRow = (id: string) => {
+    if (woeUpdateEnabled && woeUpdates.length <= 1) return;
+    setWoeUpdates(prev => prev.filter(u => u.id !== id));
+  };
+
+  const woeModalPortal = woeModal && ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setWoeModal(null)} aria-label="Close" />
+      <div className="relative z-10 w-full max-w-lg max-h-[90vh] flex flex-col rounded-xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <span className="text-xs font-semibold text-slate-800">
+            {woeModal.editId ? 'Edit WOE update' : 'Set WOE update'}
+          </span>
+          <button type="button" onClick={() => setWoeModal(null)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto flex flex-col gap-3">
+          <div>
+            <p className={labelCls}>feature_name</p>
+            <div className="relative">
+              <select
+                value={woeModalFeature}
+                disabled={readOnly || !!woeModal.editId}
+                onChange={e => setWoeModalFeature(e.target.value)}
+                className={selectCls}
+              >
+                {woeFeatureOptions.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <p className={labelCls}>
+              method
+              <FieldTooltip text="set_woe: override WOE for named bins. update: replace boundaries (-inf/inf required). update_by_cutoff: insert one split point." />
+            </p>
+            <div className="relative">
+              <select
+                value={woeModalMethod}
+                disabled={readOnly}
+                onChange={e => {
+                  const m = e.target.value as WoeUpdateMethod;
+                  setWoeModalMethod(m);
+                  if (m === 'set_woe') setWoeModalText(SAMPLE_WOE_MODIFICATIONS);
+                  else if (m === 'update') setWoeModalText(SAMPLE_WOE_BOUNDARIES);
+                }}
+                className={selectCls}
+              >
+                <option value="set_woe">set_woe</option>
+                <option value="update">update</option>
+                <option value="update_by_cutoff">update_by_cutoff</option>
+              </select>
+              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+            <p className="mt-1 text-[9px] text-slate-400 leading-relaxed">
+              <span className="font-semibold text-slate-500">set_woe</span>
+              {' — manual WOE per bin. '}
+              <span className="font-semibold text-slate-500">update</span>
+              {' — new boundaries. '}
+              <span className="font-semibold text-slate-500">update_by_cutoff</span>
+              {' — insert cutoff.'}
+            </p>
+          </div>
+          {woeModalMethod === 'update_by_cutoff' ? (
+            <div>
+              <p className={labelCls}>bin_cutoff</p>
+              <input
+                type="number"
+                step="any"
+                value={woeModalCutoff}
+                disabled={readOnly}
+                onChange={e => setWoeModalCutoff(e.target.value)}
+                className={numInputCls}
+              />
+            </div>
+          ) : (
+            <div>
+              <p className={labelCls}>
+                {woeModalMethod === 'set_woe' ? 'modifications' : 'boundaries'}
+                <FieldTooltip
+                  text={
+                    woeModalMethod === 'set_woe'
+                      ? 'JSON array of bin_name, woe_value, reason.'
+                      : 'JSON array of boundaries; first must be -inf, last inf, strictly increasing.'
+                  }
+                />
+              </p>
+              <textarea
+                value={woeModalText}
+                readOnly={readOnly}
+                onChange={e => setWoeModalText(e.target.value)}
+                rows={10}
+                spellCheck={false}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-[10px] font-mono text-slate-700 resize-y min-h-[160px]
+                  focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+              />
+            </div>
+          )}
+          {woeModalError && <p className="text-[10px] text-rose-600">{woeModalError}</p>}
+        </div>
+        <div className="px-4 py-2.5 border-t border-slate-100 flex justify-end gap-2 shrink-0">
+          <button type="button" onClick={() => setWoeModal(null)} className="h-8 px-3 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">
+            Cancel
+          </button>
+          {!readOnly && (
+            <button type="button" onClick={saveWoeModal} className="h-8 px-3.5 rounded-lg bg-[#13c2c2] text-white text-xs font-semibold hover:bg-[#10a3a3]">
+              Save
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 
   return (
     <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">WOE Fit_Transform_Merge</span>
+        <span className="font-mono tracking-wide">WOE Fit · encoder training</span>
       </div>
 
       <NodeConfigBand title="Input data path">
-        <div>
-          <p className={labelCls}>
-            Load Raw Data
-            <FieldTooltip text="Upstream data source node output. Automatically resolved from the DAG dependency on DataSource." />
-          </p>
-          <div className="h-8 px-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-1.5 overflow-hidden">
-            <Database size={10} className="shrink-0 text-slate-300" />
-            <span className="text-[10px] text-slate-400 font-mono truncate">DataSource · Feature Store · hdfs://data/feat/v12</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+            {(['upstream', 'fixed'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                disabled={readOnly}
+                onClick={() => !readOnly && setInputMode(m)}
+                className={`flex-1 py-1 rounded-[5px] text-[10px] font-semibold transition-all
+                  ${inputMode === m ? 'bg-white text-[#0d9e9e] shadow-sm border border-slate-200/80' : 'text-slate-400 hover:text-slate-500'}
+                  disabled:opacity-50`}
+              >
+                {m === 'upstream' ? 'From upstream output' : 'Fixed S3 path'}
+              </button>
+            ))}
           </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+              Data
+            </span>
+            <span className="text-[9px] text-slate-400 font-mono">parquet</span>
+          </div>
+          {inputMode === 'upstream' ? (
+            <div>
+              <p className={labelCls}>
+                data_path
+                <FieldTooltip text="Resolved from Data Source node output (train-filtered features path)." />
+              </p>
+              <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className={labelCls}>
+                data_path
+                <FieldTooltip text="Enter an S3 URI to parquet feature data (type: data)." />
+              </p>
+              <input
+                type="text"
+                value={fixedDataPath}
+                disabled={readOnly}
+                onChange={e => setFixedDataPath(e.target.value)}
+                className={numInputCls}
+                placeholder="s3://bucket/path/features/"
+              />
+            </div>
+          )}
         </div>
       </NodeConfigBand>
 
       <NodeConfigBand title="Node configuration">
-      <div className="flex flex-col gap-3.5">
-        {/* WOE Bins */}
-        <div>
-          <p className={labelCls}>WOE Bins</p>
-          <div className="flex gap-1.5">
-            {([5, 10, 15] as const).map(b => (
-              <button
-                key={b}
-                disabled={readOnly}
-                onClick={() => !readOnly && setWoeBins(b)}
-                className={`flex-1 h-7 rounded-md border text-xs font-semibold transition-all
-                  ${woeBins === b
-                    ? 'border-[#13c2c2]/60 bg-[#13c2c2]/8 text-[#0d9e9e]'
-                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}
-                  disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {b}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* min_bin_size & min_missing_bad_cnt */}
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <p className={labelCls}>
-              min_bin_size
-              <FieldTooltip text="Min samples per bin. No bin may contain fewer samples than this value." />
-            </p>
-            <input
-              type="number"
-              min={1}
-              value={minBinSize}
+        <div className="flex flex-col gap-3">
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
               disabled={readOnly}
-              onChange={e => setMinBinSize(Number(e.target.value))}
-              className={numInputCls}
-            />
+              onClick={() => setDataConfigOpen(o => !o)}
+              className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left
+                ${dataConfigOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'}`}
+            >
+              <span className="text-[10px] font-semibold text-slate-600">
+                data_config (read-only)
+                <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
+                  Values follow Pipeline ENV — edit in ENV.
+                </span>
+              </span>
+              <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${dataConfigOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {dataConfigOpen && (
+              <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                {[
+                  { k: 'sample_type', v: 'train', tip: 'Filter rows for fitting; default train per spec.' },
+                  { k: 'label', v: getPipelineEnvValue(mergedEnv, 'label_column'), tip: 'From ENV label_column.' },
+                  { k: 'categorical_features', v: getPipelineEnvValue(mergedEnv, 'categorical_columns'), tip: 'From ENV categorical_columns.' },
+                  { k: 'woe_missing_values', v: getPipelineEnvValue(mergedEnv, 'woe_missing_value'), tip: 'From ENV woe_missing_value.' },
+                  { k: 'woe_missing_logic', v: getPipelineEnvValue(mergedEnv, 'woe_missing_logic'), tip: 'From ENV woe_missing_logic.' },
+                  { k: 'exclude_columns', v: getPipelineEnvValue(mergedEnv, 'exclude_columns'), tip: 'From ENV exclude_columns.' },
+                ].map(row => (
+                  <div key={row.k}>
+                    <p className={labelCls}>
+                      {row.k}
+                      <FieldTooltip text={row.tip} />
+                    </p>
+                    <div
+                      className="min-h-7 px-2 py-1 rounded-md border border-slate-100 bg-slate-50 text-[10px] font-mono text-slate-600 break-all"
+                      title={row.v}
+                    >
+                      {row.v || '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex-1">
+
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pt-1">algorithm_config</p>
+
+          <div>
             <p className={labelCls}>
-              min_missing_bad_cnt
-              <FieldTooltip text="Min bad-sample count in the missing bin. If below this value, the missing bin is merged into an adjacent bin." />
+              n_bins
+              <FieldTooltip text="Global number of bins; can be overridden per feature via dict_nbins." />
+            </p>
+            <div className="flex gap-1.5">
+              {([5, 10, 15] as const).map(b => (
+                <button
+                  key={b}
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => !readOnly && setNBins(b)}
+                  className={`flex-1 h-7 rounded-md border text-xs font-semibold transition-all
+                    ${nBins === b ? 'border-[#13c2c2]/60 bg-[#13c2c2]/8 text-[#0d9e9e]' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}
+                    disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {b}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className={labelCls}>
+              method
+              <FieldTooltip text="Binning strategy: best_ks (optimal KS cut) or quantile (equal frequency)." />
+            </p>
+            <div className="relative">
+              <select
+                value={method}
+                disabled={readOnly}
+                onChange={e => setMethod(e.target.value as 'best_ks' | 'quantile')}
+                className={selectCls}
+              >
+                <option value="best_ks">best_ks</option>
+                <option value="quantile">quantile</option>
+              </select>
+              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div>
+            <p className={labelCls}>
+              min_bin_rate
+              <FieldTooltip text="Minimum fraction of samples per bin." />
             </p>
             <input
               type="number"
               min={0}
-              value={minMissingBadCnt}
+              step={0.01}
+              value={minBinRate}
               disabled={readOnly}
-              onChange={e => setMinMissingBadCnt(Number(e.target.value))}
+              onChange={e => setMinBinRate(Number(e.target.value))}
               className={numInputCls}
             />
           </div>
-        </div>
 
-        {/* method */}
-        <div>
-          <p className={labelCls}>
-            method
-            <FieldTooltip text="Binning method. best_ks uses the optimal KS cut-point; quantile uses equal-frequency binning." />
-          </p>
-          <div className="relative">
-            <select
-              value={method}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <p className={labelCls}>
+                min_bin_size
+                <FieldTooltip text="Minimum sample count per bin." />
+              </p>
+              <input
+                type="number"
+                min={1}
+                value={minBinSize}
+                disabled={readOnly}
+                onChange={e => setMinBinSize(Number(e.target.value))}
+                className={numInputCls}
+              />
+            </div>
+            <div className="flex-1">
+              <p className={labelCls}>
+                min_missing_bad_cnt
+                <FieldTooltip text="Minimum bad count in missing bin before merging." />
+              </p>
+              <input
+                type="number"
+                min={0}
+                value={minMissingBadCnt}
+                disabled={readOnly}
+                onChange={e => setMinMissingBadCnt(Number(e.target.value))}
+                className={numInputCls}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-2 py-2 flex flex-col gap-0.5">
+            <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Per-feature overrides</p>
+            <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} labelCls={labelCls} />
+            <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} labelCls={labelCls} />
+            <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} labelCls={labelCls} />
+            <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} labelCls={labelCls} />
+            <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} labelCls={labelCls} />
+          </div>
+
+          <div className="border border-slate-200 rounded-lg overflow-hidden mt-1">
+            <button
+              type="button"
               disabled={readOnly}
-              onChange={e => setMethod(e.target.value as 'best_ks' | 'quantile')}
-              className={`w-full h-8 pl-2.5 pr-7 rounded-lg border border-slate-200 bg-white text-xs font-mono
-                appearance-none cursor-pointer transition-colors text-slate-700
-                focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
-                disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
+              onClick={() => !readOnly && setWoeUpdateEnabled(v => !v)}
+              className={`w-full flex items-center justify-between px-3 py-2 transition-colors
+                ${woeUpdateEnabled ? 'bg-[#13c2c2]/5' : 'bg-white hover:bg-slate-50'}
+                disabled:cursor-not-allowed disabled:opacity-60`}
             >
-              <option value="best_ks">best_ks</option>
-              <option value="quantile">quantile</option>
-            </select>
-            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
+                <SlidersHorizontal size={11} />
+                woe_update
+                <FieldTooltip text="Post-fit overrides per feature: set WOE, replace boundaries, or insert cutoff." />
+              </span>
+              <div className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${woeUpdateEnabled ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}>
+                <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${woeUpdateEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
+              </div>
+            </button>
+            {woeUpdateEnabled && (
+              <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                {woeUpdates.length === 0 && (
+                  <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5">
+                    Add at least one feature update when this section is enabled.
+                  </p>
+                )}
+                {woeUpdates.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2"
+                  >
+                    <span className="text-[10px] font-mono font-semibold text-slate-700">{entry.featureName}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#13c2c2]/15 text-[#0d9e9e] font-mono font-semibold">
+                      {entry.method}
+                    </span>
+                    <div className="flex-1" />
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openWoeModalEdit(entry)}
+                          className="text-[10px] font-semibold text-slate-500 hover:text-[#13c2c2]"
+                        >
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => copyWoeRow(entry)} className="text-[10px] font-semibold text-slate-500 hover:text-[#13c2c2]">
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          disabled={woeUpdateEnabled && woeUpdates.length <= 1}
+                          onClick={() => deleteWoeRow(entry.id)}
+                          className="text-[10px] font-semibold text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={openWoeModalAdd}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-semibold text-slate-500 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5"
+                  >
+                    <Plus size={12} />
+                    Add WOE update
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Advanced Config toggle */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
-          <button
-            disabled={readOnly}
-            onClick={() => !readOnly && setAdvancedOpen(v => !v)}
-            className={`w-full flex items-center justify-between px-3 py-2 transition-colors
-              ${advancedOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'}
-              disabled:cursor-not-allowed disabled:opacity-60`}
-          >
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
-              <SlidersHorizontal size={11} />
-              Advanced Config
-            </span>
-            <div className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${advancedOpen ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}>
-              <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${advancedOpen ? 'translate-x-3' : 'translate-x-0'}`} />
-            </div>
-          </button>
-          {advancedOpen && (
-            <div className="border-t border-slate-200 bg-slate-950 px-3 py-2.5 overflow-x-auto">
-              <pre className="text-[10px] text-emerald-300 font-mono leading-relaxed whitespace-pre">{WOE_ADVANCED_CONFIG}</pre>
-            </div>
-          )}
-        </div>
-      </div>
       </NodeConfigBand>
 
-      <NodeResourceAdvBlock
-        readOnly={readOnly}
-        pipelineEnv={task.pipelineEnv}
-        onPatchEnv={onPatchPipelineEnvRow}
-      />
+      <NodeResourceAdvBlock readOnly={readOnly} pipelineEnv={task.pipelineEnv} onPatchEnv={onPatchPipelineEnvRow} />
 
       <NodeConfigBand title="Output path">
-      <div className="flex flex-col gap-2 pb-0.5">
-        {[
-          { label: 'encoder_save_filepath',  path: 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl' },
-          { label: 'merged_save_filepath',   path: 's3://mlops-artifacts/woe/merge/v12/woe_merge_result.parquet' },
-          { label: 'feature_report_path',    path: 's3://mlops-artifacts/woe/report/v12/feature_report.xlsx' },
-        ].map(({ label, path }) => (
-          <CopyPathField key={label} label={label} path={path} labelCls={labelCls} />
-        ))}
-      </div>
+        <CopyPathField label="encoder_save_path" path={encoderPath} labelCls={labelCls} />
       </NodeConfigBand>
+
+      <div className="flex items-center justify-between gap-3 px-1 py-2 rounded-lg border border-slate-100 bg-slate-50/60">
+        <p className={`${labelCls} mb-0 flex-1`}>
+          Node checkpoint
+          <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
+        </p>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() => !readOnly && setCheckpointAfterNode(v => !v)}
+          className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${checkpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+        >
+          <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${checkpointAfterNode ? 'translate-x-3' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
+      {woeModalPortal}
     </div>
   );
 }
@@ -2361,6 +2922,23 @@ function buildDataSourceLoadedOutputPath(task: TrainingTask, pipelineEnv?: Pipel
   fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
   const trimmed = fpBase.replace(/\/+$/, '');
   return `${trimmed}/${task.modelName}{run_id}/data/loaded/`;
+}
+
+/** Upstream Data Source output for WOE Fit input.data_path (parquet features), per partner spec default pattern. */
+function buildDataSourceFeaturesInputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/features`;
+}
+
+function buildWoeEncoderSavePathDisplay(task: TrainingTask, nBins: number, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/woe/encoder/${task.modelName}_best_ks_${nBins}bin.pkl`;
 }
 
 function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
