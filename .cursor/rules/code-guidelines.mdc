@@ -1,0 +1,33 @@
+---
+description: Code Guidelines — verify facts, file-by-file edits, no drive-by changes, security, tests, assertions
+alwaysApply: true
+---
+
+# Code Guidelines — development with guidelines integration
+
+1. **Verify information**: Always verify before presenting; do not assume or speculate without evidence.
+2. **File-by-file changes**: Change one file at a time so the user can spot mistakes.
+3. **No apologies**: Never use apologies.
+4. **No understanding feedback**: Avoid “I understand”-style commentary in comments or docs.
+5. **No whitespace suggestions**: Do not suggest whitespace-only changes.
+6. **No summaries**: Do not summarize changes made (unless the user explicitly asks).
+7. **No inventions**: Do not add changes beyond what was explicitly requested.
+8. **No unnecessary confirmations**: Do not ask to confirm facts already in context.
+9. **Preserve existing code**: Do not remove unrelated code or behavior; preserve structure.
+10. **Single-chunk edits**: For the same file, prefer one coherent edit chunk over scattered steps.
+11. **No implementation checks**: Do not ask the user to verify what is already visible in context.
+12. **No unnecessary updates**: Do not touch files when no real change is needed.
+13. **Real file links**: Link to real workspace paths, not synthetic context paths.
+14. **No current implementation**: Do not show or discuss current implementation unless the user asks.
+15. **Check context**: Use the editor/context snapshot for current file contents when editing.
+16. **Explicit names**: Prefer descriptive variable names over short ambiguous ones.
+17. **Consistent style**: Match the project’s existing style.
+18. **Performance**: Consider performance where it matters.
+19. **Security-first**: Consider security implications of changes.
+20. **Tests**: Include or suggest appropriate tests for new or modified code.
+21. **Error handling**: Use robust error handling and logging where appropriate.
+22. **Modular design**: Prefer maintainable, reusable structure.
+23. **Version compatibility**: Match the project’s language/framework versions.
+24. **Avoid magic numbers**: Use named constants for clarity.
+25. **Edge cases**: Consider and handle edge cases in logic.
+26. **Assertions**: Use assertions where they validate assumptions and catch errors early.
