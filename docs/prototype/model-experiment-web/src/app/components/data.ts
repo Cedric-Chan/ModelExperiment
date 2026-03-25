@@ -160,6 +160,99 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '["train"]',
     },
     {
+      name: 'woe_fit_label_column',
+      description:
+        'WOE Fit data_config.label override; empty inherits Pipeline ENV label_column.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_categorical_features',
+      description:
+        'WOE Fit categorical_features JSON override; empty inherits categorical_columns.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_woe_missing_values',
+      description:
+        'WOE Fit woe_missing_values JSON override; empty inherits woe_missing_value.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_woe_missing_logic',
+      description: 'WOE Fit woe_missing_logic override; empty inherits woe_missing_logic.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_exclude_columns',
+      description: 'WOE Fit exclude_columns JSON override; empty inherits exclude_columns.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_n_bins',
+      description: 'WOE Fit algorithm_config n_bins (5, 10, or 15).',
+      value: '10',
+    },
+    {
+      name: 'woe_fit_method',
+      description: 'WOE Fit binning method: best_ks or quantile.',
+      value: 'best_ks',
+    },
+    {
+      name: 'woe_fit_min_bin_rate',
+      description: 'WOE Fit min_bin_rate (fraction per bin).',
+      value: '0.02',
+    },
+    {
+      name: 'woe_fit_min_bin_size',
+      description: 'WOE Fit min_bin_size (min samples per bin).',
+      value: '50',
+    },
+    {
+      name: 'woe_fit_min_missing_bad_cnt',
+      description: 'WOE Fit min_missing_bad_cnt.',
+      value: '30',
+    },
+    {
+      name: 'woe_fit_dict_nbins',
+      description: 'Optional per-feature dict_nbins JSON; empty = no override.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_dict_missing_values',
+      description: 'Optional dict_missing_values JSON; empty = no override.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_dict_min_bin_rate',
+      description: 'Optional dict_min_bin_rate JSON; empty = no override.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_dict_min_bin_size',
+      description: 'Optional dict_min_bin_size JSON; empty = no override.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_dict_min_missing_bad_cnt',
+      description: 'Optional dict_min_missing_bad_cnt JSON; empty = no override.',
+      value: '',
+    },
+    {
+      name: 'woe_fit_woe_update_enabled',
+      description: 'Whether WOE Fit post-fit woe_update section is enabled.',
+      value: 'false',
+    },
+    {
+      name: 'woe_fit_woe_updates_json',
+      description: 'JSON array of WOE update rows {id, featureName, method, payload}.',
+      value: '[]',
+    },
+    {
+      name: 'woe_fit_checkpoint_after_node',
+      description: 'Pause for checkpoint after this node when true.',
+      value: 'true',
+    },
+    {
       name: 'woe_transform_input_binding',
       description:
         'WOE Transform input.data_path cascade binding as `upstreamNodeId|outputPort`. Empty uses default features path.',

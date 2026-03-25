@@ -49,6 +49,24 @@ type NodePanelEnvProps = {
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
 const WOE_FIT_FIXED_DATA_PATH_ENV = 'woe_fit_fixed_data_path';
 const WOE_FIT_SAMPLE_SCOPE_ENV = 'woe_fit_sample_scope';
+const WOE_FIT_LABEL_COLUMN_ENV = 'woe_fit_label_column';
+const WOE_FIT_CATEGORICAL_FEATURES_ENV = 'woe_fit_categorical_features';
+const WOE_FIT_WOE_MISSING_VALUES_ENV = 'woe_fit_woe_missing_values';
+const WOE_FIT_WOE_MISSING_LOGIC_ENV = 'woe_fit_woe_missing_logic';
+const WOE_FIT_EXCLUDE_COLUMNS_ENV = 'woe_fit_exclude_columns';
+const WOE_FIT_N_BINS_ENV = 'woe_fit_n_bins';
+const WOE_FIT_METHOD_ENV = 'woe_fit_method';
+const WOE_FIT_MIN_BIN_RATE_ENV = 'woe_fit_min_bin_rate';
+const WOE_FIT_MIN_BIN_SIZE_ENV = 'woe_fit_min_bin_size';
+const WOE_FIT_MIN_MISSING_BAD_CNT_ENV = 'woe_fit_min_missing_bad_cnt';
+const WOE_FIT_DICT_NBINS_ENV = 'woe_fit_dict_nbins';
+const WOE_FIT_DICT_MISSING_VALUES_ENV = 'woe_fit_dict_missing_values';
+const WOE_FIT_DICT_MIN_BIN_RATE_ENV = 'woe_fit_dict_min_bin_rate';
+const WOE_FIT_DICT_MIN_BIN_SIZE_ENV = 'woe_fit_dict_min_bin_size';
+const WOE_FIT_DICT_MIN_MISSING_BAD_CNT_ENV = 'woe_fit_dict_min_missing_bad_cnt';
+const WOE_FIT_WOE_UPDATE_ENABLED_ENV = 'woe_fit_woe_update_enabled';
+const WOE_FIT_WOE_UPDATES_JSON_ENV = 'woe_fit_woe_updates_json';
+const WOE_FIT_CHECKPOINT_AFTER_NODE_ENV = 'woe_fit_checkpoint_after_node';
 const WOE_TRANSFORM_INPUT_BINDING_ENV = 'woe_transform_input_binding';
 const WOE_TRANSFORM_FIXED_DATA_PATH_ENV = 'woe_transform_fixed_data_path';
 const WOE_TRANSFORM_ENCODER_BINDING_ENV = 'woe_transform_encoder_binding';
@@ -1483,6 +1501,51 @@ function newWoeUpdateId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `wu-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function woeFitEnvOrGlobal(merged: PipelineEnvRow[], nodeKey: string, globalKey: string): string {
+  const v = getPipelineEnvValue(merged, nodeKey).trim();
+  if (v !== '') return v;
+  return getPipelineEnvValue(merged, globalKey);
+}
+
+function parseWoeFitNBins(merged: PipelineEnvRow[]): 5 | 10 | 15 {
+  const n = Number.parseInt(getPipelineEnvValue(merged, WOE_FIT_N_BINS_ENV), 10);
+  return [5, 10, 15].includes(n) ? (n as 5 | 10 | 15) : 10;
+}
+
+function parseWoeUpdatesFromEnv(raw: string): WoeUpdateEntry[] {
+  try {
+    const a = JSON.parse(raw || '[]') as unknown;
+    if (!Array.isArray(a)) return [];
+    const out: WoeUpdateEntry[] = [];
+    for (const row of a) {
+      if (!row || typeof row !== 'object') continue;
+      const r = row as Record<string, unknown>;
+      const id = typeof r.id === 'string' && r.id ? r.id : newWoeUpdateId();
+      const featureName = typeof r.featureName === 'string' ? r.featureName : '';
+      const method =
+        r.method === 'set_woe' || r.method === 'update' || r.method === 'update_by_cutoff'
+          ? r.method
+          : 'set_woe';
+      const payload = typeof r.payload === 'string' ? r.payload : '';
+      if (featureName) out.push({ id, featureName, method, payload });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function stringifyWoeUpdatesForEnv(rows: WoeUpdateEntry[]): string {
+  return JSON.stringify(
+    rows.map(({ id, featureName, method, payload }) => ({ id, featureName, method, payload })),
+  );
+}
+
+function woeFitDictEnvValue(merged: PipelineEnvRow[], key: string): string | null {
+  const v = getPipelineEnvValue(merged, key).trim();
+  return v === '' ? null : v;
+}
+
 function AlgoDictFieldRow({
   dictKey,
   value,
@@ -2170,19 +2233,6 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
   const [dataConfigOpen, setDataConfigOpen] = useState(false);
   const [fixedMenuChosen, setFixedMenuChosen] = useState(false);
 
-  const [nBins, setNBins] = useState<5 | 10 | 15>(10);
-  const [method, setMethod] = useState<'best_ks' | 'quantile'>('best_ks');
-  const [minBinRate, setMinBinRate] = useState(0.02);
-  const [minBinSize, setMinBinSize] = useState(50);
-  const [minMissingBadCnt, setMinMissingBadCnt] = useState(30);
-  const [dictNbins, setDictNbins] = useState<string | null>(null);
-  const [dictMissingValues, setDictMissingValues] = useState<string | null>(null);
-  const [dictMinBinRate, setDictMinBinRate] = useState<string | null>(null);
-  const [dictMinBinSize, setDictMinBinSize] = useState<string | null>(null);
-  const [dictMinMissingBadCnt, setDictMinMissingBadCnt] = useState<string | null>(null);
-
-  const [woeUpdateEnabled, setWoeUpdateEnabled] = useState(false);
-  const [woeUpdates, setWoeUpdates] = useState<WoeUpdateEntry[]>([]);
   const [woeModal, setWoeModal] = useState<{ editId?: string } | null>(null);
   const [woeModalFeature, setWoeModalFeature] = useState('');
   const [woeModalMethod, setWoeModalMethod] = useState<WoeUpdateMethod>('set_woe');
@@ -2190,7 +2240,32 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
   const [woeModalCutoff, setWoeModalCutoff] = useState('0.15');
   const [woeModalError, setWoeModalError] = useState('');
 
-  const [checkpointAfterNode, setCheckpointAfterNode] = useState(true);
+  const nBins = React.useMemo(() => parseWoeFitNBins(mergedEnv), [mergedEnv]);
+  const method = React.useMemo((): 'best_ks' | 'quantile' => {
+    const m = getPipelineEnvValue(mergedEnv, WOE_FIT_METHOD_ENV);
+    return m === 'quantile' ? 'quantile' : 'best_ks';
+  }, [mergedEnv]);
+  const minBinRate = React.useMemo(() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedEnv, WOE_FIT_MIN_BIN_RATE_ENV));
+    return Number.isFinite(n) ? n : 0.02;
+  }, [mergedEnv]);
+  const minBinSize = React.useMemo(() => {
+    const n = Number.parseInt(getPipelineEnvValue(mergedEnv, WOE_FIT_MIN_BIN_SIZE_ENV), 10);
+    return Number.isFinite(n) && n >= 1 ? n : 50;
+  }, [mergedEnv]);
+  const minMissingBadCnt = React.useMemo(() => {
+    const n = Number.parseInt(getPipelineEnvValue(mergedEnv, WOE_FIT_MIN_MISSING_BAD_CNT_ENV), 10);
+    return Number.isFinite(n) && n >= 0 ? n : 30;
+  }, [mergedEnv]);
+
+  const woeUpdates = React.useMemo(
+    () => parseWoeUpdatesFromEnv(getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_UPDATES_JSON_ENV)),
+    [mergedEnv],
+  );
+  const woeUpdateEnabled =
+    getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_UPDATE_ENABLED_ENV).toLowerCase() === 'true';
+  const checkpointAfterNode =
+    getPipelineEnvValue(mergedEnv, WOE_FIT_CHECKPOINT_AFTER_NODE_ENV).toLowerCase() !== 'false';
 
   useEffect(() => {
     if (bindingRaw.trim()) setFixedMenuChosen(false);
@@ -2210,8 +2285,8 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
 
   const encoderPath = React.useMemo(
-    () => buildWoeEncoderSavePathDisplay(task, nBins, task.pipelineEnv),
-    [task, nBins, task.pipelineEnv],
+    () => buildWoeEncoderSavePathDisplay(task, parseWoeFitNBins(mergedEnv), task.pipelineEnv),
+    [task, mergedEnv, task.pipelineEnv],
   );
 
   const woeFeatureOptions = React.useMemo(() => MOCK_HIVE_COLUMNS.slice(0, 24), []);
@@ -2263,9 +2338,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
       payload,
     };
     if (woeModal?.editId) {
-      setWoeUpdates(prev => prev.map(u => (u.id === woeModal.editId ? row : u)));
+      const next = woeUpdates.map(u => (u.id === woeModal.editId ? row : u));
+      onPatchPipelineEnvRow(WOE_FIT_WOE_UPDATES_JSON_ENV, stringifyWoeUpdatesForEnv(next));
     } else {
-      setWoeUpdates(prev => [...prev, row]);
+      onPatchPipelineEnvRow(WOE_FIT_WOE_UPDATES_JSON_ENV, stringifyWoeUpdatesForEnv([...woeUpdates, row]));
     }
     setWoeModal(null);
     setWoeModalError('');
@@ -2286,7 +2362,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
 
   const deleteWoeRow = (id: string) => {
     if (woeUpdateEnabled && woeUpdates.length <= 1) return;
-    setWoeUpdates(prev => prev.filter(u => u.id !== id));
+    onPatchPipelineEnvRow(
+      WOE_FIT_WOE_UPDATES_JSON_ENV,
+      stringifyWoeUpdatesForEnv(woeUpdates.filter(u => u.id !== id)),
+    );
   };
 
   const woeModalPortal = woeModal && ReactDOM.createPortal(
@@ -2461,7 +2540,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
               <span className="text-[10px] font-semibold text-slate-600">
                 data_config
                 <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
-                  Most keys follow Pipeline ENV; sample_scope is editable below.
+                  Editable per node; clear a field to inherit the matching global ENV param.
                 </span>
               </span>
               <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${dataConfigOpen ? 'rotate-180' : ''}`} />
@@ -2475,26 +2554,74 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                   labelCls={labelCls}
                   tooltip="Multi-scope row filter: train, test, val, and/or all. At least one scope must stay selected. Stored as woe_fit_sample_scope (JSON array)."
                 />
-                {[
-                  { k: 'label', v: getPipelineEnvValue(mergedEnv, 'label_column'), tip: 'From ENV label_column.' },
-                  { k: 'categorical_features', v: getPipelineEnvValue(mergedEnv, 'categorical_columns'), tip: 'From ENV categorical_columns.' },
-                  { k: 'woe_missing_values', v: getPipelineEnvValue(mergedEnv, 'woe_missing_value'), tip: 'From ENV woe_missing_value.' },
-                  { k: 'woe_missing_logic', v: getPipelineEnvValue(mergedEnv, 'woe_missing_logic'), tip: 'From ENV woe_missing_logic.' },
-                  { k: 'exclude_columns', v: getPipelineEnvValue(mergedEnv, 'exclude_columns'), tip: 'From ENV exclude_columns.' },
-                ].map(row => (
-                  <div key={row.k}>
-                    <p className={labelCls}>
-                      {row.k}
-                      <FieldTooltip text={row.tip} />
-                    </p>
-                    <div
-                      className="min-h-7 px-2 py-1 rounded-md border border-slate-100 bg-slate-50 text-[10px] font-mono text-slate-600 break-all"
-                      title={row.v}
-                    >
-                      {row.v || '—'}
-                    </div>
-                  </div>
-                ))}
+                <div>
+                  <p className={labelCls}>
+                    label
+                    <FieldTooltip text="Overrides Pipeline ENV label_column when non-empty; clear to inherit global." />
+                  </p>
+                  <input
+                    type="text"
+                    value={woeFitEnvOrGlobal(mergedEnv, WOE_FIT_LABEL_COLUMN_ENV, 'label_column')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_LABEL_COLUMN_ENV, e.target.value)}
+                    className={numInputCls}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    categorical_features
+                    <FieldTooltip text="JSON array override; empty inherits categorical_columns." />
+                  </p>
+                  <textarea
+                    value={woeFitEnvOrGlobal(mergedEnv, WOE_FIT_CATEGORICAL_FEATURES_ENV, 'categorical_columns')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_CATEGORICAL_FEATURES_ENV, e.target.value)}
+                    rows={4}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[72px] resize-y py-1.5`}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    woe_missing_values
+                    <FieldTooltip text="JSON override; empty inherits woe_missing_value." />
+                  </p>
+                  <textarea
+                    value={woeFitEnvOrGlobal(mergedEnv, WOE_FIT_WOE_MISSING_VALUES_ENV, 'woe_missing_value')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_WOE_MISSING_VALUES_ENV, e.target.value)}
+                    rows={3}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[60px] resize-y py-1.5`}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    woe_missing_logic
+                    <FieldTooltip text="Override; empty inherits woe_missing_logic (e.g. null)." />
+                  </p>
+                  <input
+                    type="text"
+                    value={woeFitEnvOrGlobal(mergedEnv, WOE_FIT_WOE_MISSING_LOGIC_ENV, 'woe_missing_logic')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_WOE_MISSING_LOGIC_ENV, e.target.value)}
+                    className={numInputCls}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    exclude_columns
+                    <FieldTooltip text="JSON array override; empty inherits exclude_columns." />
+                  </p>
+                  <textarea
+                    value={woeFitEnvOrGlobal(mergedEnv, WOE_FIT_EXCLUDE_COLUMNS_ENV, 'exclude_columns')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_EXCLUDE_COLUMNS_ENV, e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[88px] resize-y py-1.5`}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -2512,7 +2639,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                   key={b}
                   type="button"
                   disabled={readOnly}
-                  onClick={() => !readOnly && setNBins(b)}
+                  onClick={() => !readOnly && onPatchPipelineEnvRow(WOE_FIT_N_BINS_ENV, String(b))}
                   className={`flex-1 h-7 rounded-md border text-xs font-semibold transition-all
                     ${nBins === b ? 'border-[#13c2c2]/60 bg-[#13c2c2]/8 text-[#0d9e9e]' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}
                     disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -2532,7 +2659,9 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
               <select
                 value={method}
                 disabled={readOnly}
-                onChange={e => setMethod(e.target.value as 'best_ks' | 'quantile')}
+                onChange={(e) =>
+                  onPatchPipelineEnvRow(WOE_FIT_METHOD_ENV, e.target.value as 'best_ks' | 'quantile')
+                }
                 className={selectCls}
               >
                 <option value="best_ks">best_ks</option>
@@ -2553,7 +2682,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
               step={0.01}
               value={minBinRate}
               disabled={readOnly}
-              onChange={e => setMinBinRate(Number(e.target.value))}
+              onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_MIN_BIN_RATE_ENV, String(Number(e.target.value)))}
               className={numInputCls}
             />
           </div>
@@ -2569,7 +2698,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 min={1}
                 value={minBinSize}
                 disabled={readOnly}
-                onChange={e => setMinBinSize(Number(e.target.value))}
+                onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_MIN_BIN_SIZE_ENV, String(Number(e.target.value)))}
                 className={numInputCls}
               />
             </div>
@@ -2583,7 +2712,9 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 min={0}
                 value={minMissingBadCnt}
                 disabled={readOnly}
-                onChange={e => setMinMissingBadCnt(Number(e.target.value))}
+                onChange={(e) =>
+                  onPatchPipelineEnvRow(WOE_FIT_MIN_MISSING_BAD_CNT_ENV, String(Number(e.target.value)))
+                }
                 className={numInputCls}
               />
             </div>
@@ -2592,11 +2723,41 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
           <div className="flex flex-col gap-2 pt-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Per-feature overrides</p>
             <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-              <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} labelCls={labelCls} />
-              <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} labelCls={labelCls} />
-              <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} labelCls={labelCls} />
-              <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} labelCls={labelCls} />
-              <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} labelCls={labelCls} />
+              <AlgoDictFieldRow
+                dictKey="dict_nbins"
+                value={woeFitDictEnvValue(mergedEnv, WOE_FIT_DICT_NBINS_ENV)}
+                onChange={(v) => onPatchPipelineEnvRow(WOE_FIT_DICT_NBINS_ENV, v ?? '')}
+                readOnly={readOnly}
+                labelCls={labelCls}
+              />
+              <AlgoDictFieldRow
+                dictKey="dict_missing_values"
+                value={woeFitDictEnvValue(mergedEnv, WOE_FIT_DICT_MISSING_VALUES_ENV)}
+                onChange={(v) => onPatchPipelineEnvRow(WOE_FIT_DICT_MISSING_VALUES_ENV, v ?? '')}
+                readOnly={readOnly}
+                labelCls={labelCls}
+              />
+              <AlgoDictFieldRow
+                dictKey="dict_min_bin_rate"
+                value={woeFitDictEnvValue(mergedEnv, WOE_FIT_DICT_MIN_BIN_RATE_ENV)}
+                onChange={(v) => onPatchPipelineEnvRow(WOE_FIT_DICT_MIN_BIN_RATE_ENV, v ?? '')}
+                readOnly={readOnly}
+                labelCls={labelCls}
+              />
+              <AlgoDictFieldRow
+                dictKey="dict_min_bin_size"
+                value={woeFitDictEnvValue(mergedEnv, WOE_FIT_DICT_MIN_BIN_SIZE_ENV)}
+                onChange={(v) => onPatchPipelineEnvRow(WOE_FIT_DICT_MIN_BIN_SIZE_ENV, v ?? '')}
+                readOnly={readOnly}
+                labelCls={labelCls}
+              />
+              <AlgoDictFieldRow
+                dictKey="dict_min_missing_bad_cnt"
+                value={woeFitDictEnvValue(mergedEnv, WOE_FIT_DICT_MIN_MISSING_BAD_CNT_ENV)}
+                onChange={(v) => onPatchPipelineEnvRow(WOE_FIT_DICT_MIN_MISSING_BAD_CNT_ENV, v ?? '')}
+                readOnly={readOnly}
+                labelCls={labelCls}
+              />
             </div>
           </div>
 
@@ -2604,7 +2765,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
             <button
               type="button"
               disabled={readOnly}
-              onClick={() => !readOnly && setWoeUpdateEnabled(v => !v)}
+              onClick={() =>
+                !readOnly &&
+                onPatchPipelineEnvRow(WOE_FIT_WOE_UPDATE_ENABLED_ENV, woeUpdateEnabled ? 'false' : 'true')
+              }
               className={`w-full flex items-center justify-between px-3 py-2 transition-colors
                 ${woeUpdateEnabled ? 'bg-[#13c2c2]/5' : 'bg-white hover:bg-slate-50'}
                 disabled:cursor-not-allowed disabled:opacity-60`}
@@ -2711,7 +2875,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
         <button
           type="button"
           disabled={readOnly}
-          onClick={() => !readOnly && setCheckpointAfterNode(v => !v)}
+          onClick={() =>
+            !readOnly &&
+            onPatchPipelineEnvRow(WOE_FIT_CHECKPOINT_AFTER_NODE_ENV, checkpointAfterNode ? 'false' : 'true')
+          }
           className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 shrink-0 ${checkpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
         >
           <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${checkpointAfterNode ? 'translate-x-3.5' : 'translate-x-0'}`} />
