@@ -13,7 +13,7 @@
 3. **WOE Transform**  
 4. **Feature selection**  
 5. **Tune & Train**（规范：Hyperparameter Tuning + Model Training，合并为单节点）  
-6. **infer**（规范：Model Prediction）
+6. **inference**（画布 UI；合作方规范：Model Prediction）
 
 **Pipeline / 实验级**：规范中的 `model_level`、`base_train_path`、`label_column`、全局排除列等仍在 **非画布** 区域配置；**ENV（全局变量表：Parameters / Description / Value）** 在画布顶栏入口配置，与「pipeline 级别、各节点共享」语义一致（详见规范「pipeline级别配置」与 ENV UI）。
 

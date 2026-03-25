@@ -132,7 +132,7 @@ function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
     { id: 'n3', type: 'woe_transform',     label: 'WOE Transform',     sublabel: 'Apply encoder · WOE features',              x: X0+GX*2, y: MID, status: 'ready'   },
     { id: 'n4', type: 'feature_selection', label: 'Feature selection', sublabel: 'IV · Corr · Selection report',              x: X0+GX*3, y: MID, status: 'ready'   },
     { id: 'n5', type: 'tune_train',        label: 'Tune & Train',      sublabel: 'HPO · Best trial · Final model',            x: X0+GX*4, y: MID, status: 'pending' },
-    { id: 'n6', type: 'infer',             label: 'infer',             sublabel: 'Batch predict · Score output',              x: X0+GX*5, y: MID, status: 'pending' },
+    { id: 'n6', type: 'infer',             label: 'inference',         sublabel: 'Batch predict · Score output',              x: X0+GX*5, y: MID, status: 'pending' },
   ];
   const edges: DagEdge[] = [
     { from: 'n1', to: 'n2' },
@@ -207,7 +207,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
       woe_transform: { runId: 'run-20250120-1118', status: 'SUCCESS', finishedTime: '2025-01-20 11:25:02', duration: '3m 55s', artifact: [{ label: 'Rows out', value: '3,940,118' }, { label: 'WOE cols', value: '200' }, { label: 'Output path', value: 'hdfs://woe/xform/v9' }] },
       feature_selection: { runId: 'run-20250120-1121', status: 'SUCCESS', finishedTime: '2025-01-20 11:27:44', duration: '6m 37s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Features out', value: '52' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v9' }] },
       tune_train: { runId: 'run-20250120-1132', status: 'SUCCESS', finishedTime: '2025-01-20 12:42:19', duration: '70m 14s', artifact: [{ label: 'Best AUC', value: '0.8574' }, { label: 'Best trial', value: '#18 / 20' }, { label: 'Train AUC', value: '0.8801' }, { label: 'Model path', value: 'mlflow://models/lgbm-v9' }] },
-      infer: { runId: 'run-20250120-1246', status: 'SKIPPED', finishedTime: '2025-01-20 13:02:38', duration: '0m 10s', artifact: [{ label: 'Rows scored', value: 'N/A' }, { label: 'Note', value: 'Infer skipped' }, { label: 'Output table', value: '—' }] },
+      infer: { runId: 'run-20250120-1246', status: 'SKIPPED', finishedTime: '2025-01-20 13:02:38', duration: '0m 10s', artifact: [{ label: 'Rows scored', value: 'N/A' }, { label: 'Note', value: 'Inference skipped' }, { label: 'Output table', value: '—' }] },
     },
   },
 ];
@@ -2629,7 +2629,7 @@ function runFrontendCheck(nodes: DagNode[], edges: DagEdge[]): CheckResult {
   const items = [
     { label: 'DataSource node exists',  ok: hasSource,    detail: hasSource    ? 'At least one source configured' : 'Add a DataSource node' },
     { label: 'Tune & Train exists',     ok: hasTrain,     detail: hasTrain     ? 'Tune & Train node found'          : 'Add a Tune & Train node' },
-    { label: 'Infer node exists',       ok: hasOutput,    detail: hasOutput    ? 'Prediction node configured'       : 'Add an infer node' },
+    { label: 'Inference node exists',   ok: hasOutput,    detail: hasOutput    ? 'Prediction node configured'       : 'Add an inference node' },
     { label: 'All nodes connected',     ok: allConnected, detail: allConnected ? 'No isolated nodes'              : 'Some nodes are disconnected' },
     { label: 'No cyclic dependencies',  ok: !hasCycle,    detail: !hasCycle    ? 'DAG is acyclic'                 : 'Cycle detected in graph' },
   ];
