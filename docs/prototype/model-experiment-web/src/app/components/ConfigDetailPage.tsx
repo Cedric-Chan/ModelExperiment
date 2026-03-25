@@ -10,7 +10,7 @@ import {
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
-  Pencil, Flag, Inbox, BarChart3, Brackets, Percent, Hash, ShieldAlert,
+  Pencil, Flag, Inbox,
 } from 'lucide-react';
 import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
@@ -45,6 +45,7 @@ type NodePanelEnvProps = {
 };
 
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
+const WOE_FIT_FIXED_DATA_PATH_ENV = 'woe_fit_fixed_data_path';
 
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
@@ -1433,14 +1434,6 @@ const ALGO_DICT_META: Record<AlgoDictKey, { label: string; doc: string; example:
   },
 };
 
-const ALGO_DICT_ICONS: Record<AlgoDictKey, typeof BarChart3> = {
-  dict_nbins: BarChart3,
-  dict_missing_values: Brackets,
-  dict_min_bin_rate: Percent,
-  dict_min_bin_size: Hash,
-  dict_min_missing_bad_cnt: ShieldAlert,
-};
-
 const SAMPLE_WOE_MODIFICATIONS = `[
   {
     "bin_name": "01.(-0.15, 0.05]",
@@ -1469,14 +1462,15 @@ function AlgoDictFieldRow({
   value,
   onChange,
   readOnly,
+  labelCls,
 }: {
   dictKey: AlgoDictKey;
   value: string | null;
   onChange: (v: string | null) => void;
   readOnly?: boolean;
+  labelCls: string;
 }) {
   const meta = ALGO_DICT_META[dictKey];
-  const Icon = ALGO_DICT_ICONS[dictKey];
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -1549,16 +1543,10 @@ function AlgoDictFieldRow({
 
   return (
     <div className="flex items-center gap-2 min-h-[48px] px-2 py-1.5 rounded-lg border border-slate-100 bg-white hover:border-slate-200 transition-colors">
-      <div
-        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#13c2c2]/10 text-[#0d9e9e] shrink-0"
-        title={meta.label}
-      >
-        <Icon size={16} strokeWidth={2} aria-hidden />
-      </div>
-      <span className="sr-only">{meta.label}</span>
-      <div className="flex items-center shrink-0">
+      <p className={`${labelCls} mb-0 shrink-0 max-w-[42%]`}>
+        {meta.label}
         <FieldTooltip text={meta.doc} />
-      </div>
+      </p>
       <div className="flex-1 min-w-0" />
       <div className="flex items-center gap-1 shrink-0">
         {value ? (
@@ -1612,29 +1600,42 @@ function AlgoDictFieldRow({
   );
 }
 
-function WoeFitDifyCascadeSourceField({
+const WOE_FIT_FIXED_VALUE_LABEL = 'FixedValue';
+
+function WoeFitDataPathField({
   task,
   readOnly,
   upstreamNodes,
   allNodes,
   bindingRaw,
+  fixedPathRaw,
+  fixedMenuChosen,
+  onFixedMenuChosen,
   onBindingChange,
-  onPickFixedMode,
+  onFixedPathChange,
+  onClearAll,
+  numInputCls,
 }: {
   task: TrainingTask;
   readOnly?: boolean;
   upstreamNodes: DagNode[];
   allNodes: DagNode[];
   bindingRaw: string;
+  fixedPathRaw: string;
+  fixedMenuChosen: boolean;
+  onFixedMenuChosen: (v: boolean) => void;
   onBindingChange: (raw: string) => void;
-  onPickFixedMode: () => void;
+  onFixedPathChange: (path: string) => void;
+  onClearAll: () => void;
+  numInputCls: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [hoverLeftId, setHoverLeftId] = useState<string | null>(null);
 
   const parsed = parseWoeFitBinding(bindingRaw);
-  const defaultUpstream = upstreamNodes[0];
+  const firstUpstreamId = upstreamNodes[0]?.id;
+  const isFixedMode = !parsed && (fixedPathRaw.trim() !== '' || fixedMenuChosen);
 
   useEffect(() => {
     if (!open) return;
@@ -1654,77 +1655,81 @@ function WoeFitDifyCascadeSourceField({
 
   useEffect(() => {
     if (open) {
-      setHoverLeftId(parsed?.nodeId ?? defaultUpstream?.id ?? '__start__');
+      setHoverLeftId(parsed?.nodeId ?? firstUpstreamId ?? '__fixed__');
     }
-  }, [open, parsed?.nodeId, defaultUpstream?.id]);
+  }, [open, parsed?.nodeId, firstUpstreamId]);
 
   const focusLeftId = open
-    ? (hoverLeftId ?? parsed?.nodeId ?? defaultUpstream?.id ?? '__start__')
-    : (parsed?.nodeId ?? defaultUpstream?.id ?? '__start__');
+    ? (hoverLeftId ?? parsed?.nodeId ?? firstUpstreamId ?? '__fixed__')
+    : (parsed?.nodeId ?? firstUpstreamId ?? '__fixed__');
 
-  const breadcrumb = (() => {
-    if (!parsed) return '';
-    if (parsed.nodeId === '__start__') return 'Start / —';
-    if (parsed.nodeId === '__fixed__') return 'FixedValue / custom_s3_uri';
-    const n = allNodes.find((x) => x.id === parsed.nodeId);
-    if (!n) return formatWoeFitBinding(bindingRaw);
-    const ports = outputPortsForUpstreamNode(n.type);
-    const port = ports.find((p) => p.key === parsed.portKey);
-    return `${workflowStepLabel(n)} / ${port?.label ?? parsed.portKey}`;
+  const sourceEcho = (() => {
+    if (parsed) {
+      const n = allNodes.find((x) => x.id === parsed.nodeId);
+      if (!n) return formatWoeFitBinding(bindingRaw).replace(/\s*\/\s*/g, '/');
+      const ports = outputPortsForUpstreamNode(n.type);
+      const port = ports.find((p) => p.key === parsed.portKey);
+      return `${workflowStepLabel(n)}/${port?.label ?? parsed.portKey}`;
+    }
+    if (isFixedMode) return WOE_FIT_FIXED_VALUE_LABEL;
+    return '';
   })();
 
   const resolvedPath =
-    parsed && parsed.nodeId !== '__start__' && parsed.nodeId !== '__fixed__'
-      ? resolveWoeFitPortPath(parsed.nodeId, parsed.portKey, allNodes, task, task.pipelineEnv)
-      : '';
+    parsed ? resolveWoeFitPortPath(parsed.nodeId, parsed.portKey, allNodes, task, task.pipelineEnv) : '';
 
-  const leftRows: { id: string; label: string; node?: DagNode }[] = [
-    { id: '__start__', label: 'Start' },
+  const leftRows: { id: string; label: string; node?: DagNode; isFixed?: boolean }[] = [
     ...upstreamNodes.map((n) => ({ id: n.id, label: workflowStepLabel(n), node: n })),
-    { id: '__fixed__', label: 'FixedValue' },
+    { id: '__fixed__', label: WOE_FIT_FIXED_VALUE_LABEL, isFixed: true },
   ];
 
   const rightPorts: WoeCascadePort[] = (() => {
-    if (focusLeftId === '__start__') {
-      return [
-        { key: 'workflow_context', label: 'workflow_context', typeLabel: 'object', disabled: true },
-        { key: 'trigger_payload', label: 'trigger_payload', typeLabel: 'string', disabled: true },
-      ];
-    }
-    if (focusLeftId === '__fixed__') {
-      return [{ key: 'custom_s3_uri', label: 'custom_s3_uri', typeLabel: 'string' }];
-    }
+    if (focusLeftId === '__fixed__') return [];
     const n = allNodes.find((x) => x.id === focusLeftId);
     return n ? outputPortsForUpstreamNode(n.type) : [];
   })();
 
   const handlePickPort = (leftId: string, port: WoeCascadePort) => {
-    if (readOnly || port.disabled) return;
-    if (leftId === '__fixed__' && port.key === 'custom_s3_uri') {
-      onBindingChange('');
-      onPickFixedMode();
-      setOpen(false);
-      return;
-    }
-    if (leftId === '__start__') return;
+    if (readOnly || port.disabled || leftId === '__fixed__') return;
+    onFixedPathChange('');
+    onFixedMenuChosen(false);
     onBindingChange(`${leftId}|${port.key}`);
     setOpen(false);
   };
 
+  const handleLeftClick = (row: { id: string; isFixed?: boolean }) => {
+    if (readOnly) return;
+    setHoverLeftId(row.id);
+    if (row.isFixed) {
+      onBindingChange('');
+      onFixedMenuChosen(true);
+      setOpen(false);
+    }
+  };
+
+  const showClear = !!(parsed || fixedPathRaw.trim() || fixedMenuChosen);
+  const noUpstream = upstreamNodes.length === 0;
+
   return (
-    <div ref={rootRef} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+    <div ref={rootRef} className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-2 bg-slate-100/90 border-b border-slate-200 px-2.5 py-1.5">
         <span className="text-[10px] font-bold text-slate-700">
           Field: <span className="font-semibold">data_path</span>
         </span>
         <span className="text-[10px] text-slate-500">
-          type: <span className="font-mono text-slate-600">string</span>
+          type: <span className="font-semibold text-slate-700">data</span>
         </span>
       </div>
-      <div className="flex items-start gap-2">
-        <span className="text-[10px] font-semibold text-slate-600 shrink-0 pt-2">Source:</span>
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-          <div className="relative">
+      <div className="px-2.5 py-2.5 flex flex-col gap-2">
+        {noUpstream && (
+          <p className="text-[10px] text-slate-500 leading-snug border border-amber-100 bg-amber-50/80 rounded-md px-2 py-1.5">
+            No upstream node linked to WOE Fit. Draw an incoming edge on the canvas to pick node outputs here, or use {WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.
+          </p>
+        )}
+        <div className="flex items-start gap-2">
+          <span className="text-[10px] font-semibold text-slate-600 shrink-0 pt-2">Source:</span>
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            <div className="relative">
             <button
               type="button"
               disabled={readOnly}
@@ -1733,17 +1738,17 @@ function WoeFitDifyCascadeSourceField({
                 ${open ? 'border-sky-400 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white hover:border-slate-300'}
                 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              <span className={`${breadcrumb ? 'text-slate-700' : 'text-slate-400'} break-all line-clamp-2`}>
-                {breadcrumb || 'Select upstream output…'}
+              <span className={`${sourceEcho ? 'text-slate-700' : 'text-slate-400'} break-all line-clamp-2`}>
+                {sourceEcho || `Select upstream node or ${WOE_FIT_FIXED_VALUE_LABEL}…`}
               </span>
             </button>
-            {bindingRaw && !readOnly && (
+            {showClear && !readOnly && (
               <button
                 type="button"
                 title="Clear"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onBindingChange('');
+                  onClearAll();
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
@@ -1752,13 +1757,20 @@ function WoeFitDifyCascadeSourceField({
             )}
             {open && (
               <div
-                className="absolute left-0 right-0 top-full mt-1 z-30 flex rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[200px] max-h-[min(320px,70vh)]"
+                className="absolute left-0 right-0 top-full mt-1 z-30 flex rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[180px] max-h-[min(320px,70vh)]"
                 onMouseDown={(e) => e.preventDefault()}
               >
                 <div className="w-[46%] min-w-[148px] border-r border-slate-200 overflow-y-auto py-1">
+                  {noUpstream && (
+                    <div className="px-2.5 py-2 border-b border-slate-100">
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        No upstream nodes — connect WOE Fit to a node on the canvas, or choose {WOE_FIT_FIXED_VALUE_LABEL}.
+                      </p>
+                    </div>
+                  )}
                   {leftRows.map((row) => {
                     const active = focusLeftId === row.id;
-                    const hasChildren = row.id === '__start__' || row.id === '__fixed__' || !!row.node;
+                    const hasChildren = !!row.node;
                     return (
                       <button
                         key={row.id}
@@ -1766,11 +1778,7 @@ function WoeFitDifyCascadeSourceField({
                         disabled={readOnly}
                         onMouseEnter={() => setHoverLeftId(row.id)}
                         onFocus={() => setHoverLeftId(row.id)}
-                        onClick={() => {
-                          setHoverLeftId(row.id);
-                          if (row.id === '__fixed__') return;
-                          if (row.id === '__start__') return;
-                        }}
+                        onClick={() => handleLeftClick(row)}
                         className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 text-left text-[11px] transition-colors
                           ${active ? 'bg-sky-50 text-sky-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'}
                           disabled:opacity-50`}
@@ -1782,36 +1790,56 @@ function WoeFitDifyCascadeSourceField({
                   })}
                 </div>
                 <div className="flex-1 min-w-[140px] overflow-y-auto py-1 bg-slate-50/40">
-                  {rightPorts.map((port) => {
-                    const sel =
-                      parsed &&
-                      parsed.nodeId === focusLeftId &&
-                      parsed.portKey === port.key &&
-                      !port.disabled;
-                    return (
-                      <button
-                        key={port.key}
-                        type="button"
-                        disabled={readOnly || !!port.disabled}
-                        onClick={() => handlePickPort(focusLeftId, port)}
-                        className={`w-full text-left px-2.5 py-2 text-[11px] transition-colors
-                          ${port.disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-700 hover:bg-white'}
-                          ${sel ? 'bg-sky-50 text-sky-900 font-semibold' : ''}`}
-                      >
-                        {port.label}{' '}
-                        <span className="text-slate-400 font-normal">({port.typeLabel})</span>
-                      </button>
-                    );
-                  })}
+                  {rightPorts.length === 0 && focusLeftId === '__fixed__' ? (
+                    <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
+                      Click {WOE_FIT_FIXED_VALUE_LABEL} on the left, then enter an S3 path under FieldMapping.
+                    </p>
+                  ) : (
+                    rightPorts.map((port) => {
+                      const sel =
+                        parsed &&
+                        parsed.nodeId === focusLeftId &&
+                        parsed.portKey === port.key &&
+                        !port.disabled;
+                      return (
+                        <button
+                          key={port.key}
+                          type="button"
+                          disabled={readOnly || !!port.disabled}
+                          onClick={() => handlePickPort(focusLeftId, port)}
+                          className={`w-full text-left px-2.5 py-2 text-[11px] transition-colors
+                            ${port.disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-700 hover:bg-white'}
+                            ${sel ? 'bg-sky-50 text-sky-900 font-semibold' : ''}`}
+                        >
+                          {port.label}{' '}
+                          <span className="text-slate-400 font-normal">({port.typeLabel})</span>
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
+            </div>
+            {isFixedMode && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold text-slate-600">FieldMapping:</span>
+                <input
+                  type="text"
+                  value={fixedPathRaw}
+                  disabled={readOnly}
+                  onChange={(e) => onFixedPathChange(e.target.value)}
+                  className={numInputCls}
+                  placeholder='or "null"'
+                />
+              </div>
+            )}
+            {!!resolvedPath && parsed && (
+              <p className="text-[9px] text-slate-400 font-mono break-all leading-relaxed px-0.5" title={resolvedPath}>
+                Resolves to: {resolvedPath}
+              </p>
+            )}
           </div>
-          {resolvedPath && (
-            <p className="text-[9px] text-slate-400 font-mono break-all leading-relaxed px-0.5" title={resolvedPath}>
-              Resolves to: {resolvedPath}
-            </p>
-          )}
         </div>
       </div>
     </div>
@@ -1820,14 +1848,21 @@ function WoeFitDifyCascadeSourceField({
 
 function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagContext }: NodePanelEnvProps) {
   const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const bindingRaw = React.useMemo(
+    () => getPipelineEnvValue(mergedEnv, WOE_FIT_INPUT_BINDING_ENV),
+    [mergedEnv],
+  );
+  const fixedPathRaw = React.useMemo(
+    () => getPipelineEnvValue(mergedEnv, WOE_FIT_FIXED_DATA_PATH_ENV),
+    [mergedEnv],
+  );
   const upstreamDataPath = React.useMemo(
     () => buildDataSourceFeaturesInputPath(task, task.pipelineEnv),
     [task.modelName, task.pipelineEnv],
   );
 
-  const [inputMode, setInputMode] = useState<'upstream' | 'fixed'>('upstream');
-  const [fixedDataPath, setFixedDataPath] = useState('s3://mlops-artifacts/features/custom.parquet');
   const [dataConfigOpen, setDataConfigOpen] = useState(false);
+  const [fixedMenuChosen, setFixedMenuChosen] = useState(false);
 
   const [nBins, setNBins] = useState<5 | 10 | 15>(10);
   const [method, setMethod] = useState<'best_ks' | 'quantile'>('best_ks');
@@ -1850,6 +1885,14 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
   const [woeModalError, setWoeModalError] = useState('');
 
   const [checkpointAfterNode, setCheckpointAfterNode] = useState(true);
+
+  useEffect(() => {
+    if (bindingRaw.trim()) setFixedMenuChosen(false);
+  }, [bindingRaw]);
+
+  useEffect(() => {
+    if (!bindingRaw.trim() && fixedPathRaw.trim()) setFixedMenuChosen(true);
+  }, [task.id, bindingRaw, fixedPathRaw]);
 
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
@@ -2057,83 +2100,52 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
     <div className="px-4 py-3 flex flex-col gap-4">
       <NodeConfigBand title="Input data path">
         <div className="flex flex-col gap-2">
-          <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
-            {(['upstream', 'fixed'] as const).map(m => (
-              <button
-                key={m}
-                type="button"
-                disabled={readOnly}
-                onClick={() => !readOnly && setInputMode(m)}
-                className={`flex-1 py-1 rounded-[5px] text-[10px] font-semibold transition-all
-                  ${inputMode === m ? 'bg-white text-[#0d9e9e] shadow-sm border border-slate-200/80' : 'text-slate-400 hover:text-slate-500'}
-                  disabled:opacity-50`}
-              >
-                {m === 'upstream' ? 'From upstream output' : 'Fixed S3 path'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-              Data
-            </span>
-            <span className="text-[9px] text-slate-400 font-mono">parquet</span>
-          </div>
-          {inputMode === 'upstream' ? (
-            woeFitDagContext ? (
-              <div>
-                <p className={labelCls}>
-                  data_path
-                  <FieldTooltip text="Pick an upstream node output (Dify-style cascade). Unset uses the default features path from Pipeline ENV / Data Source." />
-                </p>
-                <WoeFitDifyCascadeSourceField
-                  task={task}
-                  readOnly={readOnly}
-                  upstreamNodes={getUpstreamNodesForTarget(
-                    woeFitDagContext.edges,
-                    woeFitDagContext.nodes,
-                    woeFitDagContext.woeFitNodeId,
-                  )}
-                  allNodes={woeFitDagContext.nodes}
-                  bindingRaw={getPipelineEnvValue(mergedEnv, WOE_FIT_INPUT_BINDING_ENV)}
-                  onBindingChange={(raw) => onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, raw)}
-                  onPickFixedMode={() => setInputMode('fixed')}
-                />
-                {!getPipelineEnvValue(mergedEnv, WOE_FIT_INPUT_BINDING_ENV) && (
-                  <div className="min-h-7 px-2 py-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 flex items-start gap-1.5 mt-1">
-                    <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Default (when unset)</p>
-                      <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
-                    </div>
-                  </div>
+          {woeFitDagContext ? (
+            <div>
+              <WoeFitDataPathField
+                task={task}
+                readOnly={readOnly}
+                upstreamNodes={getUpstreamNodesForTarget(
+                  woeFitDagContext.edges,
+                  woeFitDagContext.nodes,
+                  woeFitDagContext.woeFitNodeId,
                 )}
-              </div>
-            ) : (
-              <div>
-                <p className={labelCls}>
-                  data_path
-                  <FieldTooltip text="Resolved from Data Source node output (train-filtered features path)." />
-                </p>
-                <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                allNodes={woeFitDagContext.nodes}
+                bindingRaw={bindingRaw}
+                fixedPathRaw={fixedPathRaw}
+                fixedMenuChosen={fixedMenuChosen}
+                onFixedMenuChosen={setFixedMenuChosen}
+                onBindingChange={(raw) => {
+                  onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, raw);
+                  if (raw.trim()) onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, '');
+                }}
+                onFixedPathChange={(path) => {
+                  onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, path);
+                  if (path.trim()) onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, '');
+                }}
+                onClearAll={() => {
+                  onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, '');
+                  onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, '');
+                  setFixedMenuChosen(false);
+                }}
+                numInputCls={numInputCls}
+              />
+              {!bindingRaw.trim() && !fixedPathRaw.trim() && !fixedMenuChosen && (
+                <div className="min-h-7 px-2 py-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 flex items-start gap-1.5 mt-1">
                   <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
-                  <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Default (when unset)</p>
+                    <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+                  </div>
                 </div>
-              </div>
-            )
+              )}
+            </div>
           ) : (
             <div>
-              <p className={labelCls}>
-                data_path
-                <FieldTooltip text="Enter an S3 URI to parquet feature data (type: data)." />
-              </p>
-              <input
-                type="text"
-                value={fixedDataPath}
-                disabled={readOnly}
-                onChange={e => setFixedDataPath(e.target.value)}
-                className={numInputCls}
-                placeholder="s3://bucket/path/features/"
-              />
+              <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
+              </div>
             </div>
           )}
         </div>
@@ -2277,11 +2289,11 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
           <div className="flex flex-col gap-2 pt-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Per-feature overrides</p>
             <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-              <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} />
-              <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} />
-              <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} />
-              <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} />
-              <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} />
+              <AlgoDictFieldRow dictKey="dict_nbins" value={dictNbins} onChange={setDictNbins} readOnly={readOnly} labelCls={labelCls} />
+              <AlgoDictFieldRow dictKey="dict_missing_values" value={dictMissingValues} onChange={setDictMissingValues} readOnly={readOnly} labelCls={labelCls} />
+              <AlgoDictFieldRow dictKey="dict_min_bin_rate" value={dictMinBinRate} onChange={setDictMinBinRate} readOnly={readOnly} labelCls={labelCls} />
+              <AlgoDictFieldRow dictKey="dict_min_bin_size" value={dictMinBinSize} onChange={setDictMinBinSize} readOnly={readOnly} labelCls={labelCls} />
+              <AlgoDictFieldRow dictKey="dict_min_missing_bad_cnt" value={dictMinMissingBadCnt} onChange={setDictMinMissingBadCnt} readOnly={readOnly} labelCls={labelCls} />
             </div>
           </div>
 
@@ -2316,34 +2328,44 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 {woeUpdates.map(entry => (
                   <div
                     key={entry.id}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2"
+                    className="flex flex-wrap items-center gap-2 min-h-[48px] rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1.5"
                   >
                     <span className="text-[10px] font-mono font-semibold text-slate-700">{entry.featureName}</span>
                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#13c2c2]/15 text-[#0d9e9e] font-mono font-semibold">
                       {entry.method}
                     </span>
-                    <div className="flex-1" />
+                    <div className="flex-1 min-w-2" />
                     {!readOnly && (
-                      <>
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => openWoeModalEdit(entry)}
-                          className="text-[10px] font-semibold text-slate-500 hover:text-[#13c2c2]"
+                          className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#0d9e9e] hover:bg-[#13c2c2]/5 transition-colors"
+                          title="Edit"
+                          aria-label={`Edit WOE update for ${entry.featureName}`}
                         >
-                          Edit
+                          <Pencil size={13} />
                         </button>
-                        <button type="button" onClick={() => copyWoeRow(entry)} className="text-[10px] font-semibold text-slate-500 hover:text-[#13c2c2]">
-                          Copy
+                        <button
+                          type="button"
+                          onClick={() => copyWoeRow(entry)}
+                          className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-[#13c2c2]/40 hover:text-[#0d9e9e] hover:bg-[#13c2c2]/5 transition-colors"
+                          title="Copy JSON"
+                          aria-label={`Copy WOE update for ${entry.featureName}`}
+                        >
+                          <Copy size={13} />
                         </button>
                         <button
                           type="button"
                           disabled={woeUpdateEnabled && woeUpdates.length <= 1}
                           onClick={() => deleteWoeRow(entry.id)}
-                          className="text-[10px] font-semibold text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed hover:underline"
+                          className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 text-rose-500 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          title="Delete"
+                          aria-label={`Delete WOE update for ${entry.featureName}`}
                         >
-                          Delete
+                          <Trash2 size={13} />
                         </button>
-                      </>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -2351,10 +2373,12 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                   <button
                     type="button"
                     onClick={openWoeModalAdd}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-semibold text-slate-500 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5"
+                    className="w-full min-h-[48px] flex items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5 transition-colors"
+                    title="Add WOE update"
+                    aria-label="Add WOE update"
                   >
-                    <Plus size={12} />
-                    Add WOE update
+                    <Plus size={14} />
+                    <span className="sr-only">Add WOE update</span>
                   </button>
                 )}
               </div>
@@ -2369,18 +2393,25 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
         <CopyPathField label="encoder_save_path" path={encoderPath} labelCls={labelCls} />
       </NodeConfigBand>
 
-      <div className="flex items-center justify-between gap-3 px-1 py-2 rounded-lg border border-slate-100 bg-slate-50/60">
-        <p className={`${labelCls} mb-0 flex-1`}>
-          Node checkpoint
-          <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
-        </p>
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200/80 border-l-4 border-l-[#13c2c2]/40 bg-gradient-to-r from-[#13c2c2]/[0.07] to-white"
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`${labelCls} mb-0`}>
+            Node checkpoint
+            <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
+          </p>
+          <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">
+            Cached checkpoint lets you resume or re-run from this node without redoing upstream work.
+          </p>
+        </div>
         <button
           type="button"
           disabled={readOnly}
           onClick={() => !readOnly && setCheckpointAfterNode(v => !v)}
-          className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${checkpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+          className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 shrink-0 ${checkpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
         >
-          <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${checkpointAfterNode ? 'translate-x-3' : 'translate-x-0'}`} />
+          <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${checkpointAfterNode ? 'translate-x-3.5' : 'translate-x-0'}`} />
         </button>
       </div>
 

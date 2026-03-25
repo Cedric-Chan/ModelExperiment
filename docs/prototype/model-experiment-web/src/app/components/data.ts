@@ -148,6 +148,12 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '',
     },
     {
+      name: 'woe_fit_fixed_data_path',
+      description:
+        'When set (and binding empty), WOE Fit reads feature data from this S3 path instead of an upstream node output.',
+      value: '',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',
