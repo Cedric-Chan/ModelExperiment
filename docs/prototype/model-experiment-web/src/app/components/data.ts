@@ -98,47 +98,47 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
   return [
     {
       name: 'base_train_path',
-      description: '本次Pipeline 训练数据根路径',
+      description: 'Root path for training data in this pipeline.',
       value: '{fp_data}/{model_name}/{run_id}',
     },
     {
       name: 'label_column',
-      description: '全局标签列名（所有节点默认使用此列）。节点可通过 data_config.label_column 覆盖',
+      description: 'Global label column name (default for all nodes). Nodes may override via data_config.label_column.',
       value: 'label_dpd30_3term',
     },
     {
       name: 'categorical_columns',
-      description: '全局枚举列列名（所有节点默认使用此列）。节点可通过 data_config.categorical_columns 覆盖',
+      description: 'Global categorical column names (default for all nodes). Nodes may override via data_config.categorical_columns.',
       value: CATEGORICAL_COLUMNS_DEFAULT_JSON,
     },
     {
       name: 'sample_type_column',
-      description: '数据类型列名，该列内容包含 train/test/val/all',
+      description: 'Column name for sample split; values include train / test / val / all.',
       value: 'sample_type',
     },
     {
       name: 'exclude_columns',
-      description: '全局排除列列表（不参与训练，但保留在数据中）。节点可追加 exclude，不覆盖全局',
+      description: 'Global exclude list (not used in training but kept in data). Nodes may append excludes without replacing global.',
       value: EXCLUDE_COLUMNS_DEFAULT_JSON,
     },
     {
       name: 'removed_features',
-      description: '特征组级别剔除配置（手动定义）',
+      description: 'Feature-group level removal list (manually defined).',
       value: REMOVED_FEATURES_DEFAULT_JSON,
     },
     {
       name: 'default_cpu',
-      description: '默认 CPU 核数（节点未指定时使用）',
+      description: 'Default CPU cores when a node does not specify.',
       value: '4',
     },
     {
       name: 'default_memory',
-      description: '默认内存大小（节点未指定时使用）',
+      description: 'Default memory size when a node does not specify.',
       value: '8',
     },
     {
       name: 'default_image',
-      description: '默认 Docker 镜像（节点未指定时使用）',
+      description: 'Default Docker image when a node does not specify.',
       value: 'risk-model-training:latest',
     },
   ];

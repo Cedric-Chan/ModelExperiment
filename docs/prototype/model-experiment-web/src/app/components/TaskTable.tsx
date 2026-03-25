@@ -274,7 +274,7 @@ const DEFAULT_ALERT_EVENTS: AlertEventRow[] = [
   {
     id: 'RUN_SUCCESS',
     eventName: 'RUN_SUCCESS',
-    eventDefinition: 'Run 成功通知',
+    eventDefinition: 'Run success notification',
     eventType: 'System',
     hasConfig: false,
     active: false,
@@ -282,7 +282,7 @@ const DEFAULT_ALERT_EVENTS: AlertEventRow[] = [
   {
     id: 'RUN_FAILED',
     eventName: 'RUN_FAILED',
-    eventDefinition: 'Run 失败通知',
+    eventDefinition: 'Run failure notification',
     eventType: 'System',
     hasConfig: false,
     active: true,
@@ -290,7 +290,7 @@ const DEFAULT_ALERT_EVENTS: AlertEventRow[] = [
   {
     id: 'RUN_OVER_THRESHOLD',
     eventName: 'RUN_OVER_THRESHOLD',
-    eventDefinition: 'Run 超阈值告警',
+    eventDefinition: 'Run threshold alert',
     eventType: 'Built-in',
     hasConfig: true,
     rollingWindow: 5,

@@ -1072,7 +1072,7 @@ function NodeResourceAdvBlock({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">资源配置</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Resource configuration</span>
         <div className="h-px flex-1 bg-slate-100" />
       </div>
       <button
@@ -1295,7 +1295,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelE
         <span className="font-mono tracking-wide">WOE Fit_Transform_Merge</span>
       </div>
 
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
         <div>
           <p className={labelCls}>
             Load Raw Data
@@ -1308,7 +1308,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelE
         </div>
       </NodeConfigBand>
 
-      <NodeConfigBand title="节点配置">
+      <NodeConfigBand title="Node configuration">
       <div className="flex flex-col gap-3.5">
         {/* WOE Bins */}
         <div>
@@ -1418,7 +1418,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelE
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
       <div className="flex flex-col gap-2 pb-0.5">
         {[
           { label: 'encoder_save_filepath',  path: 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl' },
@@ -1556,7 +1556,7 @@ function WoeTransformConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: Node
         <span className="font-mono tracking-wide">WOE Transform</span>
       </div>
 
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
       <div className="flex flex-col gap-3">
         {/* Load Raw Data — view only, upstream DataSource */}
         <div>
@@ -1605,7 +1605,7 @@ function WoeTransformConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: Node
       </div>
       </NodeConfigBand>
 
-      <NodeConfigBand title="节点配置">
+      <NodeConfigBand title="Node configuration">
       <div className="flex flex-col gap-3.5">
         {/* update_ws_list */}
         <JsonToggleBlock
@@ -1633,7 +1633,7 @@ function WoeTransformConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: Node
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
       <div className="flex flex-col gap-2 pb-0.5">
         {[
           { label: 'update_encoder_save_filepath', path: 's3://mlops-artifacts/woe/encoder/v12/encoder_updated.pkl' },
@@ -1841,7 +1841,7 @@ function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: 
         <span className="font-mono tracking-wide">Feature Selection</span>
       </div>
 
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
         {/* 1. Load WOE Merge Result */}
         <div>
           <p className={labelCls}>
@@ -1865,7 +1865,7 @@ function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: 
         </div>
       </NodeConfigBand>
 
-      <NodeConfigBand title="节点配置">
+      <NodeConfigBand title="Node configuration">
       <div className="flex flex-col gap-3.5">
       {/* 2. Select Method multi-select */}
       <div ref={methodRef}>
@@ -1968,7 +1968,7 @@ function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: 
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
       <div className="pb-0.5">
         <CopyPathField
           label="feature_selection_report_path"
@@ -2096,7 +2096,7 @@ function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePan
         <span className="font-mono tracking-wide">Model Tune &amp; Train</span>
       </div>
 
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
       <div className="flex flex-col gap-3.5">
         {/* 1. woe_merged_result_path */}
         <div>
@@ -2132,7 +2132,7 @@ function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePan
       </div>
       </NodeConfigBand>
 
-      <NodeConfigBand title="节点配置">
+      <NodeConfigBand title="Node configuration">
       <div className="flex flex-col gap-3.5">
         {/* 3. init_hypers */}
         <ExpandableCodeBlock
@@ -2218,7 +2218,7 @@ function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePan
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
       <div className="pb-0.5 flex flex-col gap-3.5">
         <CopyPathField label="tune_artifacts_path"
           path="s3://mlops-artifacts/model-tune/v12/artifacts/" labelCls={labelCls} />
@@ -2268,12 +2268,12 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
 
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
       <div className="flex flex-col gap-3">
       <div>
         <p className={labelCls}>
           Load Sample Path
-          <FieldTooltip text="待预测样本的存储路径。支持 S3 / Hive 路径，推理时从该路径读取特征数据。" />
+          <FieldTooltip text="Storage path for samples to score. Supports S3 and Hive; features are read from this path at inference time." />
         </p>
         <input
           type="text"
@@ -2288,7 +2288,7 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
       <div>
         <p className={labelCls}>
           Load best_model_path
-          <FieldTooltip text="推理所用模型 .pkl 路径，默认引用 Model Tune · Train 的输出路径，可手动覆盖。" />
+          <FieldTooltip text="Path to the model .pkl used for inference. Defaults to Model Tune · Train output; you can override manually." />
         </p>
         <div className="flex items-center gap-1.5">
           <input
@@ -2325,7 +2325,7 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
       <div>
         <p className={labelCls}>predict_result_output_path</p>
         <div className="flex items-center gap-1.5">
@@ -2406,7 +2406,7 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
 
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
-      <NodeConfigBand title="输入数据路径">
+      <NodeConfigBand title="Input data path">
         <div>
           <p className={labelCls}>Source Type</p>
           <div className="flex gap-2">
@@ -2478,7 +2478,7 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
         )}
       </NodeConfigBand>
 
-      <NodeConfigBand title="节点配置">
+      <NodeConfigBand title="Node configuration">
         <SampleTypeColumnSection
           mode={sampleMode}
           onModeChange={setSampleMode}
@@ -2543,7 +2543,7 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
         onPatchEnv={onPatchPipelineEnvRow}
       />
 
-      <NodeConfigBand title="输出路径">
+      <NodeConfigBand title="Output path">
         <div>
           <p className={labelCls}>data_format</p>
           <div className="h-8 px-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center text-xs font-mono text-slate-500">
