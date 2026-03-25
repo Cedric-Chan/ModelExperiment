@@ -1,3 +1,5 @@
+export type ModelLevel = 'sub' | 'mega';
+
 export type TaskStatus = 'DRAFT' | 'ENABLED' | 'DISABLED';
 export type InstanceStatus = 'QUEUING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'KILLED';
 export type Region = 'SG' | 'ID' | 'TH' | 'MY' | 'PH' | 'VN';
@@ -51,6 +53,8 @@ export interface TrainingTask {
   region: Region;
   status: TaskStatus;
   framework: Framework;
+  /** Partner pipeline model_level; immutable after create in product spec. */
+  modelLevel: ModelLevel;
   owner: string;
   bizTeam: BizTeam;
   description: string;
@@ -62,6 +66,115 @@ export interface TrainingTask {
   templateExperimentName?: string;
   /** Pipeline-level global variables for this experiment. */
   pipelineEnv?: PipelineEnvRow[];
+}
+
+const EXCLUDE_COLUMNS_DEFAULT_JSON = JSON.stringify([
+  'userid', 'activation_term', 'label_dpd30_3term', 'user_create_time',
+  'mp_order_create_time', 'dp_order_create_time', 'mp_lgx_create_time',
+  'mp_item_create_time', 'activation_date', 'sample_use', 'credit_user_id',
+  'airpay_user_id', 'grass_date', 'score_date', 'user_type', 'sample_type',
+  '1term_dpd12', '1term_dpd30', '2term_dpd30', '3term_dpd30',
+  'activation_month', 'bill_term', 'bill_date', 'clear_date',
+  'overdue_date', '2term_max_overdue_date', '3term_max_overdue_date',
+  'spl_bill_day', 'spl_overdue_day', 'spl_bill_cnt', 'is_overdue',
+  'is_acct_frozen', 'has_airpay', 'has_device', 'has_contact',
+  'spl_bill_num', 'spl_frozen_tag', 'spl_overdue_tag', 'bcl_ascore',
+  'bcl_credit_behavior_subscore', 'bcl_user_and_order_subscore',
+  'bcl_ecomm_behavior_subscore', 'bcl_payment_subscore',
+  'bcl_device_and_app_subscore', 'first_activation_month',
+  'first_activation_time', 'first_activation_week', 'is_cod_user',
+]);
+
+const REMOVED_FEATURES_DEFAULT_JSON = JSON.stringify([
+  'user_has_set_up_password', 'device_hf_app_version_01', 'user_phone',
+]);
+
+const CATEGORICAL_COLUMNS_DEFAULT_JSON = JSON.stringify([
+  'user_acct_status', 'user_is_email_verified', 'user_gender',
+]);
+
+/** Partner pipeline-level keys (frontend_node_config_spec_latest.md). */
+export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
+  return [
+    {
+      name: 'base_train_path',
+      description: '本次Pipeline 训练数据根路径',
+      value: '{fp_data}/{model_name}/{run_id}',
+    },
+    {
+      name: 'label_column',
+      description: '全局标签列名（所有节点默认使用此列）。节点可通过 data_config.label_column 覆盖',
+      value: 'label_dpd30_3term',
+    },
+    {
+      name: 'categorical_columns',
+      description: '全局枚举列列名（所有节点默认使用此列）。节点可通过 data_config.categorical_columns 覆盖',
+      value: CATEGORICAL_COLUMNS_DEFAULT_JSON,
+    },
+    {
+      name: 'sample_type_column',
+      description: '数据类型列名，该列内容包含 train/test/val/all',
+      value: 'sample_type',
+    },
+    {
+      name: 'exclude_columns',
+      description: '全局排除列列表（不参与训练，但保留在数据中）。节点可追加 exclude，不覆盖全局',
+      value: EXCLUDE_COLUMNS_DEFAULT_JSON,
+    },
+    {
+      name: 'removed_features',
+      description: '特征组级别剔除配置（手动定义）',
+      value: REMOVED_FEATURES_DEFAULT_JSON,
+    },
+    {
+      name: 'default_cpu',
+      description: '默认 CPU 核数（节点未指定时使用）',
+      value: '4',
+    },
+    {
+      name: 'default_memory',
+      description: '默认内存大小（节点未指定时使用）',
+      value: '8',
+    },
+    {
+      name: 'default_image',
+      description: '默认 Docker 镜像（节点未指定时使用）',
+      value: 'risk-model-training:latest',
+    },
+  ];
+}
+
+/** Merge stored ENV with spec defaults: keep user rows by name, fill missing keys. */
+export function mergePipelineEnvWithDefaults(rows: PipelineEnvRow[] | undefined): PipelineEnvRow[] {
+  const defaults = getDefaultPipelineEnvRows();
+  const map = new Map((rows ?? []).map((r) => [r.name, r]));
+  const merged = defaults.map((d) => {
+    const ex = map.get(d.name);
+    if (!ex) return { ...d };
+    return {
+      name: d.name,
+      description: ex.description?.trim() ? ex.description : d.description,
+      value: ex.value,
+    };
+  });
+  const extra = (rows ?? []).filter((r) => !defaults.some((d) => d.name === r.name));
+  return [...merged, ...extra];
+}
+
+export function getPipelineEnvValue(rows: PipelineEnvRow[] | undefined, key: string): string {
+  const hit = rows?.find((r) => r.name === key);
+  if (hit && hit.value !== '') return hit.value;
+  const d = getDefaultPipelineEnvRows().find((r) => r.name === key);
+  return d?.value ?? '';
+}
+
+export function upsertPipelineEnvRow(
+  rows: PipelineEnvRow[] | undefined,
+  key: string,
+  value: string,
+): PipelineEnvRow[] {
+  const base = mergePipelineEnvWithDefaults(rows);
+  return base.map((r) => (r.name === key ? { ...r, value } : r));
 }
 
 export const REGIONS: Region[] = ['SG', 'ID', 'TH', 'MY', 'PH', 'VN'];
@@ -96,6 +209,10 @@ export function filterExperimentsVisibleToOperator(allTasks: TrainingTask[]): Tr
   });
 }
 
+function seedPipelineEnv(): PipelineEnvRow[] {
+  return getDefaultPipelineEnvRows().map((r) => ({ ...r }));
+}
+
 export const initialMockTasks: TrainingTask[] = [
   {
     id: 't1',
@@ -105,6 +222,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'SG',
     status: 'ENABLED',
     framework: 'XGBoost',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'alice',
     bizTeam: 'RiskData',
     description: 'Narrow search space for churn prediction model with balanced dataset',
@@ -159,6 +278,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'ID',
     status: 'DRAFT',
     framework: 'LightGBM',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'bob',
     bizTeam: 'DataSci',
     description: 'Wide search for LTV model with extended feature set and cross-validation',
@@ -180,6 +301,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'TH',
     status: 'DISABLED',
     framework: 'XGBoost',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'alice',
     bizTeam: 'AntiFraud',
     description: 'Fraud detection experiment A with balanced sampling and SMOTE oversampling',
@@ -213,6 +336,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'SG',
     status: 'DRAFT',
     framework: 'Benchmark',
+    modelLevel: 'mega',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'bob',
     bizTeam: 'Aimos',
     description: 'Fuse user_score and order_score for overall purchase probability ranking',
@@ -229,6 +354,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'MY',
     status: 'ENABLED',
     framework: 'PyTorch',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'carol',
     bizTeam: 'MoneeAlgo',
     description: 'Multi-label text classifier for Malay product categorization using BERT',
@@ -257,6 +384,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'PH',
     status: 'ENABLED',
     framework: 'TensorFlow',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'david',
     bizTeam: 'Policy',
     description: 'Demand forecasting for Philippine market with seasonal decomposition',
@@ -286,6 +415,8 @@ export const initialMockTasks: TrainingTask[] = [
     region: 'VN',
     status: 'ENABLED',
     framework: 'LightGBM',
+    modelLevel: 'sub',
+    pipelineEnv: seedPipelineEnv(),
     owner: 'alice',
     bizTeam: 'RiskData',
     description: 'User retention prediction for Vietnam market with weekly cohort features',

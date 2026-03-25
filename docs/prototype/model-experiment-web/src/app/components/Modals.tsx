@@ -4,7 +4,10 @@ import {
   Check, Info, Copy, Clock, User,
   Search, AlertTriangle, ChevronRight, Tag
 } from 'lucide-react';
-import { TrainingTask, TaskInstance, HistoryVersion, BIZ_TEAMS, BizTeam, REGISTERED_MODELS, ALL_OWNERS, Framework, Region } from './data';
+import {
+  TrainingTask, TaskInstance, HistoryVersion, BIZ_TEAMS, BizTeam, REGISTERED_MODELS, ALL_OWNERS,
+  Framework, Region, ModelLevel,
+} from './data';
 
 /* ─── Modal Shell ─── */
 interface ModalProps {
@@ -481,6 +484,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
   const [form, setForm] = useState({
     expName:     isCopy ? `${task?.taskName || ''} (Copy)` : (task?.taskName || ''),
     model:       task?.modelName ? `${task.modelName}${task.modelVersion ? ` @ ${task.modelVersion}` : ''}` : '',
+    modelLevel:  (isCopy || isEdit ? (task?.modelLevel ?? 'sub') : 'sub') as ModelLevel,
     templateExperimentName: isCopy ? (task?.taskName || '') : (task?.templateExperimentName || ''),
     owners:      task?.owner ? task.owner.split(',').map(s => s.trim()).filter(Boolean) : [] as string[],
     bizTeam:     (task?.bizTeam || '') as BizTeam | '',
@@ -499,6 +503,9 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
     if (form.templateExperimentName && !templateOptionNames.includes(form.templateExperimentName)) {
       e.templateExperimentName = 'Selected template experiment is not in your visible list';
     }
+    if (!isEdit && (form.modelLevel !== 'sub' && form.modelLevel !== 'mega')) {
+      e.modelLevel = 'Model level is required';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -513,7 +520,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
     const modelParts = form.model.split(' @ ').map((s) => s.trim());
     const modelName = modelParts[0] || form.model;
     const modelVersion = modelParts[1];
-    onSubmit({
+    const payload: Partial<TrainingTask> = {
       taskName:    form.expName,
       modelName,
       ...(modelVersion ? { modelVersion } : {}),
@@ -524,7 +531,14 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
       ...(form.templateExperimentName.trim()
         ? { templateExperimentName: form.templateExperimentName.trim() }
         : { templateExperimentName: undefined }),
-    });
+    };
+    if (!isEdit) {
+      payload.modelLevel = form.modelLevel;
+    }
+    if (isCopy && task?.pipelineEnv?.length) {
+      payload.pipelineEnv = task.pipelineEnv.map((r) => ({ ...r }));
+    }
+    onSubmit(payload);
     onClose();
   };
 
@@ -548,7 +562,19 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
           {errors.expName && <p className="text-xs text-rose-500 mt-0.5">{errors.expName}</p>}
         </Field>
 
-        {/* ── Model + Template ── */}
+        {isEdit && (
+          <div>
+            <label className="text-sm font-medium text-slate-700">Model level</label>
+            <div className="mt-1.5 flex items-center gap-2 min-h-9 px-3 py-2 rounded-lg border border-slate-100 bg-slate-50 text-sm text-slate-600">
+              <Tag size={14} className="text-slate-400 shrink-0" />
+              <span className="font-mono uppercase">{form.modelLevel}</span>
+              <span className="text-[10px] text-slate-300 italic ml-auto shrink-0">read only</span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Pipeline training target tier — fixed after create</p>
+          </div>
+        )}
+
+        {/* ── Model + (Model level + Template) ── */}
         <div className="grid grid-cols-2 gap-4">
           <Field label="Model" required hint="Select registered model, then pick a version">
             <ModelVersionCascade
@@ -559,20 +585,47 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
             {errors.model && <p className="text-xs text-rose-500 mt-0.5">{errors.model}</p>}
           </Field>
 
-          <Field
-            label="Template"
-            hint="Optional — use another experiment you can access as a starting reference"
-          >
-            <ExperimentTemplateSelect
-              value={form.templateExperimentName}
-              onChange={(v) => setForm({ ...form, templateExperimentName: v })}
-              options={templateOptionNames}
-              error={errors.templateExperimentName}
-            />
-            {errors.templateExperimentName && (
-              <p className="text-xs text-rose-500 mt-0.5">{errors.templateExperimentName}</p>
+          <div className="flex flex-col gap-4">
+            {!isEdit && (
+              <Field
+                label="Model level"
+                required
+                hint="Pipeline training target (sub: from raw features; mega: from submodel scores)"
+              >
+                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+                  {(['sub', 'mega'] as const).map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setForm({ ...form, modelLevel: lvl })}
+                      className={`flex-1 h-8 rounded-md text-xs font-semibold transition-all uppercase tracking-wide
+                        ${form.modelLevel === lvl
+                          ? 'bg-white text-[#0d9e9e] shadow-sm border border-slate-200/80'
+                          : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+                {errors.modelLevel && <p className="text-xs text-rose-500 mt-0.5">{errors.modelLevel}</p>}
+              </Field>
             )}
-          </Field>
+
+            <Field
+              label="Template"
+              hint="Optional — use another experiment you can access as a starting reference"
+            >
+              <ExperimentTemplateSelect
+                value={form.templateExperimentName}
+                onChange={(v) => setForm({ ...form, templateExperimentName: v })}
+                options={templateOptionNames}
+                error={errors.templateExperimentName}
+              />
+              {errors.templateExperimentName && (
+                <p className="text-xs text-rose-500 mt-0.5">{errors.templateExperimentName}</p>
+              )}
+            </Field>
+          </div>
         </div>
 
         {/* ── Owner + Biz Team ── */}

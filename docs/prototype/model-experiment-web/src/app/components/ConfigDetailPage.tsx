@@ -12,7 +12,10 @@ import {
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
   Pencil, Flag, Inbox
 } from 'lucide-react';
-import { TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow } from './data';
+import {
+  TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
+  mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow,
+} from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
 
@@ -31,6 +34,13 @@ interface ConfigDetailPageProps {
   /** Called when a new run is successfully submitted — receives the new TaskInstance */
   onRunCreated?: (instance: TaskInstance) => void;
 }
+
+/** Passed into per-node config panels for pipeline ENV read/write. */
+type NodePanelEnvProps = {
+  task: TrainingTask;
+  onPatchPipelineEnvRow: (key: string, value: string) => void;
+  readOnly?: boolean;
+};
 
 /* ─────────────── Node types ─────────────── */
 type NodeType =
@@ -127,7 +137,7 @@ const NODE_STYLES: Record<NodeType, {
 /* ─────────────── Default DAG builder ─────────────── */
 function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
   const nodes: DagNode[] = [
-    { id: 'n1', type: 'data_source',       label: 'data source',       sublabel: 'Hive · Partition · Label',                    x: X0+GX*0, y: MID, status: 'ready'   },
+    { id: 'n1', type: 'data_source',       label: 'Data Source',       sublabel: 'Hive · Partition · Label',                    x: X0+GX*0, y: MID, status: 'ready'   },
     { id: 'n2', type: 'woe_fit',           label: 'WOE fit',           sublabel: 'Encoder training · Bins',                   x: X0+GX*1, y: MID, status: 'ready'   },
     { id: 'n3', type: 'woe_transform',     label: 'WOE Transform',     sublabel: 'Apply encoder · WOE features',              x: X0+GX*2, y: MID, status: 'ready'   },
     { id: 'n4', type: 'feature_selection', label: 'Feature selection', sublabel: 'IV · Corr · Selection report',              x: X0+GX*3, y: MID, status: 'ready'   },
@@ -669,6 +679,14 @@ function ExpMetaEditModal({ task, onUpdateTask, onClose }: {
               <span className="text-[10px] text-slate-300 italic shrink-0">read only</span>
             </div>
           </div>
+          {/* Read-only: Model level */}
+          <div>
+            <p className={labelCls}>Model level</p>
+            <div className={readonlyCls}>
+              <span className="truncate flex-1 font-mono uppercase">{task.modelLevel ?? 'sub'}</span>
+              <span className="text-[10px] text-slate-300 italic shrink-0">read only</span>
+            </div>
+          </div>
           {/* Owner */}
           <div>
             <p className={labelCls}>Owner</p>
@@ -991,16 +1009,139 @@ function MultiColSelect({ values, onChange, options, disabled }: {
   );
 }
 
-const SPLIT_RATIOS: { label: string; value: string; train: number; test: number }[] = [
-  { label: '70 / 30', value: '0.7_0.3', train: 0.7, test: 0.3 },
-  { label: '75 / 25', value: '0.75_0.25', train: 0.75, test: 0.25 },
-  { label: '80 / 20', value: '0.8_0.2', train: 0.8, test: 0.2 },
-];
+const SPLIT_SUM_TOL = 1e-6;
 
-function SampleUseColSection({
+function roundRatio2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function parseRatio2(s: string): number {
+  const x = parseFloat(s);
+  return Number.isFinite(x) ? roundRatio2(x) : 0;
+}
+
+function validateTrainTestVal(train: string, test: string, val: string): string | null {
+  const t = parseRatio2(train);
+  const u = parseRatio2(test);
+  const v = parseRatio2(val);
+  if (Math.abs(t + u + v - 1) > SPLIT_SUM_TOL) return 'Train + test + val must sum to 1.00.';
+  return null;
+}
+
+function filterRatioInput(prev: string, raw: string): string {
+  if (raw === '' || raw === '.') return raw;
+  return /^\d*\.?\d{0,2}$/.test(raw) ? raw : prev;
+}
+
+function NodeConfigBand({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-slate-100" />
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">{title}</span>
+        <div className="h-px flex-1 bg-slate-100" />
+      </div>
+      <div className="flex flex-col gap-3">{children}</div>
+    </div>
+  );
+}
+
+function NodeResourceAdvBlock({
+  readOnly,
+  pipelineEnv,
+  onPatchEnv,
+}: {
+  readOnly?: boolean;
+  pipelineEnv?: PipelineEnvRow[];
+  onPatchEnv: (key: string, value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const merged = React.useMemo(
+    () => mergePipelineEnvWithDefaults(pipelineEnv),
+    [pipelineEnv],
+  );
+  const cpu = getPipelineEnvValue(merged, 'default_cpu');
+  const mem = getPipelineEnvValue(merged, 'default_memory');
+  const img = getPipelineEnvValue(merged, 'default_image');
+  const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
+  const inputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
+    focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-slate-100" />
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">资源配置</span>
+        <div className="h-px flex-1 bg-slate-100" />
+      </div>
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={() => !readOnly && setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-colors
+          ${open ? 'border-[#13c2c2]/40 bg-[#13c2c2]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+      >
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+          <SlidersHorizontal size={11} />
+          Adv. Conf
+        </span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2.5 pl-0.5">
+          <div>
+            <p className={labelCls}>default_cpu</p>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={cpu === '' ? '' : Number(cpu)}
+              disabled={readOnly}
+              onChange={e => {
+                const v = e.target.value;
+                onPatchEnv('default_cpu', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
+              }}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>default_memory</p>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={mem === '' ? '' : Number(mem)}
+              disabled={readOnly}
+              onChange={e => {
+                const v = e.target.value;
+                onPatchEnv('default_memory', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
+              }}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>default_image</p>
+            <input
+              type="text"
+              value={img}
+              disabled={readOnly}
+              onChange={e => onPatchEnv('default_image', e.target.value)}
+              className={inputCls}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SampleTypeColumnSection({
   mode, onModeChange,
   colValue, onColChange, colOptions, colsDisabled,
-  ratio, onRatioChange,
+  trainRatio, testRatio, valRatio,
+  onTrainRatio, onTestRatio, onValRatio,
+  randomSeed, onRandomSeedChange,
   readOnly,
 }: {
   mode: 'use_existing' | 'auto_generate';
@@ -1009,24 +1150,33 @@ function SampleUseColSection({
   onColChange: (v: string) => void;
   colOptions: string[];
   colsDisabled?: boolean;
-  ratio: string;
-  onRatioChange: (v: string) => void;
+  trainRatio: string;
+  testRatio: string;
+  valRatio: string;
+  onTrainRatio: (v: string) => void;
+  onTestRatio: (v: string) => void;
+  onValRatio: (v: string) => void;
+  randomSeed: string;
+  onRandomSeedChange: (v: string) => void;
   readOnly?: boolean;
 }) {
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
+  const splitErr = validateTrainTestVal(trainRatio, testRatio, valRatio);
+  const ratioInputCls = `w-full h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono tabular-nums
+    focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
 
   return (
     <div className="flex flex-col gap-2.5">
       <p className={labelCls}>
-        sample_use_col
-        <FieldTooltip text="Controls which rows each step uses. WOE fit & Model Train only load rows where this column = 'train'; the platform injects this config into all downstream steps automatically." />
+        sample_type_column
+        <FieldTooltip text="ENV key sample_type_column: column with train/test/val/all. Use Existing picks a column; Auto Generate applies split_ratio + random_seed at runtime." />
       </p>
-
-      {/* Mode toggle — compact segmented control */}
       <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
         {(['use_existing', 'auto_generate'] as const).map(m => (
           <button
             key={m}
+            type="button"
             disabled={readOnly}
             onClick={() => !readOnly && onModeChange(m)}
             className={`flex-1 py-0.5 rounded-[5px] transition-all text-[10px] tracking-wide
@@ -1039,7 +1189,6 @@ function SampleUseColSection({
           </button>
         ))}
       </div>
-
       {mode === 'use_existing' ? (
         <div>
           <ColSelect
@@ -1051,47 +1200,61 @@ function SampleUseColSection({
           />
           {colValue && !colsDisabled && (
             <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-              Downstream steps filter on <span className="font-mono text-slate-500">{colValue} = 'train'</span>
+              Downstream uses <span className="font-mono text-slate-500">{colValue}</span> (train / test / val / all).
             </p>
           )}
         </div>
       ) : (
         <div className="rounded-lg border border-slate-200 bg-slate-50/50 px-2.5 py-2 flex flex-col gap-2">
-          <p className="text-[10px] text-slate-400 leading-relaxed">
-            A <span className="font-mono text-slate-500">sample_use_col</span> column is randomly generated at runtime and injected into all downstream steps.
-          </p>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Train / Test Split</p>
-          <div className="flex gap-1.5">
-            {SPLIT_RATIOS.map(r => (
-              <button
-                key={r.value}
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">split_ratio (train / test / val)</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <p className="text-[9px] text-slate-400 mb-0.5">train</p>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={trainRatio}
                 disabled={readOnly}
-                onClick={() => !readOnly && onRatioChange(r.value)}
-                className={`flex-1 rounded-md border py-1.5 px-1 flex flex-col items-center gap-1 transition-all
-                  ${ratio === r.value
-                    ? 'border-[#13c2c2]/60 bg-[#13c2c2]/6'
-                    : 'border-slate-200 bg-white hover:border-slate-300'}
-                  disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <span className={`text-[11px] font-semibold tabular-nums ${ratio === r.value ? 'text-[#0d9e9e]' : 'text-slate-500'}`}>
-                  {r.label}
-                </span>
-                <div className="w-full flex gap-px h-1 rounded-full overflow-hidden">
-                  <div
-                    className={`rounded-l-full transition-all ${ratio === r.value ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
-                    style={{ width: `${r.train * 100}%` }}
-                  />
-                  <div
-                    className={`rounded-r-full transition-all ${ratio === r.value ? 'bg-[#13c2c2]/25' : 'bg-slate-100'}`}
-                    style={{ width: `${r.test * 100}%` }}
-                  />
-                </div>
-                <div className="flex gap-1.5">
-                  <span className={`text-[9px] ${ratio === r.value ? 'text-[#0d9e9e]/70' : 'text-slate-400'}`}>T {Math.round(r.train * 100)}%</span>
-                  <span className={`text-[9px] ${ratio === r.value ? 'text-[#0d9e9e]/40' : 'text-slate-300'}`}>V {Math.round(r.test * 100)}%</span>
-                </div>
-              </button>
-            ))}
+                onChange={e => onTrainRatio(filterRatioInput(trainRatio, e.target.value))}
+                onBlur={() => onTrainRatio(String(roundRatio2(parseRatio2(trainRatio))))}
+                className={ratioInputCls}
+              />
+            </div>
+            <div>
+              <p className="text-[9px] text-slate-400 mb-0.5">test</p>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={testRatio}
+                disabled={readOnly}
+                onChange={e => onTestRatio(filterRatioInput(testRatio, e.target.value))}
+                onBlur={() => onTestRatio(String(roundRatio2(parseRatio2(testRatio))))}
+                className={ratioInputCls}
+              />
+            </div>
+            <div>
+              <p className="text-[9px] text-slate-400 mb-0.5">val</p>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={valRatio}
+                disabled={readOnly}
+                onChange={e => onValRatio(filterRatioInput(valRatio, e.target.value))}
+                onBlur={() => onValRatio(String(roundRatio2(parseRatio2(valRatio))))}
+                className={ratioInputCls}
+              />
+            </div>
+          </div>
+          {splitErr && <p className="text-[10px] text-rose-600">{splitErr}</p>}
+          <div>
+            <p className={labelCls}>random_seed</p>
+            <input
+              type="number"
+              value={randomSeed}
+              disabled={readOnly}
+              onChange={e => onRandomSeedChange(e.target.value)}
+              className={ratioInputCls}
+            />
           </div>
         </div>
       )}
@@ -1113,7 +1276,7 @@ const WOE_ADVANCED_CONFIG = `woe_config:
     iv_table: true
     bin_table: true`;
 
-function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const [woeBins, setWoeBins] = useState<5 | 10 | 15>(10);
   const [minBinSize, setMinBinSize] = useState(50);
   const [minMissingBadCnt, setMinMissingBadCnt] = useState(30);
@@ -1126,15 +1289,13 @@ function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
 
   return (
-    <div className="px-4 py-3 flex flex-col">
-      {/* Guide */}
+    <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
         <span className="font-mono tracking-wide">WOE Fit_Transform_Merge</span>
       </div>
 
-      {/* ── Section: Data Inputs ── */}
-      <div className="mt-4">
+      <NodeConfigBand title="输入数据路径">
         <div>
           <p className={labelCls}>
             Load Raw Data
@@ -1145,16 +1306,9 @@ function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
             <span className="text-[10px] text-slate-400 font-mono truncate">DataSource · Feature Store · hdfs://data/feat/v12</span>
           </div>
         </div>
-      </div>
+      </NodeConfigBand>
 
-      {/* Section divider — data inputs / woe config */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">WOE Config</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-
-      {/* ── Section: WOE Config ── */}
+      <NodeConfigBand title="节点配置">
       <div className="flex flex-col gap-3.5">
         {/* WOE Bins */}
         <div>
@@ -1256,16 +1410,16 @@ function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
           )}
         </div>
       </div>
+      </NodeConfigBand>
 
-      {/* Section divider — output paths */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Output Paths</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
 
-      {/* ── Section: Output Paths ── */}
-      <div className="flex flex-col gap-2 pb-3">
+      <NodeConfigBand title="输出路径">
+      <div className="flex flex-col gap-2 pb-0.5">
         {[
           { label: 'encoder_save_filepath',  path: 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl' },
           { label: 'merged_save_filepath',   path: 's3://mlops-artifacts/woe/merge/v12/woe_merge_result.parquet' },
@@ -1274,6 +1428,7 @@ function WoeFitConfigPanel({ readOnly }: { readOnly?: boolean }) {
           <CopyPathField key={label} label={label} path={path} labelCls={labelCls} />
         ))}
       </div>
+      </NodeConfigBand>
     </div>
   );
 }
@@ -1389,21 +1544,20 @@ function JsonToggleBlock({
   );
 }
 
-function WoeTransformConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function WoeTransformConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const DEFAULT_ENCODER_PATH = 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl';
   const [encoderPath, setEncoderPath] = useState(DEFAULT_ENCODER_PATH);
 
   return (
-    <div className="px-4 py-3 flex flex-col">
-      {/* Guide */}
+    <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
         <span className="font-mono tracking-wide">WOE Transform</span>
       </div>
 
-      {/* ── Section: Data Inputs ── */}
-      <div className="flex flex-col gap-3 mt-4">
+      <NodeConfigBand title="输入数据路径">
+      <div className="flex flex-col gap-3">
         {/* Load Raw Data — view only, upstream DataSource */}
         <div>
           <p className={labelCls}>
@@ -1449,15 +1603,9 @@ function WoeTransformConfigPanel({ readOnly }: { readOnly?: boolean }) {
           </p>
         </div>
       </div>
+      </NodeConfigBand>
 
-      {/* Section divider — data inputs / update config */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Transform Config</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-
-      {/* ── Section: Update Config ── */}
+      <NodeConfigBand title="节点配置">
       <div className="flex flex-col gap-3.5">
         {/* update_ws_list */}
         <JsonToggleBlock
@@ -1477,16 +1625,16 @@ function WoeTransformConfigPanel({ readOnly }: { readOnly?: boolean }) {
           labelCls={labelCls}
         />
       </div>
+      </NodeConfigBand>
 
-      {/* Section divider — output paths */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Output Paths</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
 
-      {/* ── Section: Output Paths ── */}
-      <div className="flex flex-col gap-2 pb-3">
+      <NodeConfigBand title="输出路径">
+      <div className="flex flex-col gap-2 pb-0.5">
         {[
           { label: 'update_encoder_save_filepath', path: 's3://mlops-artifacts/woe/encoder/v12/encoder_updated.pkl' },
           { label: 'update_merged_save_filepath',  path: 's3://mlops-artifacts/woe/merge/v12/woe_update_result.parquet' },
@@ -1494,6 +1642,7 @@ function WoeTransformConfigPanel({ readOnly }: { readOnly?: boolean }) {
           <CopyPathField key={label} label={label} path={path} labelCls={labelCls} />
         ))}
       </div>
+      </NodeConfigBand>
     </div>
   );
 }
@@ -1653,7 +1802,7 @@ function StabilityParamsEditor({ readOnly }: { readOnly?: boolean }) {
   );
 }
 
-function FeatureSelectionConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function FeatureSelectionConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
@@ -1686,15 +1835,13 @@ function FeatureSelectionConfigPanel({ readOnly }: { readOnly?: boolean }) {
   };
 
   return (
-    <div className="px-4 py-3 flex flex-col">
-      {/* Guide */}
+    <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
         <Filter size={11} className="shrink-0" />
         <span className="font-mono tracking-wide">Feature Selection</span>
       </div>
 
-      {/* ── Section: Data Inputs ── */}
-      <div className="mt-4">
+      <NodeConfigBand title="输入数据路径">
         {/* 1. Load WOE Merge Result */}
         <div>
           <p className={labelCls}>
@@ -1716,16 +1863,9 @@ function FeatureSelectionConfigPanel({ readOnly }: { readOnly?: boolean }) {
             className={`${numInputCls} text-[10px]`}
           />
         </div>
-      </div>{/* end Data Inputs */}
+      </NodeConfigBand>
 
-      {/* Section divider — data inputs / selection config */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Selection Config</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-
-      {/* ── Section: Selection Config ── */}
+      <NodeConfigBand title="节点配置">
       <div className="flex flex-col gap-3.5">
       {/* 2. Select Method multi-select */}
       <div ref={methodRef}>
@@ -1819,23 +1959,24 @@ function FeatureSelectionConfigPanel({ readOnly }: { readOnly?: boolean }) {
           className={numInputCls}
         />
       </div>
-      </div>{/* end Selection Config */}
-
-      {/* Section divider — output paths */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Output Paths</span>
-        <div className="h-px flex-1 bg-slate-100" />
       </div>
+      </NodeConfigBand>
 
-      {/* ── Section: Output Paths ── */}
-      <div className="pb-3">
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
+
+      <NodeConfigBand title="输出路径">
+      <div className="pb-0.5">
         <CopyPathField
           label="feature_selection_report_path"
           path="s3://mlops-artifacts/feature-selection/v12/feature_selection_report.xlsx"
           labelCls={labelCls}
         />
       </div>
+      </NodeConfigBand>
     </div>
   );
 }
@@ -1922,7 +2063,7 @@ function ExpandableCodeBlock({
   );
 }
 
-function ModelTuneConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
@@ -1949,15 +2090,14 @@ function ModelTuneConfigPanel({ readOnly }: { readOnly?: boolean }) {
   const [auxiliaryCols, setAuxiliaryCols] = useState('');
 
   return (
-    <div className="px-4 py-3 flex flex-col">
-      {/* Guide banner */}
+    <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
         <span className="font-mono tracking-wide">Model Tune &amp; Train</span>
       </div>
 
-      {/* ── Section: Data Inputs ── */}
-      <div className="mt-4 flex flex-col gap-3.5">
+      <NodeConfigBand title="输入数据路径">
+      <div className="flex flex-col gap-3.5">
         {/* 1. woe_merged_result_path */}
         <div>
           <p className={labelCls}>
@@ -1990,15 +2130,9 @@ function ModelTuneConfigPanel({ readOnly }: { readOnly?: boolean }) {
             className={`${numInputCls} text-[10px]`} />
         </div>
       </div>
+      </NodeConfigBand>
 
-      {/* ── Divider: Model Tune Config ── */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Model Tune Config</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-
-      {/* ── Tune Config fields ── */}
+      <NodeConfigBand title="节点配置">
       <div className="flex flex-col gap-3.5">
         {/* 3. init_hypers */}
         <ExpandableCodeBlock
@@ -2076,16 +2210,16 @@ function ModelTuneConfigPanel({ readOnly }: { readOnly?: boolean }) {
             className={textareaCls} />
         </div>
       </div>
+      </NodeConfigBand>
 
-      {/* ── Divider: Output Paths ── */}
-      <div className="flex items-center gap-2 mt-5 mb-4">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Output Paths</span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
 
-      {/* ── Output Paths ── */}
-      <div className="pb-3 flex flex-col gap-3.5">
+      <NodeConfigBand title="输出路径">
+      <div className="pb-0.5 flex flex-col gap-3.5">
         <CopyPathField label="tune_artifacts_path"
           path="s3://mlops-artifacts/model-tune/v12/artifacts/" labelCls={labelCls} />
         <CopyPathField label="train_best_model_path"
@@ -2093,12 +2227,13 @@ function ModelTuneConfigPanel({ readOnly }: { readOnly?: boolean }) {
         <CopyPathField label="train_predict_result_path"
           path="s3://mlops-artifacts/model-train/v12/predict_result.parquet" labelCls={labelCls} />
       </div>
+      </NodeConfigBand>
     </div>
   );
 }
 
 /* ─────────────── Model Inference Config Panel ─────────────── */
-function ModelInferenceConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const BEST_MODEL_PATH = 's3://mlops-artifacts/model-tune/v12/best_model.pkl';
   const OUTPUT_PATH = 's3://mlops-artifacts/model-inference/v12/predict_result.parquet';
 
@@ -2133,7 +2268,8 @@ function ModelInferenceConfigPanel({ readOnly }: { readOnly?: boolean }) {
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
 
-      {/* ── 1. Load Sample Path ── */}
+      <NodeConfigBand title="输入数据路径">
+      <div className="flex flex-col gap-3">
       <div>
         <p className={labelCls}>
           Load Sample Path
@@ -2149,7 +2285,6 @@ function ModelInferenceConfigPanel({ readOnly }: { readOnly?: boolean }) {
         />
       </div>
 
-      {/* ── 2. Load best_model_path ── */}
       <div>
         <p className={labelCls}>
           Load best_model_path
@@ -2181,15 +2316,16 @@ function ModelInferenceConfigPanel({ readOnly }: { readOnly?: boolean }) {
           ← Tune · Train: {BEST_MODEL_PATH}
         </p>
       </div>
-
-      {/* ── Divider ── */}
-      <div className="flex items-center gap-2">
-        <div className="h-px flex-1 bg-slate-100" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">Output</span>
-        <div className="h-px flex-1 bg-slate-100" />
       </div>
+      </NodeConfigBand>
 
-      {/* ── 3. predict_result_output_path (read-only + copy) ── */}
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
+
+      <NodeConfigBand title="输出路径">
       <div>
         <p className={labelCls}>predict_result_output_path</p>
         <div className="flex items-center gap-1.5">
@@ -2213,39 +2349,55 @@ function ModelInferenceConfigPanel({ readOnly }: { readOnly?: boolean }) {
           </button>
         </div>
       </div>
+      </NodeConfigBand>
 
     </div>
   );
 }
 
-function DataSourceConfigPanel({ readOnly }: { readOnly?: boolean }) {
+function buildDataSourceLoadedOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/data/loaded/`;
+}
+
+function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
+  const mergedEnv = React.useMemo(
+    () => mergePipelineEnvWithDefaults(task.pipelineEnv),
+    [task.pipelineEnv],
+  );
+
   const [sourceType, setSourceType] = useState<'hive' | 's3'>('hive');
-
-  // Shared sample_use_col config
   const [sampleMode, setSampleMode] = useState<'use_existing' | 'auto_generate'>('use_existing');
-  const [splitRatio, setSplitRatio] = useState('0.75_0.25');
+  const [trainRatio, setTrainRatio] = useState('0.70');
+  const [testRatio, setTestRatio] = useState('0.15');
+  const [valRatio, setValRatio] = useState('0.15');
+  const [randomSeed, setRandomSeed] = useState('42');
 
-  // Hive fields
   const [tableScheme, setTableScheme] = useState('dw_feature');
-  const [tableName, setTableName]     = useState('user_credit_features_v12');
+  const [tableName, setTableName] = useState('user_credit_features_v12');
   const [customFilter, setCustomFilter] = useState('dt = \'2025-03-01\' AND sample_flag IN (\'train\', \'test\')');
-  const [entityCols, setEntityCols]         = useState<string[]>(['user_id']);
-  const [eventTimeCol, setEventTimeCol]     = useState('event_time');
-  const [labelCol, setLabelCol]             = useState('is_default_30d');
-  const [sampleUseCol, setSampleUseCol]     = useState('sample_flag');
-  const [categoricalCol, setCategoricalCol] = useState('employment_status,region_code,product_type,channel');
+  const [s3Path, setS3Path] = useState('s3://ml-data/credit/features/v12/');
 
-  // S3 fields
-  const [s3Path, setS3Path]                   = useState('s3://ml-data/credit/features/v12/');
-  const [s3EntityCols, setS3EntityCols]       = useState<string[]>(['user_id']);
-  const [s3EventTimeCol, setS3EventTimeCol]   = useState('event_time');
-  const [s3LabelCol, setS3LabelCol]           = useState('is_default_30d');
-  const [s3SampleUseCol, setS3SampleUseCol]   = useState('sample_flag');
-  const [s3CategoricalCol, setS3CategoricalCol] = useState('employment_status,region_code,product_type,channel');
+  const [labelCol, setLabelCol] = useState(() => getPipelineEnvValue(mergedEnv, 'label_column'));
+  const [categoricalCol, setCategoricalCol] = useState(() => getPipelineEnvValue(mergedEnv, 'categorical_columns'));
+  const [sampleTypeCol, setSampleTypeCol] = useState(() => getPipelineEnvValue(mergedEnv, 'sample_type_column'));
 
-  // Compute available columns for Hive (non-empty scheme+name → show mock list)
+  useEffect(() => {
+    const m = mergePipelineEnvWithDefaults(task.pipelineEnv);
+    setLabelCol(getPipelineEnvValue(m, 'label_column'));
+    setCategoricalCol(getPipelineEnvValue(m, 'categorical_columns'));
+    setSampleTypeCol(getPipelineEnvValue(m, 'sample_type_column'));
+  }, [task.id, task.pipelineEnv]);
+
   const schemaReady = tableScheme.trim() !== '' && tableName.trim() !== '';
   const availableCols = schemaReady ? MOCK_HIVE_COLUMNS : [];
+  const colOptionsForSample = sourceType === 'hive' ? availableCols : MOCK_HIVE_COLUMNS;
+  const sampleColsDisabled = sourceType === 'hive' ? !schemaReady : false;
+
+  const outputPath = buildDataSourceLoadedOutputPath(task, task.pipelineEnv);
 
   const inputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20 transition-colors
@@ -2254,89 +2406,102 @@ function DataSourceConfigPanel({ readOnly }: { readOnly?: boolean }) {
 
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
-      {/* ── Source Type ── */}
-      <div>
-        <p className={labelCls}>Source Type</p>
-        <div className="flex gap-2">
-          {(['hive', 's3'] as const).map(t => (
-            <button
-              key={t}
-              disabled={readOnly}
-              onClick={() => !readOnly && setSourceType(t)}
-              className={`flex-1 h-8 rounded-lg border text-xs font-semibold transition-all
-                ${sourceType === t
-                  ? 'border-[#13c2c2] bg-[#13c2c2]/8 text-[#0d9e9e]'
-                  : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}
-                disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {t === 'hive' ? 'Hive' : 'S3'}
-            </button>
-          ))}
+      <NodeConfigBand title="输入数据路径">
+        <div>
+          <p className={labelCls}>Source Type</p>
+          <div className="flex gap-2">
+            {(['hive', 's3'] as const).map(t => (
+              <button
+                key={t}
+                type="button"
+                disabled={readOnly}
+                onClick={() => !readOnly && setSourceType(t)}
+                className={`flex-1 h-8 rounded-lg border text-xs font-semibold transition-all
+                  ${sourceType === t
+                    ? 'border-[#13c2c2] bg-[#13c2c2]/8 text-[#0d9e9e]'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}
+                  disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {t === 'hive' ? 'Hive' : 'S3'}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {sourceType === 'hive' ? (
-        <>
-          {/* table_scheme */}
+        {sourceType === 'hive' ? (
+          <>
+            <div>
+              <p className={labelCls}><Table2 size={10} />table_scheme</p>
+              <input
+                value={tableScheme}
+                onChange={e => setTableScheme(e.target.value)}
+                disabled={readOnly}
+                placeholder="e.g. dw_feature"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <p className={labelCls}><Table2 size={10} />table_name</p>
+              <input
+                value={tableName}
+                onChange={e => setTableName(e.target.value)}
+                disabled={readOnly}
+                placeholder="e.g. user_credit_features_v12"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <p className={labelCls}>custom_filter</p>
+              <textarea
+                value={customFilter}
+                onChange={e => setCustomFilter(e.target.value)}
+                disabled={readOnly}
+                rows={3}
+                placeholder={"e.g. dt = '2025-03-01' AND\nsample_flag IN ('train','test')"}
+                className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700
+                  font-mono resize-none focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1
+                  focus:ring-[#13c2c2]/20 transition-colors leading-relaxed
+                  disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed placeholder:text-slate-300`}
+              />
+            </div>
+          </>
+        ) : (
           <div>
-            <p className={labelCls}><Table2 size={10} />table_scheme</p>
+            <p className={labelCls}><FolderOpen size={10} />s3_path</p>
             <input
-              value={tableScheme} onChange={e => setTableScheme(e.target.value)}
-              disabled={readOnly} placeholder="e.g. dw_feature"
+              value={s3Path}
+              onChange={e => setS3Path(e.target.value)}
+              disabled={readOnly}
+              placeholder="s3://bucket/prefix/"
               className={inputCls}
             />
           </div>
+        )}
+      </NodeConfigBand>
 
-          {/* table_name */}
-          <div>
-            <p className={labelCls}><Table2 size={10} />table_name</p>
-            <input
-              value={tableName} onChange={e => setTableName(e.target.value)}
-              disabled={readOnly} placeholder="e.g. user_credit_features_v12"
-              className={inputCls}
-            />
-          </div>
-
-          {/* custom_filter */}
-          <div>
-            <p className={labelCls}>custom_filter</p>
-            <textarea
-              value={customFilter} onChange={e => setCustomFilter(e.target.value)}
-              disabled={readOnly} rows={3}
-              placeholder={"e.g. dt = '2025-03-01' AND\nsample_flag IN ('train','test')"}
-              className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700
-                font-mono resize-none focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1
-                focus:ring-[#13c2c2]/20 transition-colors leading-relaxed
-                disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed placeholder:text-slate-300`}
-            />
-          </div>
-
-          {/* Entity Column — multi-select */}
-          <div>
-            <p className={labelCls}>Entity Column</p>
-            <MultiColSelect
-              values={entityCols}
-              onChange={setEntityCols}
-              options={availableCols}
-              disabled={readOnly || !schemaReady}
-            />
-          </div>
-
-          {/* EventTime Column — single-select */}
-          <div>
-            <p className={labelCls}>EventTime Column</p>
-            <ColSelect
-              value={eventTimeCol}
-              onChange={setEventTimeCol}
-              options={availableCols}
-              disabled={readOnly || !schemaReady}
-              placeholder={schemaReady ? '— select column —' : '— fill schema to load columns —'}
-            />
-          </div>
-
-          {/* Label col — dropdown from parsed columns */}
-          <div>
-            <p className={labelCls}>Label Column</p>
+      <NodeConfigBand title="节点配置">
+        <SampleTypeColumnSection
+          mode={sampleMode}
+          onModeChange={setSampleMode}
+          colValue={sampleTypeCol}
+          onColChange={setSampleTypeCol}
+          colOptions={colOptionsForSample}
+          colsDisabled={sampleColsDisabled}
+          trainRatio={trainRatio}
+          testRatio={testRatio}
+          valRatio={valRatio}
+          onTrainRatio={setTrainRatio}
+          onTestRatio={setTestRatio}
+          onValRatio={setValRatio}
+          randomSeed={randomSeed}
+          onRandomSeedChange={setRandomSeed}
+          readOnly={readOnly}
+        />
+        <div>
+          <p className={labelCls}>
+            label_col
+            <FieldTooltip text="Defaults from pipeline ENV label_column; editable per node." />
+          </p>
+          {sourceType === 'hive' ? (
             <ColSelect
               value={labelCol}
               onChange={setLabelCol}
@@ -2344,108 +2509,65 @@ function DataSourceConfigPanel({ readOnly }: { readOnly?: boolean }) {
               disabled={readOnly || !schemaReady}
               placeholder={schemaReady ? '— select column —' : '— fill schema to load columns —'}
             />
-          </div>
-
-          {/* sample_use_col — mode switcher */}
-          <SampleUseColSection
-            mode={sampleMode} onModeChange={setSampleMode}
-            colValue={sampleUseCol} onColChange={setSampleUseCol}
-            colOptions={availableCols} colsDisabled={!schemaReady}
-            ratio={splitRatio} onRatioChange={setSplitRatio}
-            readOnly={readOnly}
-          />
-
-          {/* categorical_col */}
-          <div>
-            <p className={labelCls}>categorical_col
-              <FieldTooltip text="Enter categorical feature column names, comma-separated." />
-            </p>
-            <input
-              value={categoricalCol} onChange={e => setCategoricalCol(e.target.value)}
-              disabled={readOnly} placeholder="col_a,col_b,col_c"
-              className={inputCls}
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          {/* s3_path */}
-          <div>
-            <p className={labelCls}><FolderOpen size={10} />s3_path</p>
-            <input
-              value={s3Path} onChange={e => setS3Path(e.target.value)}
-              disabled={readOnly} placeholder="s3://bucket/prefix/"
-              className={inputCls}
-            />
-          </div>
-
-          {/* Entity Column — multi-select */}
-          <div>
-            <p className={labelCls}>Entity Column</p>
-            <MultiColSelect
-              values={s3EntityCols}
-              onChange={setS3EntityCols}
-              options={MOCK_HIVE_COLUMNS}
-              disabled={readOnly}
-            />
-          </div>
-
-          {/* EventTime Column — single-select */}
-          <div>
-            <p className={labelCls}>EventTime Column</p>
+          ) : (
             <ColSelect
-              value={s3EventTimeCol}
-              onChange={setS3EventTimeCol}
+              value={labelCol}
+              onChange={setLabelCol}
               options={MOCK_HIVE_COLUMNS}
               disabled={readOnly}
               placeholder="— select column —"
             />
-          </div>
-
-          {/* label col name — dropdown */}
-          <div>
-            <p className={labelCls}>Label Column</p>
-            <ColSelect
-              value={s3LabelCol}
-              onChange={setS3LabelCol}
-              options={MOCK_HIVE_COLUMNS}
-              disabled={readOnly}
-              placeholder="— select column —"
-            />
-          </div>
-
-          {/* sample_use_col — mode switcher */}
-          <SampleUseColSection
-            mode={sampleMode} onModeChange={setSampleMode}
-            colValue={s3SampleUseCol} onColChange={setS3SampleUseCol}
-            colOptions={MOCK_HIVE_COLUMNS}
-            ratio={splitRatio} onRatioChange={setSplitRatio}
-            readOnly={readOnly}
+          )}
+        </div>
+        <div>
+          <p className={labelCls}>
+            categorical_columns
+            <FieldTooltip text="Same format as pipeline ENV categorical_columns (JSON array string or comma-separated)." />
+          </p>
+          <textarea
+            value={categoricalCol}
+            onChange={e => setCategoricalCol(e.target.value)}
+            disabled={readOnly}
+            rows={2}
+            placeholder='e.g. ["col_a","col_b"] or col_a,col_b'
+            className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-[10px] font-mono text-slate-700 resize-none
+              focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+              disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed placeholder:text-slate-300`}
           />
+        </div>
+      </NodeConfigBand>
 
-          {/* categorical_col */}
-          <div>
-            <p className={labelCls}>categorical_col
-              <FieldTooltip text="Enter categorical feature column names, comma-separated." />
-            </p>
-            <input
-              value={s3CategoricalCol} onChange={e => setS3CategoricalCol(e.target.value)}
-              disabled={readOnly} placeholder="col_a,col_b,col_c"
-              className={inputCls}
-            />
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+      />
+
+      <NodeConfigBand title="输出路径">
+        <div>
+          <p className={labelCls}>data_format</p>
+          <div className="h-8 px-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center text-xs font-mono text-slate-500">
+            parquet
           </div>
-        </>
-      )}
+        </div>
+        <CopyPathField
+          label="loaded_data_path (S3 / resolved)"
+          path={outputPath}
+          labelCls={labelCls}
+        />
+      </NodeConfigBand>
     </div>
   );
 }
 
 /* ────────���────── Regular node panel ─────────────── */
-function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
+function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow }: {
   node: DagNode;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
+  task: TrainingTask;
+  onPatchPipelineEnvRow: (key: string, value: string) => void;
 }) {
   const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
@@ -2485,17 +2607,17 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'config' && (
           node.type === 'data_source' ? (
-            <DataSourceConfigPanel readOnly={readOnly} />
+            <DataSourceConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'woe_fit' ? (
-            <WoeFitConfigPanel readOnly={readOnly} />
+            <WoeFitConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'woe_transform' ? (
-            <WoeTransformConfigPanel readOnly={readOnly} />
+            <WoeTransformConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'feature_selection' ? (
-            <FeatureSelectionConfigPanel readOnly={readOnly} />
+            <FeatureSelectionConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'tune_train' ? (
-            <ModelTuneConfigPanel readOnly={readOnly} />
+            <ModelTuneConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'infer' ? (
-            <ModelInferenceConfigPanel readOnly={readOnly} />
+            <ModelInferenceConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : (
             <div className="px-4 py-3">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Properties</p>
@@ -2589,11 +2711,13 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly }: {
 /* ─────────────── End Node panel ─────────────── */
 
 /* ─────────────── Property panel dispatcher ─────────────── */
-function PropertyPanel({ node, lastRunMap, propOverrides, readOnly }: {
+function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow }: {
   node: DagNode | null;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
   readOnly?: boolean;
+  task: TrainingTask;
+  onPatchPipelineEnvRow: (key: string, value: string) => void;
 }) {
   if (!node) return (
     <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 px-6">
@@ -2601,7 +2725,16 @@ function PropertyPanel({ node, lastRunMap, propOverrides, readOnly }: {
       <p className="text-sm text-center text-slate-400">Click a pipeline node to view<br />and configure its properties</p>
     </div>
   );
-  return <RegularNodePanel node={node} lastRunMap={lastRunMap} propOverrides={propOverrides} readOnly={readOnly} />;
+  return (
+    <RegularNodePanel
+      node={node}
+      lastRunMap={lastRunMap}
+      propOverrides={propOverrides}
+      readOnly={readOnly}
+      task={task}
+      onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+    />
+  );
 }
 
 /* ─────────────── Validation ─────────────── */
@@ -3328,29 +3461,35 @@ function PipelineEnvModal({
                   rows.map((row, index) => (
                     <tr key={index} className="border-b border-slate-100 last:border-0 align-top">
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={row.name}
-                          onChange={e =>
-                            onChangeRows(prev =>
-                              prev.map((r, j) => (j === index ? { ...r, name: e.target.value } : r))
-                            )
-                          }
-                          placeholder="PARAM_NAME"
-                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
-                        />
+                        <div className="flex items-center gap-1 min-w-0">
+                          <input
+                            type="text"
+                            value={row.name}
+                            onChange={e =>
+                              onChangeRows(prev =>
+                                prev.map((r, j) => (j === index ? { ...r, name: e.target.value } : r))
+                              )
+                            }
+                            placeholder="PARAM_NAME"
+                            className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+                          />
+                          {row.description ? (
+                            <FieldTooltip text={row.description} />
+                          ) : null}
+                        </div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 max-w-[min(38vw,14rem)]">
                         <input
                           type="text"
                           value={row.description}
+                          title={row.description}
                           onChange={e =>
                             onChangeRows(prev =>
                               prev.map((r, j) => (j === index ? { ...r, description: e.target.value } : r))
                             )
                           }
                           placeholder="Description"
-                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] text-slate-600 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+                          className="w-full h-8 px-2 rounded-lg border border-slate-200 text-[11px] text-slate-600 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20 block overflow-hidden text-ellipsis whitespace-nowrap"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -3537,7 +3676,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
   const { nodes: initNodes, edges } = buildDefaultDag();
   const [task, setTask]             = useState<TrainingTask>(initialTask);
   useEffect(() => {
-    setTask(initialTask);
+    setTask({
+      ...initialTask,
+      pipelineEnv: mergePipelineEnvWithDefaults(initialTask.pipelineEnv),
+    });
   }, [initialTask.id]);
   // Guard: if stored nodes contain stale types (e.g. from HMR state preservation), reset to fresh DAG
   const [nodes, setNodes]           = useState<DagNode[]>(() => {
@@ -3801,7 +3943,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             onChangeRows={setEnvModalRows}
             onClose={() => setShowEnvModal(false)}
             onApply={() => {
-              setTask(prev => ({ ...prev, pipelineEnv: envModalRows.map(r => ({ ...r })) }));
+              setTask((prev) => ({
+                ...prev,
+                pipelineEnv: mergePipelineEnvWithDefaults(envModalRows).map((r) => ({ ...r })),
+              }));
               setShowEnvModal(false);
             }}
           />
@@ -3889,7 +4034,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
               <button
                 type="button"
                 onClick={() => {
-                  setEnvModalRows((task.pipelineEnv ?? []).map(r => ({ ...r })));
+                  setEnvModalRows(mergePipelineEnvWithDefaults(task.pipelineEnv).map((r) => ({ ...r })));
                   setShowEnvModal(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 border border-slate-200 bg-white rounded-lg hover:border-[#13c2c2]/60 hover:text-[#0d9e9e] transition-all shadow-sm"
@@ -4088,6 +4233,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             lastRunMap={effectiveLastRunMap}
             propOverrides={effectivePropOverrides}
             readOnly={isRunHistoryView || isRunView}
+            task={task}
+            onPatchPipelineEnvRow={(key, value) => {
+              setTask(prev => ({ ...prev, pipelineEnv: upsertPipelineEnvRow(prev.pipelineEnv, key, value) }));
+            }}
           />
         </div>
       </div>

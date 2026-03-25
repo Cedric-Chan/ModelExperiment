@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import {
   TrainingTask, TaskInstance, initialMockTasks, CURRENT_USER,
   filterExperimentsVisibleToOperator,
+  getDefaultPipelineEnvRows,
+  mergePipelineEnvWithDefaults,
 } from './components/data';
 import { FilterBar, FilterValues, defaultFilters } from './components/FilterBar';
 import { Toolbar, TaskTable, Pagination } from './components/TaskTable';
@@ -63,6 +65,9 @@ export default function App() {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const pipEnv = mergePipelineEnvWithDefaults(
+      data.pipelineEnv?.length ? data.pipelineEnv : getDefaultPipelineEnvRows().map((r) => ({ ...r })),
+    );
     const newTask: TrainingTask = {
       id: `t${Date.now()}`,
       taskName: data.taskName || 'Untitled Task',
@@ -71,6 +76,7 @@ export default function App() {
       region: data.region || 'SG',
       status: 'DRAFT',
       framework: data.framework || 'LightGBM',
+      modelLevel: data.modelLevel ?? 'sub',
       owner: data.owner || 'unknown',
       bizTeam: data.bizTeam || 'DataSci',
       description: data.description || '',
@@ -81,7 +87,7 @@ export default function App() {
       ...(data.templateExperimentName
         ? { templateExperimentName: data.templateExperimentName }
         : {}),
-      pipelineEnv: data.pipelineEnv ?? [],
+      pipelineEnv: pipEnv,
     };
     setTasks((prev) => [newTask, ...prev]);
     showToast(`Task "${newTask.taskName}" created`, 'success');
