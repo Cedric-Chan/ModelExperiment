@@ -42,10 +42,21 @@ type NodePanelEnvProps = {
   readOnly?: boolean;
   /** When set (WOE Fit on canvas), enables upstream variable cascade picker from DAG. */
   woeFitDagContext?: { woeFitNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
+  /** When set (WOE Transform on canvas), enables upstream cascades from DAG. */
+  woeTransformDagContext?: { woeTransformNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
 };
 
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
 const WOE_FIT_FIXED_DATA_PATH_ENV = 'woe_fit_fixed_data_path';
+const WOE_FIT_SAMPLE_SCOPE_ENV = 'woe_fit_sample_scope';
+const WOE_TRANSFORM_INPUT_BINDING_ENV = 'woe_transform_input_binding';
+const WOE_TRANSFORM_FIXED_DATA_PATH_ENV = 'woe_transform_fixed_data_path';
+const WOE_TRANSFORM_ENCODER_BINDING_ENV = 'woe_transform_encoder_binding';
+const WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV = 'woe_transform_fixed_encoder_path';
+const WOE_TRANSFORM_SAMPLE_SCOPE_ENV = 'woe_transform_sample_scope';
+const WOE_TRANSFORM_FEATURE_REPORT_ENV = 'woe_transform_feature_report';
+const WOE_TRANSFORM_STABILITY_DIM_ENV = 'woe_transform_stability_dim';
+const WOE_TRANSFORM_REPORT_TABS_ENV = 'woe_transform_report_tabs';
 
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
@@ -68,15 +79,23 @@ function getUpstreamNodesForTarget(edges: DagEdge[], nodes: DagNode[], targetId:
 
 type WoeCascadePort = { key: string; label: string; typeLabel: string; disabled?: boolean };
 
-function outputPortsForUpstreamNode(nodeType: NodeType): WoeCascadePort[] {
-  if (nodeType === 'data_source') {
-    return [
-      { key: 'features_data_path', label: 'features_data_path', typeLabel: 'string' },
-      { key: 'loaded_data_path', label: 'loaded_data_path', typeLabel: 'string' },
-      { key: 'row_count', label: 'row_count', typeLabel: 'int', disabled: true },
-    ];
+type WoeCascadeKind = 'fit_data' | 'transform_data' | 'transform_encoder';
+
+function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCascadePort[] {
+  if (kind === 'fit_data' || kind === 'transform_data') {
+    if (nodeType === 'data_source') {
+      return [
+        { key: 'features_data_path', label: 'features_data_path', typeLabel: 'string' },
+        { key: 'loaded_data_path', label: 'loaded_data_path', typeLabel: 'string' },
+        { key: 'row_count', label: 'row_count', typeLabel: 'int', disabled: true },
+      ];
+    }
+    return [{ key: 'output', label: 'output', typeLabel: 'string', disabled: true }];
   }
-  return [{ key: 'output', label: 'output', typeLabel: 'string', disabled: true }];
+  if (nodeType === 'woe_fit') {
+    return [{ key: 'encoder_save_path', label: 'encoder_save_path', typeLabel: 'pkl' }];
+  }
+  return [];
 }
 
 function parseWoeFitBinding(raw: string): { nodeId: string; portKey: string } | null {
@@ -93,19 +112,26 @@ function formatWoeFitBinding(raw: string): string {
   return p ? `${p.nodeId} / ${p.portKey}` : '';
 }
 
-function resolveWoeFitPortPath(
+function resolveCascadePortPath(
   nodeId: string,
   portKey: string,
   nodes: DagNode[],
   task: TrainingTask,
   pipelineEnv: PipelineEnvRow[] | undefined,
+  kind: WoeCascadeKind,
 ): string {
   const node = nodes.find((n) => n.id === nodeId);
-  if (node?.type === 'data_source') {
-    if (portKey === 'features_data_path') return buildDataSourceFeaturesInputPath(task, pipelineEnv);
-    if (portKey === 'loaded_data_path') return buildDataSourceLoadedOutputPath(task, pipelineEnv);
+  if (kind === 'fit_data' || kind === 'transform_data') {
+    if (node?.type === 'data_source') {
+      if (portKey === 'features_data_path') return buildDataSourceFeaturesInputPath(task, pipelineEnv);
+      if (portKey === 'loaded_data_path') return buildDataSourceLoadedOutputPath(task, pipelineEnv);
+    }
+    return buildDataSourceFeaturesInputPath(task, pipelineEnv);
   }
-  return buildDataSourceFeaturesInputPath(task, pipelineEnv);
+  if (node?.type === 'woe_fit' && portKey === 'encoder_save_path') {
+    return buildWoeEncoderSavePathDisplay(task, 10, pipelineEnv);
+  }
+  return buildWoeEncoderSavePathDisplay(task, 10, pipelineEnv);
 }
 
 /* ─────────────── Node types ─────────────── */
@@ -226,7 +252,7 @@ function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
 const CURRENT_LAST_RUN: LastRunMap = {
   data_source:        { runId: 'run-20250305-0841', status: 'SUCCESS', finishedTime: '2025-03-05 08:41:22', duration: '3m 12s',  artifact: [{ label: 'Rows loaded', value: '4,821,306' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v12' }] },
   woe_fit:            { runId: 'run-20250305-0844', status: 'SUCCESS', finishedTime: '2025-03-05 08:49:07', duration: '4m 45s',  artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,940' }, { label: 'Avg IV', value: '0.132' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v12.pkl' }] },
-  woe_transform:      { runId: 'run-20250305-0846', status: 'SUCCESS', finishedTime: '2025-03-05 08:51:02', duration: '2m 01s',  artifact: [{ label: 'Rows out', value: '4,821,306' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v12' }] },
+  woe_transform:      { runId: 'run-20250305-0846', status: 'SUCCESS', finishedTime: '2025-03-05 08:51:02', duration: '2m 01s',  artifact: [{ label: 'data_save_path', value: '…/{model}{run_id}/woe/transform/woe_features_merg…quet' }, { label: 'feature_report_save_path', value: '…/{model}{run_id}/reports/feature_report_…html' }, { label: 'rows out', value: '4,821,306' }, { label: 'feature_report', value: 'on' }, { label: 'report_tab', value: 'performance, trend, stability, mono' }] },
   feature_selection: { runId: 'run-20250305-0849', status: 'SUCCESS', finishedTime: '2025-03-05 08:52:31', duration: '3m 24s',  artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '64' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v12' }] },
   tune_train:         { runId: 'run-20250305-0853', status: 'SUCCESS', finishedTime: '2025-03-05 09:41:18', duration: '74m 25s', artifact: [{ label: 'Best AUC', value: '0.8923' }, { label: 'Best trial', value: '#37 / 50' }, { label: 'Train AUC', value: '0.9104' }, { label: 'Model path', value: 'mlflow://models/lgbm-v12' }] },
   infer:              { runId: 'run-20250305-1011', status: 'SUCCESS', finishedTime: '2025-03-05 10:24:39', duration: '13m 37s', artifact: [{ label: 'Rows scored', value: '2,104,887' }, { label: 'Score range', value: '[0.001, 0.982]' }, { label: 'Score mean', value: '0.087' }, { label: 'Output table', value: 'hive://score.lgbm_v12_0305' }] },
@@ -246,7 +272,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     lastRunMap: {
       data_source: { runId: 'run-20250221-0910', status: 'SUCCESS', finishedTime: '2025-02-21 09:14:08', duration: '4m 01s', artifact: [{ label: 'Rows loaded', value: '4,613,220' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v11' }] },
       woe_fit: { runId: 'run-20250221-0914', status: 'SUCCESS', finishedTime: '2025-02-21 09:19:42', duration: '5m 34s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,890' }, { label: 'Avg IV', value: '0.119' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v11.pkl' }] },
-      woe_transform: { runId: 'run-20250221-0916', status: 'SUCCESS', finishedTime: '2025-02-21 09:22:10', duration: '2m 28s', artifact: [{ label: 'Rows out', value: '4,613,220' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v11' }] },
+      woe_transform: { runId: 'run-20250221-0916', status: 'SUCCESS', finishedTime: '2025-02-21 09:22:10', duration: '2m 28s', artifact: [{ label: 'data_save_path', value: '…/woe/transform/woe_features_merg…v11' }, { label: 'feature_report_save_path', value: '…/reports/feature_report_…html' }, { label: 'rows out', value: '4,613,220' }, { label: 'feature_report', value: 'on' }, { label: 'report_tab', value: 'performance, trend, stability, mono' }] },
       feature_selection: { runId: 'run-20250221-0919', status: 'SUCCESS', finishedTime: '2025-02-21 09:23:55', duration: '4m 13s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '71' }, { label: 'IV threshold', value: '≥ 0.03' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v11' }] },
       tune_train: { runId: 'run-20250221-0924', status: 'SUCCESS', finishedTime: '2025-02-21 10:48:11', duration: '112m 7s', artifact: [{ label: 'Best AUC', value: '0.8811' }, { label: 'Best trial', value: '#29 / 40' }, { label: 'Train AUC', value: '0.9012' }, { label: 'Model path', value: 'mlflow://models/lgbm-v11' }] },
       infer: { runId: 'run-20250221-1121', status: 'SUCCESS', finishedTime: '2025-02-21 11:35:47', duration: '14m 14s', artifact: [{ label: 'Rows scored', value: '2,087,341' }, { label: 'Score range', value: '[0.002, 0.971]' }, { label: 'Score mean', value: '0.091' }, { label: 'Output table', value: 'hive://score.lgbm_v11_0221' }] },
@@ -264,7 +290,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     lastRunMap: {
       data_source: { runId: 'run-20250207-0600', status: 'SUCCESS', finishedTime: '2025-02-07 06:08:14', duration: '8m 14s', artifact: [{ label: 'Rows loaded', value: '8,104,992' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v10' }] },
       woe_fit: { runId: 'run-20250207-0608', status: 'SUCCESS', finishedTime: '2025-02-07 06:16:47', duration: '8m 33s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,832' }, { label: 'Avg IV', value: '0.108' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v10.pkl' }] },
-      woe_transform: { runId: 'run-20250207-0610', status: 'SUCCESS', finishedTime: '2025-02-07 06:19:12', duration: '2m 25s', artifact: [{ label: 'Rows out', value: '8,104,992' }, { label: 'WOE cols', value: '218' }, { label: 'Output path', value: 'hdfs://woe/xform/v10' }] },
+      woe_transform: { runId: 'run-20250207-0610', status: 'SUCCESS', finishedTime: '2025-02-07 06:19:12', duration: '2m 25s', artifact: [{ label: 'data_save_path', value: '…/woe/transform/woe_features_merg…v10' }, { label: 'feature_report_save_path', value: '…/reports/feature_report_…html' }, { label: 'rows out', value: '8,104,992' }, { label: 'feature_report', value: 'off' }, { label: 'report_tab', value: 'performance, mono' }] },
       feature_selection: { runId: 'run-20250207-0617', status: 'SUCCESS', finishedTime: '2025-02-07 06:22:05', duration: '5m 18s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Features out', value: '58' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v10' }] },
       tune_train: { runId: 'run-20250207-0625', status: 'FAILED', finishedTime: '2025-02-07 07:39:11', duration: '74m 53s', artifact: [{ label: 'Best AUC', value: '0.8643 (partial)' }, { label: 'Completed trials', value: '22 / 30' }, { label: 'Error', value: 'OOM at trial #23' }, { label: 'Params path', value: 'mlflow://tune/run-0207' }] },
       infer: { runId: 'run-20250207-0742', status: 'SUCCESS', finishedTime: '2025-02-07 07:58:04', duration: '15m 36s', artifact: [{ label: 'Rows scored', value: '2,031,774' }, { label: 'Score range', value: '[0.003, 0.964]' }, { label: 'Score mean', value: '0.096' }, { label: 'Output table', value: 'hive://score.lgbm_v10_0207' }] },
@@ -282,7 +308,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     lastRunMap: {
       data_source: { runId: 'run-20250120-1100', status: 'SUCCESS', finishedTime: '2025-01-20 11:09:31', duration: '9m 31s', artifact: [{ label: 'Rows loaded', value: '3,940,118' }, { label: 'Feature cols', value: '200' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v9' }] },
       woe_fit: { runId: 'run-20250120-1110', status: 'SUCCESS', finishedTime: '2025-01-20 11:21:07', duration: '11m 36s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Bins created', value: '1,600' }, { label: 'Avg IV', value: '0.098' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v9.pkl' }] },
-      woe_transform: { runId: 'run-20250120-1118', status: 'SUCCESS', finishedTime: '2025-01-20 11:25:02', duration: '3m 55s', artifact: [{ label: 'Rows out', value: '3,940,118' }, { label: 'WOE cols', value: '200' }, { label: 'Output path', value: 'hdfs://woe/xform/v9' }] },
+      woe_transform: { runId: 'run-20250120-1118', status: 'SUCCESS', finishedTime: '2025-01-20 11:25:02', duration: '3m 55s', artifact: [{ label: 'data_save_path', value: '…/woe/transform/woe_features_merg…v9' }, { label: 'feature_report_save_path', value: '—' }, { label: 'rows out', value: '3,940,118' }, { label: 'feature_report', value: 'off' }, { label: 'report_tab', value: 'performance' }] },
       feature_selection: { runId: 'run-20250120-1121', status: 'SUCCESS', finishedTime: '2025-01-20 11:27:44', duration: '6m 37s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Features out', value: '52' }, { label: 'IV threshold', value: '≥ 0.02' }, { label: 'Report path', value: 'hdfs://report/feat_fine_v9' }] },
       tune_train: { runId: 'run-20250120-1132', status: 'SUCCESS', finishedTime: '2025-01-20 12:42:19', duration: '70m 14s', artifact: [{ label: 'Best AUC', value: '0.8574' }, { label: 'Best trial', value: '#18 / 20' }, { label: 'Train AUC', value: '0.8801' }, { label: 'Model path', value: 'mlflow://models/lgbm-v9' }] },
       infer: { runId: 'run-20250120-1246', status: 'SKIPPED', finishedTime: '2025-01-20 13:02:38', duration: '0m 10s', artifact: [{ label: 'Rows scored', value: 'N/A' }, { label: 'Note', value: 'Inference skipped' }, { label: 'Output table', value: '—' }] },
@@ -294,7 +320,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
 const DEFAULT_PROPS: Record<NodeType, { label: string; value: string }[]> = {
   data_source:       [{ label: 'data_source', value: 'Hive' }, { label: 'table_name', value: 'risk.feature_store_v12' }, { label: 'schema', value: 'risk' }, { label: 'partition_filter', value: "grass_date >= '2024-01-01'" }, { label: 'label_column', value: 'label_dpd30_3term' }],
   woe_fit:           [{ label: 'n_bins', value: '10' }, { label: 'min_bin_rate', value: '5%' }, { label: 'method', value: 'OptimalBinning' }, { label: 'encoder_output', value: 's3://…/encoder.pkl' }],
-  woe_transform:     [{ label: 'encoder_path', value: 'upstream' }, { label: 'output_format', value: 'Parquet' }, { label: 'parallelism', value: 'auto' }],
+  woe_transform:     [{ label: 'data_path', value: 'cascade / FixedValue' }, { label: 'encoder_path', value: 'WoeFit encoder_save_path' }, { label: 'sample_scope', value: '["train"]' }, { label: 'feature_report', value: 'true' }],
   feature_selection: [{ label: 'Selection Method', value: 'IV + Corr filter' }, { label: 'IV Threshold', value: '≥ 0.02' }, { label: 'Corr Threshold', value: '< 0.85' }, { label: 'Output', value: 'selection_report.csv' }],
   tune_train:        [{ label: 'HPO Trials', value: '50' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '20 rounds' }],
   infer:             [{ label: 'Mode', value: 'Batch scoring' }, { label: 'Input', value: 'Best model artifact' }, { label: 'Output', value: 'Hive / Parquet' }, { label: 'Partition', value: 'dt=today' }],
@@ -1602,20 +1628,201 @@ function AlgoDictFieldRow({
 
 const WOE_FIT_FIXED_VALUE_LABEL = 'FixedValue';
 
-function WoeFitDataPathField({
-  task,
+type SampleScopeOpt = 'train' | 'test' | 'val' | 'all';
+const SAMPLE_SCOPE_OPTIONS: SampleScopeOpt[] = ['train', 'test', 'val', 'all'];
+
+function parseSampleScopeJson(raw: string): SampleScopeOpt[] {
+  try {
+    const a = JSON.parse(raw) as unknown;
+    if (!Array.isArray(a)) return ['train'];
+    const allowed = new Set<string>(SAMPLE_SCOPE_OPTIONS);
+    const ok = a.filter((x): x is SampleScopeOpt => typeof x === 'string' && allowed.has(x));
+    return ok.length ? ok : ['train'];
+  } catch {
+    return ['train'];
+  }
+}
+
+function stringifySampleScopeJson(scopes: SampleScopeOpt[]): string {
+  return JSON.stringify(scopes);
+}
+
+type ReportTabOpt = 'performance' | 'trend' | 'stability' | 'mono';
+const REPORT_TAB_OPTIONS: ReportTabOpt[] = ['performance', 'trend', 'stability', 'mono'];
+
+function parseReportTabsJson(raw: string): ReportTabOpt[] {
+  try {
+    const a = JSON.parse(raw) as unknown;
+    if (!Array.isArray(a)) return [...REPORT_TAB_OPTIONS];
+    const allowed = new Set<string>(REPORT_TAB_OPTIONS);
+    const ok = a.filter((x): x is ReportTabOpt => typeof x === 'string' && allowed.has(x));
+    return ok.length ? ok : [...REPORT_TAB_OPTIONS];
+  } catch {
+    return [...REPORT_TAB_OPTIONS];
+  }
+}
+
+function stringifyReportTabsJson(tabs: ReportTabOpt[]): string {
+  return JSON.stringify(tabs);
+}
+
+function SampleScopeMultiSelect({
+  value,
   readOnly,
-  upstreamNodes,
-  allNodes,
-  bindingRaw,
-  fixedPathRaw,
-  fixedMenuChosen,
-  onFixedMenuChosen,
-  onBindingChange,
-  onFixedPathChange,
-  onClearAll,
-  numInputCls,
+  onChange,
+  labelCls,
+  tooltip,
 }: {
+  value: SampleScopeOpt[];
+  readOnly?: boolean;
+  onChange: (next: SampleScopeOpt[]) => void;
+  labelCls: string;
+  tooltip: string;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const toggle = (o: SampleScopeOpt) => {
+    if (readOnly) return;
+    const has = value.includes(o);
+    if (has && value.length <= 1) return;
+    onChange(has ? value.filter((x) => x !== o) : [...value, o]);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <p className={labelCls}>
+        sample_scope
+        <FieldTooltip text={tooltip} />
+      </p>
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={() => !readOnly && setOpen((v) => !v)}
+        className={`w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between
+          text-xs transition-colors font-mono text-[10px]
+          focus:outline-none focus:border-[#13c2c2]/60
+          disabled:bg-slate-50 disabled:cursor-not-allowed
+          ${open ? 'border-[#13c2c2]/60 ring-1 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
+      >
+        <span className="truncate text-left text-slate-700">{value.join(', ')}</span>
+        <ChevronDown size={11} className={`shrink-0 text-slate-400 ml-1 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+          {SAMPLE_SCOPE_OPTIONS.map((o) => {
+            const checked = value.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggle(o)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+              >
+                <div
+                  className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all
+                  ${checked ? 'bg-[#13c2c2] border-[#13c2c2]' : 'border-slate-300 bg-white'}`}
+                >
+                  {checked && <CheckIcon size={9} strokeWidth={3} className="text-white" />}
+                </div>
+                <span className="text-[11px] font-mono text-slate-700">{o}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportTabsMultiSelect({
+  value,
+  readOnly,
+  onChange,
+  labelCls,
+  tooltip,
+}: {
+  value: ReportTabOpt[];
+  readOnly?: boolean;
+  onChange: (next: ReportTabOpt[]) => void;
+  labelCls: string;
+  tooltip: string;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const toggle = (o: ReportTabOpt) => {
+    if (readOnly) return;
+    const has = value.includes(o);
+    if (has && value.length <= 1) return;
+    onChange(has ? value.filter((x) => x !== o) : [...value, o]);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <p className={labelCls}>
+        report_tab
+        <FieldTooltip text={tooltip} />
+      </p>
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={() => !readOnly && setOpen((v) => !v)}
+        className={`w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between
+          text-xs transition-colors font-mono text-[10px]
+          focus:outline-none focus:border-[#13c2c2]/60
+          disabled:bg-slate-50 disabled:cursor-not-allowed
+          ${open ? 'border-[#13c2c2]/60 ring-1 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
+      >
+        <span className="truncate text-left text-slate-700">{value.join(', ')}</span>
+        <ChevronDown size={11} className={`shrink-0 text-slate-400 ml-1 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+          {REPORT_TAB_OPTIONS.map((o) => {
+            const checked = value.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggle(o)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+              >
+                <div
+                  className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all
+                  ${checked ? 'bg-[#13c2c2] border-[#13c2c2]' : 'border-slate-300 bg-white'}`}
+                >
+                  {checked && <CheckIcon size={9} strokeWidth={3} className="text-white" />}
+                </div>
+                <span className="text-[11px] font-mono text-slate-700">{o}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type WoeCascadeBindingFieldProps = {
   task: TrainingTask;
   readOnly?: boolean;
   upstreamNodes: DagNode[];
@@ -1628,7 +1835,32 @@ function WoeFitDataPathField({
   onFixedPathChange: (path: string) => void;
   onClearAll: () => void;
   numInputCls: string;
-}) {
+  fieldName: string;
+  typeBadge: 'data' | 'pkl';
+  cascadeKind: WoeCascadeKind;
+  cardNoUpstreamHint: string;
+  portalNoUpstreamHint: string;
+};
+
+function WoeCascadeBindingField({
+  task,
+  readOnly,
+  upstreamNodes,
+  allNodes,
+  bindingRaw,
+  fixedPathRaw,
+  fixedMenuChosen,
+  onFixedMenuChosen,
+  onBindingChange,
+  onFixedPathChange,
+  onClearAll,
+  numInputCls,
+  fieldName,
+  typeBadge,
+  cascadeKind,
+  cardNoUpstreamHint,
+  portalNoUpstreamHint,
+}: WoeCascadeBindingFieldProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1700,7 +1932,7 @@ function WoeFitDataPathField({
     if (parsed) {
       const n = allNodes.find((x) => x.id === parsed.nodeId);
       if (!n) return formatWoeFitBinding(bindingRaw).replace(/\s*\/\s*/g, '/');
-      const ports = outputPortsForUpstreamNode(n.type);
+      const ports = outputPortsForCascade(n.type, cascadeKind);
       const port = ports.find((p) => p.key === parsed.portKey);
       return `${workflowStepLabel(n)}/${port?.label ?? parsed.portKey}`;
     }
@@ -1709,7 +1941,16 @@ function WoeFitDataPathField({
   })();
 
   const resolvedPath =
-    parsed ? resolveWoeFitPortPath(parsed.nodeId, parsed.portKey, allNodes, task, task.pipelineEnv) : '';
+    parsed
+      ? resolveCascadePortPath(
+          parsed.nodeId,
+          parsed.portKey,
+          allNodes,
+          task,
+          task.pipelineEnv,
+          cascadeKind,
+        )
+      : '';
 
   const leftRows: { id: string; label: string; node?: DagNode; isFixed?: boolean }[] = [
     ...upstreamNodes.map((n) => ({ id: n.id, label: workflowStepLabel(n), node: n })),
@@ -1719,7 +1960,7 @@ function WoeFitDataPathField({
   const rightPorts: WoeCascadePort[] = (() => {
     if (focusLeftId === '__fixed__') return [];
     const n = allNodes.find((x) => x.id === focusLeftId);
-    return n ? outputPortsForUpstreamNode(n.type) : [];
+    return n ? outputPortsForCascade(n.type, cascadeKind) : [];
   })();
 
   const handlePickPort = (leftId: string, port: WoeCascadePort) => {
@@ -1756,14 +1997,13 @@ function WoeFitDataPathField({
         <div className="w-[46%] min-w-[148px] border-r border-slate-200 overflow-y-auto py-1">
           {noUpstream && (
             <div className="px-2.5 py-2 border-b border-slate-100">
-              <p className="text-[10px] text-slate-500 leading-snug">
-                No upstream nodes — connect WOE Fit to a node on the canvas, or choose {WOE_FIT_FIXED_VALUE_LABEL}.
-              </p>
+              <p className="text-[10px] text-slate-500 leading-snug">{portalNoUpstreamHint}</p>
             </div>
           )}
           {leftRows.map((row) => {
             const active = focusLeftId === row.id;
-            const hasChildren = !!row.node;
+            const portsForRow = row.node ? outputPortsForCascade(row.node.type, cascadeKind) : [];
+            const hasChildren = portsForRow.some((p) => !p.disabled);
             return (
               <button
                 key={row.id}
@@ -1786,6 +2026,12 @@ function WoeFitDataPathField({
           {rightPorts.length === 0 && focusLeftId === '__fixed__' ? (
             <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
               Click {WOE_FIT_FIXED_VALUE_LABEL} on the left, then enter an S3 path under FieldMapping.
+            </p>
+          ) : rightPorts.length === 0 && focusLeftId !== '__fixed__' ? (
+            <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
+              {cascadeKind === 'transform_encoder'
+                ? 'Select upstream WOE Fit for encoder .pkl — pick encoder_save_path on the right when a WoeFit node is selected on the left.'
+                : 'No outputs available for this node.'}
             </p>
           ) : (
             rightPorts.map((port) => {
@@ -1819,16 +2065,16 @@ function WoeFitDataPathField({
     <div ref={rootRef} className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-2 bg-slate-100/90 border-b border-slate-200 px-2.5 py-1.5">
         <span className="text-[10px] font-bold text-slate-700">
-          Field: <span className="font-semibold">data_path</span>
+          Field: <span className="font-semibold">{fieldName}</span>
         </span>
         <span className="text-[10px] text-slate-500">
-          type: <span className="font-semibold text-slate-700">data</span>
+          type: <span className="font-semibold text-slate-700">{typeBadge}</span>
         </span>
       </div>
       <div className="px-2.5 py-2.5 flex flex-col gap-2">
         {noUpstream && (
           <p className="text-[10px] text-slate-500 leading-snug border border-amber-100 bg-amber-50/80 rounded-md px-2 py-1.5">
-            No upstream node linked to WOE Fit. Draw an incoming edge on the canvas to pick node outputs here, or use {WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.
+            {cardNoUpstreamHint}
           </p>
         )}
         <div className="flex items-start gap-2">
@@ -1885,6 +2131,24 @@ function WoeFitDataPathField({
         </div>
       </div>
     </div>
+  );
+}
+
+function WoeFitDataPathField(
+  props: Omit<
+    WoeCascadeBindingFieldProps,
+    'fieldName' | 'typeBadge' | 'cascadeKind' | 'cardNoUpstreamHint' | 'portalNoUpstreamHint'
+  >,
+) {
+  return (
+    <WoeCascadeBindingField
+      {...props}
+      fieldName="data_path"
+      typeBadge="data"
+      cascadeKind="fit_data"
+      cardNoUpstreamHint={`No upstream node linked to WOE Fit. Draw an incoming edge on the canvas to pick node outputs here, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.`}
+      portalNoUpstreamHint={`No upstream nodes — connect WOE Fit to a node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+    />
   );
 }
 
@@ -2195,17 +2459,23 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 ${dataConfigOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'}`}
             >
               <span className="text-[10px] font-semibold text-slate-600">
-                data_config (read-only)
+                data_config
                 <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
-                  Values follow Pipeline ENV — edit in ENV.
+                  Most keys follow Pipeline ENV; sample_scope is editable below.
                 </span>
               </span>
               <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${dataConfigOpen ? 'rotate-180' : ''}`} />
             </button>
             {dataConfigOpen && (
               <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                <SampleScopeMultiSelect
+                  value={parseSampleScopeJson(getPipelineEnvValue(mergedEnv, WOE_FIT_SAMPLE_SCOPE_ENV))}
+                  readOnly={readOnly}
+                  onChange={(next) => onPatchPipelineEnvRow(WOE_FIT_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
+                  labelCls={labelCls}
+                  tooltip="Multi-scope row filter: train, test, val, and/or all. At least one scope must stay selected. Stored as woe_fit_sample_scope (JSON array)."
+                />
                 {[
-                  { k: 'sample_type', v: 'train', tip: 'Filter rows for fitting; default train per spec.' },
                   { k: 'label', v: getPipelineEnvValue(mergedEnv, 'label_column'), tip: 'From ENV label_column.' },
                   { k: 'categorical_features', v: getPipelineEnvValue(mergedEnv, 'categorical_columns'), tip: 'From ENV categorical_columns.' },
                   { k: 'woe_missing_values', v: getPipelineEnvValue(mergedEnv, 'woe_missing_value'), tip: 'From ENV woe_missing_value.' },
@@ -2454,214 +2724,221 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
 }
 
 /* ─────────────── WOE Transform Config Panel ─────────────── */
-const WOE_UPDATE_WS_LIST_DEFAULT = JSON.stringify({
-  feature_name: "mock_feature_income",
-  data_path: "s3://bucket/woe/data/features/training_features_mock_feature_income",
-  encoder_path: "s3://bucket/woe/encoder/mock_feature_income_5bin.pkl",
-  ws_list: "-inf,0.2,0.5,0.8,inf",
-  output_path: "s3://bucket/woe/encoder/mock_feature_income_5bin_updated.pkl",
-  sample_use_col: "sample_type",
-  missing_logic: "high_risk"
-}, null, 2);
-
-const WOE_UPDATE_SET_WOE_DEFAULT = JSON.stringify({
-  encoder_path: "s3://bucket/woe/encoder/mock_feature_income_5bin.pkl",
-  feature_name: "mock_feature_income",
-  bin_name: "(0.2, 0.5]",
-  woe_value: -0.15,
-  output_path: "s3://bucket/woe/encoder/mock_feature_income_5bin_manual.pkl"
-}, null, 2);
-
-function JsonToggleBlock({
-  label,
-  tooltip,
-  defaultJson,
+function WoeTransformConfigPanel({
+  task,
+  onPatchPipelineEnvRow,
   readOnly,
-  labelCls,
-}: {
-  label: string;
-  tooltip: string;
-  defaultJson: string;
-  readOnly?: boolean;
-  labelCls: string;
-}) {
-  const [enabled, setEnabled] = useState(false);
-  const [value, setValue] = useState(defaultJson);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  woeTransformDagContext,
+}: NodePanelEnvProps) {
+  const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const dataBindingRaw = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_INPUT_BINDING_ENV);
+  const dataFixedRaw = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_FIXED_DATA_PATH_ENV);
+  const encBindingRaw = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_ENCODER_BINDING_ENV);
+  const encFixedRaw = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV);
 
-  const autoResize = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  };
-  useEffect(() => { if (enabled) setTimeout(autoResize, 0); }, [enabled, value]);
-
-  const handleReset = () => setValue(defaultJson);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {/* Header row with toggle */}
-      <div className="flex items-center justify-between">
-        <p className={labelCls}>
-          {label}
-          <FieldTooltip text={tooltip} />
-        </p>
-        <button
-          disabled={readOnly}
-          onClick={() => !readOnly && setEnabled(v => !v)}
-          className="flex items-center gap-1 shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
-          title={enabled ? 'Disable' : 'Enable'}
-        >
-          <div className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 ${enabled ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}>
-            <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-3' : 'translate-x-0'}`} />
-          </div>
-        </button>
-      </div>
-
-      {/* Code editor block */}
-      {enabled && (
-        <div className="rounded-lg border border-slate-700 overflow-hidden">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between px-2.5 py-1 bg-slate-800 border-b border-slate-700">
-            <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">JSON Config</span>
-            {!readOnly && (
-              <button
-                onClick={handleReset}
-                title="Reset to default"
-                className="flex items-center gap-1 text-[9px] text-slate-400 hover:text-[#13c2c2] transition-colors px-1 py-0.5 rounded hover:bg-slate-700"
-              >
-                <RotateCcw size={9} />
-                <span className="font-semibold">Reset</span>
-              </button>
-            )}
-          </div>
-          {/* Editor area */}
-          <div className="flex bg-[#1e1e2e]">
-            {/* Line numbers */}
-            <div className="select-none shrink-0 pt-2.5 pb-2.5 pl-2 pr-1.5 flex flex-col text-right">
-              {value.split('\n').map((_, i) => (
-                <span key={i} className="text-[9px] font-mono leading-[1.6] text-slate-600">{i + 1}</span>
-              ))}
-            </div>
-            <textarea
-              ref={textareaRef}
-              value={value}
-              readOnly={readOnly}
-              onChange={e => { setValue(e.target.value); autoResize(); }}
-              spellCheck={false}
-              rows={value.split('\n').length}
-              className={`flex-1 resize-none outline-none bg-transparent text-[10px] font-mono leading-[1.6]
-                pt-2.5 pb-2.5 pr-3 min-w-0 w-full text-[#cdd6f4] caret-[#13c2c2]
-                ${readOnly ? 'cursor-default' : 'cursor-text'}
-                focus:outline-none`}
-              style={{ overflowY: 'hidden', overflowX: 'auto' }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
+  const defaultFeaturesPath = React.useMemo(
+    () => buildDataSourceFeaturesInputPath(task, task.pipelineEnv),
+    [task.modelName, task.pipelineEnv],
   );
-}
+  const defaultEncoderPath = React.useMemo(
+    () => buildWoeEncoderSavePathDisplay(task, 10, task.pipelineEnv),
+    [task.modelName, task.pipelineEnv],
+  );
 
-function WoeTransformConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
+  const [dataFixedMenuChosen, setDataFixedMenuChosen] = useState(false);
+  const [encFixedMenuChosen, setEncFixedMenuChosen] = useState(false);
+
+  useEffect(() => {
+    if (dataBindingRaw.trim()) setDataFixedMenuChosen(false);
+  }, [dataBindingRaw]);
+
+  useEffect(() => {
+    if (!dataBindingRaw.trim() && dataFixedRaw.trim()) setDataFixedMenuChosen(true);
+  }, [task.id, dataBindingRaw, dataFixedRaw]);
+
+  useEffect(() => {
+    if (encBindingRaw.trim()) setEncFixedMenuChosen(false);
+  }, [encBindingRaw]);
+
+  useEffect(() => {
+    if (!encBindingRaw.trim() && encFixedRaw.trim()) setEncFixedMenuChosen(true);
+  }, [task.id, encBindingRaw, encFixedRaw]);
+
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
-  const DEFAULT_ENCODER_PATH = 's3://mlops-artifacts/woe/encoder/v12/encoder.pkl';
-  const [encoderPath, setEncoderPath] = useState(DEFAULT_ENCODER_PATH);
+  const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
+    focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+  const selectCls = `w-full h-8 pl-2.5 pr-7 rounded-lg border border-slate-200 bg-white text-xs font-mono
+    appearance-none cursor-pointer transition-colors text-slate-700
+    focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+
+  const stabilityDims = MOCK_HIVE_COLUMNS.slice(0, 16);
+  const stabilityDimRaw = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_STABILITY_DIM_ENV);
+  const stabilityDimSelect = stabilityDims.includes(stabilityDimRaw) ? stabilityDimRaw : stabilityDims[0];
+
+  const dataSavePath = buildWoeTransformDataSavePathDisplay(task, task.pipelineEnv);
+  const featureReportPath = buildWoeTransformFeatureReportSavePathDisplay(task, task.pipelineEnv);
+
+  const featureReportOn = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_FEATURE_REPORT_ENV).toLowerCase() !== 'false';
+
+  const upstreamForTransform = woeTransformDagContext
+    ? getUpstreamNodesForTarget(
+        woeTransformDagContext.edges,
+        woeTransformDagContext.nodes,
+        woeTransformDagContext.woeTransformNodeId,
+      )
+    : [];
 
   return (
     <div className="px-4 py-3 flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
-        <Settings size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">WOE Transform</span>
-      </div>
-
       <NodeConfigBand title="Input data path">
-      <div className="flex flex-col gap-3">
-        {/* Load Raw Data — view only, upstream DataSource */}
-        <div>
-          <p className={labelCls}>
-            Load Raw Data
-            <FieldTooltip text="Upstream data source node output. Automatically resolved from the DAG dependency on DataSource." />
-          </p>
-          <div className="h-8 px-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-1.5 overflow-hidden">
-            <Database size={10} className="shrink-0 text-slate-300" />
-            <span className="text-[10px] text-slate-400 font-mono truncate">DataSource · Feature Store · hdfs://data/feat/v12</span>
-          </div>
+        <div className="flex flex-col gap-2">
+          {woeTransformDagContext ? (
+            <>
+              <WoeCascadeBindingField
+                task={task}
+                readOnly={readOnly}
+                upstreamNodes={upstreamForTransform}
+                allNodes={woeTransformDagContext.nodes}
+                bindingRaw={dataBindingRaw}
+                fixedPathRaw={dataFixedRaw}
+                fixedMenuChosen={dataFixedMenuChosen}
+                onFixedMenuChosen={setDataFixedMenuChosen}
+                onBindingChange={(raw) => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_INPUT_BINDING_ENV, raw);
+                  if (raw.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, '');
+                }}
+                onFixedPathChange={(path) => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, path);
+                  if (path.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_INPUT_BINDING_ENV, '');
+                }}
+                onClearAll={() => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_INPUT_BINDING_ENV, '');
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, '');
+                  setDataFixedMenuChosen(false);
+                }}
+                numInputCls={numInputCls}
+                fieldName="data_path"
+                typeBadge="data"
+                cascadeKind="transform_data"
+                cardNoUpstreamHint={`No upstream node linked to WOE Transform. Draw an incoming edge on the canvas to pick node outputs here, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.`}
+                portalNoUpstreamHint={`No upstream nodes — connect WOE Transform to a node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+              />
+              <WoeCascadeBindingField
+                task={task}
+                readOnly={readOnly}
+                upstreamNodes={upstreamForTransform}
+                allNodes={woeTransformDagContext.nodes}
+                bindingRaw={encBindingRaw}
+                fixedPathRaw={encFixedRaw}
+                fixedMenuChosen={encFixedMenuChosen}
+                onFixedMenuChosen={setEncFixedMenuChosen}
+                onBindingChange={(raw) => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_ENCODER_BINDING_ENV, raw);
+                  if (raw.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, '');
+                }}
+                onFixedPathChange={(path) => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, path);
+                  if (path.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_ENCODER_BINDING_ENV, '');
+                }}
+                onClearAll={() => {
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_ENCODER_BINDING_ENV, '');
+                  onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, '');
+                  setEncFixedMenuChosen(false);
+                }}
+                numInputCls={numInputCls}
+                fieldName="encoder_path"
+                typeBadge="pkl"
+                cascadeKind="transform_encoder"
+                cardNoUpstreamHint={`No WOE Fit upstream for encoder .pkl. Connect WOE Fit to WOE Transform on the canvas, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual path.`}
+                portalNoUpstreamHint={`No upstream nodes — connect a WoeFit node, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+              />
+            </>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{defaultFeaturesPath}</span>
+              </div>
+              <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+                <Sliders size={10} className="shrink-0 text-slate-300 mt-0.5" />
+                <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{defaultEncoderPath}</span>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Load Encoder Result — editable, default from WOE Process output */}
-        <div>
-          <p className={labelCls}>
-            Load Encoder Result
-            <FieldTooltip text="Encoder artifact path from the upstream WOE Fit node. Defaults to encoder_save_filepath output; you can override with any valid encoder path." />
-          </p>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={encoderPath}
-              onChange={e => !readOnly && setEncoderPath(e.target.value)}
-              readOnly={readOnly}
-              placeholder="e.g. s3://bucket/woe/encoder.pkl"
-              className={`flex-1 h-8 px-2.5 rounded-lg border text-[10px] font-mono
-                ${readOnly
-                  ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'
-                  : 'border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20'}`}
-            />
-            {!readOnly && encoderPath !== DEFAULT_ENCODER_PATH && (
-              <button
-                onClick={() => setEncoderPath(DEFAULT_ENCODER_PATH)}
-                title="Reset to WOE Fit default"
-                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5 transition-all"
-              >
-                <RotateCcw size={11} />
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-[10px] text-slate-300 font-mono leading-relaxed pl-0.5">
-            from WOE Fit · encoder_save_filepath
-          </p>
-        </div>
-      </div>
       </NodeConfigBand>
 
       <NodeConfigBand title="Node configuration">
-      <div className="flex flex-col gap-3.5">
-        {/* update_ws_list */}
-        <JsonToggleBlock
-          label="update_ws_list"
-          tooltip="Override the bin split points (ws_list) for a specific feature and refit the encoder on the new boundaries."
-          defaultJson={WOE_UPDATE_WS_LIST_DEFAULT}
-          readOnly={readOnly}
-          labelCls={labelCls}
-        />
-
-        {/* set_woe_value */}
-        <JsonToggleBlock
-          label="set_woe_value"
-          tooltip="Manually override the WOE value for a specific bin of a feature encoder without re-fitting."
-          defaultJson={WOE_UPDATE_SET_WOE_DEFAULT}
-          readOnly={readOnly}
-          labelCls={labelCls}
-        />
-      </div>
+        <div className="flex flex-col gap-3">
+          <SampleScopeMultiSelect
+            value={parseSampleScopeJson(getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_SAMPLE_SCOPE_ENV))}
+            readOnly={readOnly}
+            onChange={(next) => onPatchPipelineEnvRow(WOE_TRANSFORM_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
+            labelCls={labelCls}
+            tooltip="Scopes applied when transforming rows (train / test / val / all). Stored as woe_transform_sample_scope."
+          />
+          <div className="flex items-center justify-between gap-2">
+            <p className={`${labelCls} mb-0`}>
+              feature_report
+              <FieldTooltip text="When enabled, emit a feature analysis report alongside transform output (woe_transform_feature_report)." />
+            </p>
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() =>
+                !readOnly &&
+                onPatchPipelineEnvRow(WOE_TRANSFORM_FEATURE_REPORT_ENV, featureReportOn ? 'false' : 'true')
+              }
+              className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 disabled:opacity-50 ${featureReportOn ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+            >
+              <div
+                className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${featureReportOn ? 'translate-x-3' : 'translate-x-0'}`}
+              />
+            </button>
+          </div>
+          <div>
+            <p className={labelCls}>
+              stability_dim
+              <FieldTooltip text="Hive column used as the stability dimension in reports (woe_transform_stability_dim)." />
+            </p>
+            <div className="relative">
+              <select
+                value={stabilityDimSelect}
+                disabled={readOnly}
+                onChange={(e) => onPatchPipelineEnvRow(WOE_TRANSFORM_STABILITY_DIM_ENV, e.target.value)}
+                className={selectCls}
+              >
+                {stabilityDims.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={11}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+            </div>
+          </div>
+          <ReportTabsMultiSelect
+            value={parseReportTabsJson(getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_REPORT_TABS_ENV))}
+            readOnly={readOnly}
+            onChange={(next) => onPatchPipelineEnvRow(WOE_TRANSFORM_REPORT_TABS_ENV, stringifyReportTabsJson(next))}
+            labelCls={labelCls}
+            tooltip="Report sections to include: performance, trend, stability, mono. Stored as JSON in woe_transform_report_tabs."
+          />
+        </div>
       </NodeConfigBand>
 
-      <NodeResourceAdvBlock
-        readOnly={readOnly}
-        pipelineEnv={task.pipelineEnv}
-        onPatchEnv={onPatchPipelineEnvRow}
-      />
+      <NodeResourceAdvBlock readOnly={readOnly} pipelineEnv={task.pipelineEnv} onPatchEnv={onPatchPipelineEnvRow} />
 
       <NodeConfigBand title="Output path">
-      <div className="flex flex-col gap-2 pb-0.5">
-        {[
-          { label: 'update_encoder_save_filepath', path: 's3://mlops-artifacts/woe/encoder/v12/encoder_updated.pkl' },
-          { label: 'update_merged_save_filepath',  path: 's3://mlops-artifacts/woe/merge/v12/woe_update_result.parquet' },
-        ].map(({ label, path }) => (
-          <CopyPathField key={label} label={label} path={path} labelCls={labelCls} />
-        ))}
-      </div>
+        <div className="flex flex-col gap-2 pb-0.5">
+          <CopyPathField label="data_save_path" path={dataSavePath} labelCls={labelCls} />
+          <CopyPathField label="feature_report_save_path" path={featureReportPath} labelCls={labelCls} />
+        </div>
       </NodeConfigBand>
     </div>
   );
@@ -3400,6 +3677,22 @@ function buildWoeEncoderSavePathDisplay(task: TrainingTask, nBins: number, pipel
   return `${trimmed}/${task.modelName}{run_id}/woe/encoder/${task.modelName}_best_ks_${nBins}bin.pkl`;
 }
 
+function buildWoeTransformDataSavePathDisplay(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/woe/transform/woe_features_merged.parquet`;
+}
+
+function buildWoeTransformFeatureReportSavePathDisplay(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/reports/feature_report_${task.modelName}.html`;
+}
+
 function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
   const mergedEnv = React.useMemo(
     () => mergePipelineEnvWithDefaults(task.pipelineEnv),
@@ -3655,7 +3948,12 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
               woeFitDagContext={{ woeFitNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
             />
           ) : node.type === 'woe_transform' ? (
-            <WoeTransformConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
+            <WoeTransformConfigPanel
+              task={task}
+              onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+              readOnly={readOnly}
+              woeTransformDagContext={{ woeTransformNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
+            />
           ) : node.type === 'feature_selection' ? (
             <FeatureSelectionConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : node.type === 'tune_train' ? (

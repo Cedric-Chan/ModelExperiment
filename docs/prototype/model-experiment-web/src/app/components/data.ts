@@ -154,6 +154,54 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '',
     },
     {
+      name: 'woe_fit_sample_scope',
+      description:
+        'JSON array of sample scopes used when fitting: train, test, val, all. Default ["train"].',
+      value: '["train"]',
+    },
+    {
+      name: 'woe_transform_input_binding',
+      description:
+        'WOE Transform input.data_path cascade binding as `upstreamNodeId|outputPort`. Empty uses default features path.',
+      value: '',
+    },
+    {
+      name: 'woe_transform_fixed_data_path',
+      description: 'Manual S3 path for transform input data when binding is empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'woe_transform_encoder_binding',
+      description:
+        'WOE Transform encoder_path cascade binding as `upstreamNodeId|encoder_save_path` from upstream WoeFit.',
+      value: '',
+    },
+    {
+      name: 'woe_transform_fixed_encoder_path',
+      description: 'Manual path to encoder .pkl when encoder binding is empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'woe_transform_sample_scope',
+      description: 'JSON array: train, test, val, all for transform row filter. Default ["train"].',
+      value: '["train"]',
+    },
+    {
+      name: 'woe_transform_feature_report',
+      description: 'Whether to emit feature report during transform (true/false).',
+      value: 'true',
+    },
+    {
+      name: 'woe_transform_stability_dim',
+      description: 'Column name used as stability analysis dimension.',
+      value: 'user_id',
+    },
+    {
+      name: 'woe_transform_report_tabs',
+      description: 'JSON array of report tabs: performance, trend, stability, mono.',
+      value: '["performance","trend","stability","mono"]',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',
