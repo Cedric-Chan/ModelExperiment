@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
   ArrowLeft, Save, ZoomIn, ZoomOut, ArrowUpToLine,
@@ -1630,17 +1630,50 @@ function WoeFitDataPathField({
   numInputCls: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [hoverLeftId, setHoverLeftId] = useState<string | null>(null);
+  const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const parsed = parseWoeFitBinding(bindingRaw);
   const firstUpstreamId = upstreamNodes[0]?.id;
   const isFixedMode = !parsed && (fixedPathRaw.trim() !== '' || fixedMenuChosen);
 
+  const updateMenuBox = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuBox({
+      top: r.bottom + 4,
+      left: r.left,
+      width: Math.max(r.width, 300),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) updateMenuBox();
+    else setMenuBox(null);
+  }, [open, updateMenuBox]);
+
+  useEffect(() => {
+    if (!open) return;
+    updateMenuBox();
+    window.addEventListener('resize', updateMenuBox);
+    document.addEventListener('scroll', updateMenuBox, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuBox);
+      document.removeEventListener('scroll', updateMenuBox, true);
+    };
+  }, [open, updateMenuBox]);
+
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -1710,8 +1743,80 @@ function WoeFitDataPathField({
   const showClear = !!(parsed || fixedPathRaw.trim() || fixedMenuChosen);
   const noUpstream = upstreamNodes.length === 0;
 
+  const cascadeMenu =
+    open &&
+    menuBox &&
+    ReactDOM.createPortal(
+      <div
+        ref={menuRef}
+        className="fixed z-[220] flex rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[180px] max-h-[min(320px,70vh)]"
+        style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width }}
+        onMouseDown={(e) => e.preventDefault()}
+      >
+        <div className="w-[46%] min-w-[148px] border-r border-slate-200 overflow-y-auto py-1">
+          {noUpstream && (
+            <div className="px-2.5 py-2 border-b border-slate-100">
+              <p className="text-[10px] text-slate-500 leading-snug">
+                No upstream nodes — connect WOE Fit to a node on the canvas, or choose {WOE_FIT_FIXED_VALUE_LABEL}.
+              </p>
+            </div>
+          )}
+          {leftRows.map((row) => {
+            const active = focusLeftId === row.id;
+            const hasChildren = !!row.node;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                disabled={readOnly}
+                onMouseEnter={() => setHoverLeftId(row.id)}
+                onFocus={() => setHoverLeftId(row.id)}
+                onClick={() => handleLeftClick(row)}
+                className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 text-left text-[11px] transition-colors
+                  ${active ? 'bg-sky-50 text-sky-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'}
+                  disabled:opacity-50`}
+              >
+                <span className="truncate">{row.label}</span>
+                {hasChildren && <ChevronRight size={12} className="shrink-0 text-slate-400" />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-1 min-w-[140px] overflow-y-auto py-1 bg-slate-50/40">
+          {rightPorts.length === 0 && focusLeftId === '__fixed__' ? (
+            <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
+              Click {WOE_FIT_FIXED_VALUE_LABEL} on the left, then enter an S3 path under FieldMapping.
+            </p>
+          ) : (
+            rightPorts.map((port) => {
+              const sel =
+                parsed &&
+                parsed.nodeId === focusLeftId &&
+                parsed.portKey === port.key &&
+                !port.disabled;
+              return (
+                <button
+                  key={port.key}
+                  type="button"
+                  disabled={readOnly || !!port.disabled}
+                  onClick={() => handlePickPort(focusLeftId, port)}
+                  className={`w-full text-left px-2.5 py-2 text-[11px] transition-colors
+                    ${port.disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-700 hover:bg-white'}
+                    ${sel ? 'bg-sky-50 text-sky-900 font-semibold' : ''}`}
+                >
+                  {port.label}{' '}
+                  <span className="text-slate-400 font-normal">({port.typeLabel})</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
-    <div ref={rootRef} className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div ref={rootRef} className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-2 bg-slate-100/90 border-b border-slate-200 px-2.5 py-1.5">
         <span className="text-[10px] font-bold text-slate-700">
           Field: <span className="font-semibold">data_path</span>
@@ -1730,97 +1835,34 @@ function WoeFitDataPathField({
           <span className="text-[10px] font-semibold text-slate-600 shrink-0 pt-2">Source:</span>
           <div className="flex-1 min-w-0 flex flex-col gap-1.5">
             <div className="relative">
-            <button
-              type="button"
-              disabled={readOnly}
-              onClick={() => !readOnly && setOpen((o) => !o)}
-              className={`w-full min-h-9 pl-2.5 pr-9 py-1.5 rounded-lg border text-left text-[11px] font-mono transition-colors
-                ${open ? 'border-sky-400 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white hover:border-slate-300'}
-                disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              <span className={`${sourceEcho ? 'text-slate-700' : 'text-slate-400'} break-all line-clamp-2`}>
-                {sourceEcho || `Select upstream node or ${WOE_FIT_FIXED_VALUE_LABEL}…`}
-              </span>
-            </button>
-            {showClear && !readOnly && (
               <button
+                ref={triggerRef}
                 type="button"
-                title="Clear"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClearAll();
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                disabled={readOnly}
+                onClick={() => !readOnly && setOpen((o) => !o)}
+                className={`w-full min-h-9 pl-2.5 pr-9 py-1.5 rounded-lg border text-left text-[11px] font-mono transition-colors
+                  ${open ? 'border-sky-400 bg-white ring-1 ring-sky-200' : 'border-slate-200 bg-white hover:border-slate-300'}
+                  disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                <X size={12} />
+                <span className={`${sourceEcho ? 'text-slate-700' : 'text-slate-400'} break-all line-clamp-2`}>
+                  {sourceEcho || `Select upstream node or ${WOE_FIT_FIXED_VALUE_LABEL}…`}
+                </span>
               </button>
-            )}
-            {open && (
-              <div
-                className="absolute left-0 right-0 top-full mt-1 z-30 flex rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[180px] max-h-[min(320px,70vh)]"
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <div className="w-[46%] min-w-[148px] border-r border-slate-200 overflow-y-auto py-1">
-                  {noUpstream && (
-                    <div className="px-2.5 py-2 border-b border-slate-100">
-                      <p className="text-[10px] text-slate-500 leading-snug">
-                        No upstream nodes — connect WOE Fit to a node on the canvas, or choose {WOE_FIT_FIXED_VALUE_LABEL}.
-                      </p>
-                    </div>
-                  )}
-                  {leftRows.map((row) => {
-                    const active = focusLeftId === row.id;
-                    const hasChildren = !!row.node;
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        disabled={readOnly}
-                        onMouseEnter={() => setHoverLeftId(row.id)}
-                        onFocus={() => setHoverLeftId(row.id)}
-                        onClick={() => handleLeftClick(row)}
-                        className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 text-left text-[11px] transition-colors
-                          ${active ? 'bg-sky-50 text-sky-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'}
-                          disabled:opacity-50`}
-                      >
-                        <span className="truncate">{row.label}</span>
-                        {hasChildren && <ChevronRight size={12} className="shrink-0 text-slate-400" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex-1 min-w-[140px] overflow-y-auto py-1 bg-slate-50/40">
-                  {rightPorts.length === 0 && focusLeftId === '__fixed__' ? (
-                    <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
-                      Click {WOE_FIT_FIXED_VALUE_LABEL} on the left, then enter an S3 path under FieldMapping.
-                    </p>
-                  ) : (
-                    rightPorts.map((port) => {
-                      const sel =
-                        parsed &&
-                        parsed.nodeId === focusLeftId &&
-                        parsed.portKey === port.key &&
-                        !port.disabled;
-                      return (
-                        <button
-                          key={port.key}
-                          type="button"
-                          disabled={readOnly || !!port.disabled}
-                          onClick={() => handlePickPort(focusLeftId, port)}
-                          className={`w-full text-left px-2.5 py-2 text-[11px] transition-colors
-                            ${port.disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-700 hover:bg-white'}
-                            ${sel ? 'bg-sky-50 text-sky-900 font-semibold' : ''}`}
-                        >
-                          {port.label}{' '}
-                          <span className="text-slate-400 font-normal">({port.typeLabel})</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
+              {showClear && !readOnly && (
+                <button
+                  type="button"
+                  title="Clear"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearAll();
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
+            {cascadeMenu}
             {isFixedMode && (
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-semibold text-slate-600">FieldMapping:</span>
@@ -2130,15 +2172,6 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 }}
                 numInputCls={numInputCls}
               />
-              {!bindingRaw.trim() && !fixedPathRaw.trim() && !fixedMenuChosen && (
-                <div className="min-h-7 px-2 py-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 flex items-start gap-1.5 mt-1">
-                  <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Default (when unset)</p>
-                    <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{upstreamDataPath}</span>
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <div>
