@@ -295,6 +295,11 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '["performance","trend","stability","mono"]',
     },
     {
+      name: 'woe_transform_checkpoint_after_node',
+      description: 'When true, pause for checkpoint after WOE Transform completes (same semantics as WOE Fit).',
+      value: 'true',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',

@@ -75,6 +75,7 @@ const WOE_TRANSFORM_SAMPLE_SCOPE_ENV = 'woe_transform_sample_scope';
 const WOE_TRANSFORM_FEATURE_REPORT_ENV = 'woe_transform_feature_report';
 const WOE_TRANSFORM_STABILITY_DIM_ENV = 'woe_transform_stability_dim';
 const WOE_TRANSFORM_REPORT_TABS_ENV = 'woe_transform_report_tabs';
+const WOE_TRANSFORM_CHECKPOINT_AFTER_NODE_ENV = 'woe_transform_checkpoint_after_node';
 
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
@@ -2948,6 +2949,8 @@ function WoeTransformConfigPanel({
   const featureReportPath = buildWoeTransformFeatureReportSavePathDisplay(task, task.pipelineEnv);
 
   const featureReportOn = getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_FEATURE_REPORT_ENV).toLowerCase() !== 'false';
+  const transformCheckpointAfterNode =
+    getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_CHECKPOINT_AFTER_NODE_ENV).toLowerCase() !== 'false';
 
   const upstreamForTransform = woeTransformDagContext
     ? getUpstreamNodesForTarget(
@@ -3107,6 +3110,36 @@ function WoeTransformConfigPanel({
           <CopyPathField label="feature_report_save_path" path={featureReportPath} labelCls={labelCls} />
         </div>
       </NodeConfigBand>
+
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200/80 border-l-4 border-l-[#13c2c2]/40 bg-gradient-to-r from-[#13c2c2]/[0.07] to-white"
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`${labelCls} mb-0`}>
+            Node checkpoint
+            <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
+          </p>
+          <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">
+            Cached checkpoint lets you resume or re-run from this node without redoing upstream work.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() =>
+            !readOnly &&
+            onPatchPipelineEnvRow(
+              WOE_TRANSFORM_CHECKPOINT_AFTER_NODE_ENV,
+              transformCheckpointAfterNode ? 'false' : 'true',
+            )
+          }
+          className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 shrink-0 ${transformCheckpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+        >
+          <div
+            className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${transformCheckpointAfterNode ? 'translate-x-3.5' : 'translate-x-0'}`}
+          />
+        </button>
+      </div>
     </div>
   );
 }
