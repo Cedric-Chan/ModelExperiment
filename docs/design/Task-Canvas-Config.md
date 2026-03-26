@@ -46,7 +46,9 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
   - **主要 Function**：`ray_util.woe_fit()`，底层脚本 `ray_woe_fit_v2_4.py`，内部使用 WOE v2.4 实现（如 `woe_helper/woe_v2_4_ray.py`）。  
   - **产出**：`encoder_save_path` 指定的 .pkl（WOE Encoder）。  
   - **辅助工具**（非主流程，用于 Encoder 维护）：`woe_update`（重设分箱边界）、`woe_update_by_adding_cutoff`（追加切点）、`set_woe`（手动设某分箱 WOE 值）、`encoder_combine`（合并多个 encoder）。这些不参与「标准训练 Pipeline」主流程，仅在运维/修补时使用。
-  - **Model Experiment 原型 · WOE Fit 节点**：在画布配置中开启 `woe_update` 时，增加 **`woe_fit_woe_encoder_path`（`woe_encoder_path`）**：可编辑文本；默认与「ENV 为空时的回显」均为**具体 S3 URI**（原型示例：`s3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl`），作为 update 阶段的**输入** encoder；加工结果仍写入本节点的 **`encoder_save_path`**。新 Run 仅改 update 时，可将该 S3 路径改为前序 Run 产出的 encoder，再转存为当前 Run 的 `encoder_save_path`。
+  - **Model Experiment 原型 · WOE Fit 节点**：在画布配置中开启 `woe_update` 时，增加 **`woe_fit_woe_encoder_path`（`woe_encoder_path`）**：可编辑文本；默认与「ENV 为空时的回显」均为**具体 S3 URI**（原型 mock），作为 update 阶段的**输入** encoder；加工结果仍写入本节点的 **`encoder_save_path`**。新 Run 仅改 update 时，可将该 S3 路径改为前序 Run 产出的 encoder，再转存为当前 Run 的 `encoder_save_path`。完整 mock 路径（整段单行，Git 网页上可选中复制）：
+
+    `s3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl`
 
 - **Step 3 Feature Report**  
   - **在做什么**：基于已有 Encoder 和指定数据，生成特征性能、趋势、稳定性、单调性等报告（.xlsx 等）。  

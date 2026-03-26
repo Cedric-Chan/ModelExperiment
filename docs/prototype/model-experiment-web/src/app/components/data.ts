@@ -98,8 +98,7 @@ const WOE_MISSING_VALUE_DEFAULT_JSON = JSON.stringify([
 ]);
 
 /** Prototype: concrete S3 encoder URI for woe_update input (no template placeholders). */
-export const WOE_FIT_WOE_ENCODER_PATH_MOCK =
-  's3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl';
+export const WOE_FIT_WOE_ENCODER_PATH_MOCK = 's3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl';
 
 /** Partner pipeline-level keys (frontend_node_config_spec_latest.md). */
 export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
@@ -260,7 +259,7 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     {
       name: 'woe_fit_woe_encoder_path',
       description:
-        'Input encoder .pkl (concrete S3 URI) for post-fit woe_update. Default is a prototype mock path; empty ENV falls back to that mock in the UI. Edit to another real S3 path to load a different encoder. Output is still written to encoder_save_path.',
+        'Input encoder .pkl (concrete S3 URI) for post-fit woe_update. Default / empty-ENV UI fallback: s3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl — edit to another real S3 path as needed. Output is still written to encoder_save_path.',
       value: WOE_FIT_WOE_ENCODER_PATH_MOCK,
     },
     {
