@@ -2109,16 +2109,12 @@ function WoeCascadeBindingField({
         </div>
         <div className="flex-1 min-w-[140px] overflow-y-auto py-1 bg-slate-50/40">
           {rightPorts.length === 0 && focusLeftId === '__fixed__' ? (
-            <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
-              Click {WOE_FIT_FIXED_VALUE_LABEL} on the left, then enter an S3 path under FieldMapping.
-            </p>
+            <p className="px-2.5 py-2 text-[10px] text-slate-400">Path below</p>
           ) : rightPorts.length === 0 && focusLeftId !== '__fixed__' ? (
             <p className="px-2.5 py-3 text-[10px] text-slate-400 leading-relaxed">
               {cascadeKind === 'transform_encoder'
                 ? 'Select upstream WOE Fit for encoder .pkl — pick encoder_save_path on the right when a WoeFit node is selected on the left.'
-                : cascadeKind === 'feature_selection_data'
-                  ? 'Pick upstream WOE Transform (or DataSource) on the left, then choose data_save_path or features path.'
-                  : 'No outputs available for this node.'}
+                : 'No outputs available for this node.'}
             </p>
           ) : (
             rightPorts.map((port) => {
@@ -2290,10 +2286,6 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
     getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_UPDATE_ENABLED_ENV).toLowerCase() === 'true';
   const checkpointAfterNode =
     getPipelineEnvValue(mergedEnv, WOE_FIT_CHECKPOINT_AFTER_NODE_ENV).toLowerCase() !== 'false';
-
-  useEffect(() => {
-    if (bindingRaw.trim()) setFixedMenuChosen(false);
-  }, [bindingRaw]);
 
   useEffect(() => {
     if (!bindingRaw.trim() && fixedPathRaw.trim()) setFixedMenuChosen(true);
@@ -2526,7 +2518,10 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 onFixedMenuChosen={setFixedMenuChosen}
                 onBindingChange={(raw) => {
                   onPatchPipelineEnvRow(WOE_FIT_INPUT_BINDING_ENV, raw);
-                  if (raw.trim()) onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, '');
+                  if (raw.trim()) {
+                    onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, '');
+                    setFixedMenuChosen(false);
+                  }
                 }}
                 onFixedPathChange={(path) => {
                   onPatchPipelineEnvRow(WOE_FIT_FIXED_DATA_PATH_ENV, path);
@@ -2940,16 +2935,8 @@ function WoeTransformConfigPanel({
   const [encFixedMenuChosen, setEncFixedMenuChosen] = useState(false);
 
   useEffect(() => {
-    if (dataBindingRaw.trim()) setDataFixedMenuChosen(false);
-  }, [dataBindingRaw]);
-
-  useEffect(() => {
     if (!dataBindingRaw.trim() && dataFixedRaw.trim()) setDataFixedMenuChosen(true);
   }, [task.id, dataBindingRaw, dataFixedRaw]);
-
-  useEffect(() => {
-    if (encBindingRaw.trim()) setEncFixedMenuChosen(false);
-  }, [encBindingRaw]);
 
   useEffect(() => {
     if (!encBindingRaw.trim() && encFixedRaw.trim()) setEncFixedMenuChosen(true);
@@ -3000,7 +2987,10 @@ function WoeTransformConfigPanel({
                 onFixedMenuChosen={setDataFixedMenuChosen}
                 onBindingChange={(raw) => {
                   onPatchPipelineEnvRow(WOE_TRANSFORM_INPUT_BINDING_ENV, raw);
-                  if (raw.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, '');
+                  if (raw.trim()) {
+                    onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, '');
+                    setDataFixedMenuChosen(false);
+                  }
                 }}
                 onFixedPathChange={(path) => {
                   onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_DATA_PATH_ENV, path);
@@ -3029,7 +3019,10 @@ function WoeTransformConfigPanel({
                 onFixedMenuChosen={setEncFixedMenuChosen}
                 onBindingChange={(raw) => {
                   onPatchPipelineEnvRow(WOE_TRANSFORM_ENCODER_BINDING_ENV, raw);
-                  if (raw.trim()) onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, '');
+                  if (raw.trim()) {
+                    onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, '');
+                    setEncFixedMenuChosen(false);
+                  }
                 }}
                 onFixedPathChange={(path) => {
                   onPatchPipelineEnvRow(WOE_TRANSFORM_FIXED_ENCODER_PATH_ENV, path);
@@ -3250,10 +3243,6 @@ function FeatureSelectionConfigPanel({
   const [fixedMenuChosen, setFixedMenuChosen] = useState(false);
 
   useEffect(() => {
-    if (bindingRaw.trim()) setFixedMenuChosen(false);
-  }, [bindingRaw]);
-
-  useEffect(() => {
     if (!bindingRaw.trim() && fixedPathRaw.trim()) setFixedMenuChosen(true);
   }, [task.id, bindingRaw, fixedPathRaw]);
 
@@ -3326,7 +3315,10 @@ function FeatureSelectionConfigPanel({
               onFixedMenuChosen={setFixedMenuChosen}
               onBindingChange={(raw) => {
                 onPatchPipelineEnvRow(FEATURE_SELECTION_INPUT_BINDING_ENV, raw);
-                if (raw.trim()) onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, '');
+                if (raw.trim()) {
+                  onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, '');
+                  setFixedMenuChosen(false);
+                }
               }}
               onFixedPathChange={(path) => {
                 onPatchPipelineEnvRow(FEATURE_SELECTION_FIXED_DATA_PATH_ENV, path);
@@ -3341,8 +3333,8 @@ function FeatureSelectionConfigPanel({
               fieldName="data_path"
               typeBadge="data"
               cascadeKind="feature_selection_data"
-              cardNoUpstreamHint={`No upstream node linked to Feature Selection. Connect WOE Transform (recommended for data_save_path), or use ${WOE_FIT_FIXED_VALUE_LABEL}.`}
-              portalNoUpstreamHint={`No upstream nodes — connect an upstream node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+              cardNoUpstreamHint={`No upstream node linked to Feature Selection. Draw an incoming edge on the canvas to pick node outputs here, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.`}
+              portalNoUpstreamHint={`No upstream nodes — connect Feature Selection to a node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
             />
           ) : (
             <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
