@@ -46,6 +46,7 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
   - **主要 Function**：`ray_util.woe_fit()`，底层脚本 `ray_woe_fit_v2_4.py`，内部使用 WOE v2.4 实现（如 `woe_helper/woe_v2_4_ray.py`）。  
   - **产出**：`encoder_save_path` 指定的 .pkl（WOE Encoder）。  
   - **辅助工具**（非主流程，用于 Encoder 维护）：`woe_update`（重设分箱边界）、`woe_update_by_adding_cutoff`（追加切点）、`set_woe`（手动设某分箱 WOE 值）、`encoder_combine`（合并多个 encoder）。这些不参与「标准训练 Pipeline」主流程，仅在运维/修补时使用。
+  - **Model Experiment 原型 · WOE Fit 节点**：在画布配置中开启 `woe_update` 时，增加 **`woe_fit_woe_encoder_path`（`woe_encoder_path`）**：可编辑文本，**为空**则与节点输出 **`encoder_save_path`** 同路径（UI 回显）；**非空**则作为 update 阶段的**输入** encoder；加工结果仍写入本节点的 **`encoder_save_path`**。便于新 Run 仅改 update 时，将路径中的 `{run_id}` 指向前序 Run 的 encoder，再转存为当前 Run 的输出路径。
 
 - **Step 3 Feature Report**  
   - **在做什么**：基于已有 Encoder 和指定数据，生成特征性能、趋势、稳定性、单调性等报告（.xlsx 等）。  

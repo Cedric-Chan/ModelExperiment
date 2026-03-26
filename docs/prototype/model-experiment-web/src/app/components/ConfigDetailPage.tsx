@@ -74,6 +74,7 @@ const WOE_FIT_DICT_MIN_BIN_SIZE_ENV = 'woe_fit_dict_min_bin_size';
 const WOE_FIT_DICT_MIN_MISSING_BAD_CNT_ENV = 'woe_fit_dict_min_missing_bad_cnt';
 const WOE_FIT_WOE_UPDATE_ENABLED_ENV = 'woe_fit_woe_update_enabled';
 const WOE_FIT_WOE_UPDATES_JSON_ENV = 'woe_fit_woe_updates_json';
+const WOE_FIT_WOE_ENCODER_PATH_ENV = 'woe_fit_woe_encoder_path';
 const WOE_FIT_CHECKPOINT_AFTER_NODE_ENV = 'woe_fit_checkpoint_after_node';
 const WOE_TRANSFORM_INPUT_BINDING_ENV = 'woe_transform_input_binding';
 const WOE_TRANSFORM_FIXED_DATA_PATH_ENV = 'woe_transform_fixed_data_path';
@@ -2971,7 +2972,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                 woe_update
                 <FieldTooltip
                   detach
-                  text="Post-fit overrides per feature: set WOE, replace boundaries, or insert cutoff."
+                  text="Post-fit overrides: woe_encoder_path (input .pkl) plus per-feature rows — set WOE, replace boundaries, or insert cutoff. Output writes to encoder_save_path."
                 />
               </span>
               <div className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${woeUpdateEnabled ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}>
@@ -2980,6 +2981,40 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
             </button>
             {woeUpdateEnabled && (
               <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className={`${labelCls} mb-0`}>
+                      woe_encoder_path
+                      <FieldTooltip
+                        text={
+                          'Input encoder .pkl for the update step. Empty field shows this node’s encoder_save_path; edit to point at another run (e.g. change {run_id}), then apply feature updates — result is written to encoder_save_path for this run.'
+                        }
+                      />
+                    </p>
+                    {!readOnly && getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_ENCODER_PATH_ENV).trim() !== '' && (
+                      <button
+                        type="button"
+                        title="Clear override; show default encoder_save_path"
+                        onClick={() => onPatchPipelineEnvRow(WOE_FIT_WOE_ENCODER_PATH_ENV, '')}
+                        className="shrink-0 h-7 px-2 flex items-center gap-1 rounded-lg border border-slate-200 bg-white text-[9px] font-semibold text-slate-400 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 hover:bg-[#13c2c2]/5 transition-all"
+                      >
+                        <RotateCcw size={9} className="shrink-0" />
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={(() => {
+                      const s = getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_ENCODER_PATH_ENV);
+                      return s.trim() !== '' ? s : encoderPath;
+                    })()}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_WOE_ENCODER_PATH_ENV, e.target.value)}
+                    rows={4}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[72px] resize-y py-1.5 text-[10px] leading-relaxed`}
+                  />
+                </div>
                 {woeUpdates.length === 0 && (
                   <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5">
                     Add at least one feature update when this section is enabled.

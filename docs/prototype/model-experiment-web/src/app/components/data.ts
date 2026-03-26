@@ -254,6 +254,12 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '[]',
     },
     {
+      name: 'woe_fit_woe_encoder_path',
+      description:
+        'Input encoder .pkl path for post-fit woe_update (editable). Empty uses the same resolved path as this node encoder_save_path; override to load another run (e.g. replace {run_id}). Output is still written to encoder_save_path.',
+      value: '',
+    },
+    {
       name: 'woe_fit_checkpoint_after_node',
       description: 'Pause for checkpoint after this node when true.',
       value: 'true',
