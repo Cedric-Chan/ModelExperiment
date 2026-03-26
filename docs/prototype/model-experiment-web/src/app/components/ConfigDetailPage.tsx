@@ -16,7 +16,6 @@ import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
   mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow, getDefaultPipelineEnvRows,
   WOE_FIT_WOE_ENCODER_PATH_MOCK,
-  taskHasActiveRun,
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
@@ -6260,10 +6259,6 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
   /* ── Confirm Run from modal ── */
   const handleRunConfirm = useCallback((notes: string, useCache: boolean) => {
-    if (taskHasActiveRun(task)) {
-      setShowTriggerModal(false);
-      return;
-    }
     const pad = (n: number) => String(n).padStart(2, '0');
     const now = new Date();
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -6291,8 +6286,6 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
     || runInstance?.status === 'CHECKING'
   );
   const canContinueRun = isRunView && runInstance?.status === 'CHECKING';
-  const canvasCanTriggerRun =
-    !isRunView && !isRunHistoryView && task.status === 'ENABLED' && !taskHasActiveRun(task);
 
   const handleTriggerRun = useCallback(() => {
     // Step 1: config integrity check (with spinner)
@@ -6510,7 +6503,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
               {/* Action dropdown */}
               <ActionDropdown
-                canTriggerRun={canvasCanTriggerRun}
+                canTriggerRun={task.status === 'ENABLED'}
                 canContinue={false}
                 canKill={false}
                 onTriggerRun={handleTriggerRun}

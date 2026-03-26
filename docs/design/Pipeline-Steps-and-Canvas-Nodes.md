@@ -68,7 +68,7 @@ Benchmark 框架：数据源(Type=S3) → Mega Model → Calibrate(默认关)；
 | 属性 | 含义 | 行为 | 适用节点 |
 |------|------|------|----------|
 | **SavePoint** (`isSavePoint`) | 节点产出作为「恢复点」持久化 | 本节点执行完成后，将其输出（如 WOE Encoder、合并后数据）写入 S3 并记录到 Run 的 SavePoint 列表。用户选择 **Revert** 时，从**最近一个 SavePoint** 加载产出，从该 SavePoint 的**下一节点**按当前配置重新执行。**允许多个节点开启 SavePoint。** | **WOE All Feature**、**WOE Selected Feature** |
-| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；**成功执行完毕**后 Run 进入 **`CHECKING`**，等待人工 **Continue / Kill**（与 SavePoint、与 ENV **`*_checkpoint_after_node`** 区分）。**Continue** 后 Run 回到 **RUNNING** 继续后续节点；可多卡点顺序出现。改配置后执行 = 新 Run id。同一 Experiment **串行锁**：存在 **QUEUING / WAITING / RUNNING / CHECKING** 时不可再 **Trigger New Run**。列表子表 **View | Continue | Kill**；画布 **Action** 含 **Continue**（仅 CHECKING）。 | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
+| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；**成功执行完毕**后 Run 进入 **`CHECKING`**，等待人工 **Continue / Kill**（与 SavePoint、与 ENV **`*_checkpoint_after_node`** 区分）。**Continue** 后 Run 回到 **RUNNING** 继续后续节点；可多卡点顺序出现。改配置后执行 = 新 Run id。列表子表 **View | Continue | Kill**；画布 **Action** 含 **Continue**（仅 CHECKING）。 | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
 
 ### 2.2 状态与操作
 

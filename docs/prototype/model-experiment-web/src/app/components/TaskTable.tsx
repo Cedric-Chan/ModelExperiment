@@ -4,7 +4,7 @@ import {
   ChevronRight, ChevronDown, RefreshCw,
   AlertTriangle, Plus, Settings, Bell, X, HelpCircle
 } from 'lucide-react';
-import { TrainingTask, TaskInstance, CURRENT_USER, IS_ADMIN, taskHasActiveRun } from './data';
+import { TrainingTask, TaskInstance, CURRENT_USER, IS_ADMIN } from './data';
 import { TaskStatusBadge, InstanceStatusBadge, RegionBadge } from './StatusBadge';
 
 /* ─── Description Tooltip ─── */
@@ -662,7 +662,6 @@ function InstanceRow({ instance, onView, onContinue, onKill, onArtifact }: Insta
 interface TaskRowProps {
   task: TrainingTask;
   onEdit: () => void;
-  onTrigger: () => void;
   onCopy: () => void;
   onStatusChange: (status: 'ENABLED' | 'DISABLED') => void;
   onDelete: () => void;
@@ -683,7 +682,7 @@ const STICKY2 = COL.toggle;             // left offset for EXP ID
 const STICKY3 = COL.toggle + COL.expId; // left offset for EXP Name
 
 function TaskRow({
-  task, onEdit, onTrigger, onCopy,
+  task, onEdit, onCopy,
   onStatusChange, onDelete,
   onInstanceView, onInstanceContinue, onInstanceKill, onInstanceArtifact
 }: TaskRowProps) {
@@ -780,22 +779,6 @@ function TaskRow({
         <td className="py-4 pl-1 pr-3">
           <div className="flex items-center gap-0.5 flex-nowrap">
             <ActionBtn label="Edit" onClick={onEdit} />
-            <span
-              title={
-                task.status !== 'ENABLED'
-                  ? 'Enable the experiment to trigger a run'
-                  : taskHasActiveRun(task)
-                    ? 'Another run is QUEUING, RUNNING, or CHECKING—finish or kill it first'
-                    : 'Trigger a new run from list (same lock as canvas)'
-              }
-              className="inline-flex"
-            >
-              <ActionBtn
-                label="New Run"
-                onClick={onTrigger}
-                disabled={task.status !== 'ENABLED' || taskHasActiveRun(task)}
-              />
-            </span>
             <ActionBtn label="Copy" onClick={onCopy} />
             <ActionBtn label="Alert" onClick={() => setShowAlertModal(true)} />
             <PopConfirm
@@ -1021,7 +1004,6 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
 interface TaskTableProps {
   tasks: TrainingTask[];
   onEdit: (task: TrainingTask) => void;
-  onTrigger: (task: TrainingTask) => void;
   onCopy: (task: TrainingTask) => void;
   onStatusChange: (taskId: string, status: 'ENABLED' | 'DISABLED') => void;
   onDelete: (taskId: string) => void;
@@ -1034,7 +1016,7 @@ interface TaskTableProps {
 }
 
 export function TaskTable({
-  tasks, onEdit, onTrigger, onCopy,
+  tasks, onEdit, onCopy,
   onStatusChange, onDelete,
   onInstanceView, onInstanceContinue, onInstanceKill, onInstanceArtifact,
   page, pageSize,
@@ -1119,7 +1101,6 @@ export function TaskTable({
                 key={task.id}
                 task={task}
                 onEdit={() => onEdit(task)}
-                onTrigger={() => onTrigger(task)}
                 onCopy={() => onCopy(task)}
                 onStatusChange={(status) => onStatusChange(task.id, status)}
                 onDelete={() => onDelete(task.id)}

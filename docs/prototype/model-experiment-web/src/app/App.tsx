@@ -4,7 +4,6 @@ import {
   filterExperimentsVisibleToOperator,
   getDefaultPipelineEnvRows,
   mergePipelineEnvWithDefaults,
-  taskHasActiveRun,
 } from './components/data';
 import { FilterBar, FilterValues, defaultFilters } from './components/FilterBar';
 import { Toolbar, TaskTable, Pagination } from './components/TaskTable';
@@ -119,30 +118,6 @@ export default function App() {
     const task = tasks.find(t => t.id === taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     showToast(`Task "${task?.taskName}" deleted`, 'info');
-  };
-
-  const handleTrigger = (task: TrainingTask) => {
-    if (taskHasActiveRun(task)) {
-      showToast('Cannot trigger a new run while another is QUEUING, WAITING, RUNNING, or CHECKING', 'error');
-      return;
-    }
-    const now = new Date();
-    const ts = `${now.toISOString().split('T')[0]} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    const latestVersion = task.history[0]?.version || 'V1';
-    const newInst: TaskInstance = {
-      id: `inst-${Date.now().toString().slice(-5)}`,
-      taskId: task.id,
-      status: 'QUEUING',
-      bindTask: latestVersion,
-      triggerTime: ts,
-      startTime: '-',
-      finishTime: '-',
-      duration: '-',
-    };
-    setTasks((prev) => prev.map((t) =>
-      t.id === task.id ? { ...t, instances: [newInst, ...t.instances] } : t
-    ));
-    showToast(`New instance triggered for "${task.taskName}"`, 'success');
   };
 
   const handleInstanceKill = (taskId: string, instanceId: string) => {
@@ -268,7 +243,6 @@ export default function App() {
             <TaskTable
               tasks={filteredTasks}
               onEdit={(task) => setView({ type: 'config', task })}
-              onTrigger={handleTrigger}
               onCopy={(task) => setModal({ type: 'copy', task })}
               onStatusChange={handleStatusChange}
               onDelete={handleDeleteTask}
