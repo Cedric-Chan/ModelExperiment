@@ -5753,6 +5753,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
   const [nodes, setNodes]           = useState<DagNode[]>(() => {
     return initNodes;
   });
+  // Fresh DAG labels/structure when switching experiments (avoids stale canvas state).
+  useEffect(() => {
+    setNodes(buildDefaultDag().nodes);
+  }, [initialTask.id]);
   // Reset nodes whenever DAG definition changes (handles HMR stale state)
   const validTypeSet = React.useMemo(() => new Set(Object.keys(NODE_STYLES)), []);
   React.useEffect(() => {

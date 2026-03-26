@@ -169,6 +169,7 @@ export default function App() {
   if (view.type === 'config') {
     main = (
       <ConfigDetailPage
+        key={`experiment-config-${view.task.id}`}
         task={view.task}
         onBack={() => setView({ type: 'list' })}
         onPersistDraft={(t) => setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)))}
@@ -187,6 +188,7 @@ export default function App() {
   } else if (view.type === 'run') {
     main = (
       <ConfigDetailPage
+        key={`experiment-run-${view.task.id}-${view.instance.id}`}
         task={view.task}
         runInstance={view.instance}
         onBack={() => setView({ type: 'list' })}
