@@ -473,6 +473,85 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: 'false',
     },
     {
+      name: 'tune_train_num_workers',
+      description: 'Ray / distributed worker count for LGBM tune & train (Adv. Conf).',
+      value: '15',
+    },
+    {
+      name: 'tune_train_cpu_per_worker',
+      description: 'CPU cores per worker for LGBM tune & train (Adv. Conf).',
+      value: '2',
+    },
+    {
+      name: 'tune_train_memory_per_worker',
+      description: 'Memory per worker in GB for LGBM tune & train (Adv. Conf).',
+      value: '2',
+    },
+    {
+      name: 'model_prediction_data_input_binding',
+      description:
+        'Model prediction input data_input cascade `upstreamNodeId|portKey` (e.g. WOE Transform data_save_path). Empty uses upstream picker or FixedValue.',
+      value: '',
+    },
+    {
+      name: 'model_prediction_fixed_data_path',
+      description: 'Manual S3 path for prediction input data when binding empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'model_prediction_best_model_binding',
+      description:
+        'Cascade binding for best model .pkl `upstreamNodeId|best_model_output` from LGBM tune & train. Empty uses upstream picker or FixedValue.',
+      value: '',
+    },
+    {
+      name: 'model_prediction_fixed_best_model_path',
+      description: 'Manual path to best_model.pkl when binding empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'model_prediction_sample_scope',
+      description: 'JSON array: train, test, val, all for prediction row filter. Default ["test"].',
+      value: '["test"]',
+    },
+    {
+      name: 'model_prediction_auxilary_cols',
+      description:
+        'JSON array of auxiliary columns; empty inherits Pipeline ENV removed_features (same as tune_train_auxilary_cols).',
+      value: '',
+    },
+    {
+      name: 'model_prediction_sample_weight_col',
+      description:
+        'Optional sample weight column; empty inherits sample_weight_column (global), or disables if global also empty.',
+      value: '',
+    },
+    {
+      name: 'model_prediction_batch_size',
+      description: 'Batch size for prediction scoring.',
+      value: '1024',
+    },
+    {
+      name: 'model_prediction_output_columns',
+      description: 'JSON array of output column names (e.g. score, probability).',
+      value: '["score","probability"]',
+    },
+    {
+      name: 'model_prediction_num_workers',
+      description: 'Ray / distributed worker count for model prediction (Adv. Conf).',
+      value: '15',
+    },
+    {
+      name: 'model_prediction_cpu_per_worker',
+      description: 'CPU cores per worker for model prediction (Adv. Conf).',
+      value: '2',
+    },
+    {
+      name: 'model_prediction_memory_per_worker',
+      description: 'Memory per worker in GB for model prediction (Adv. Conf).',
+      value: '2',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',

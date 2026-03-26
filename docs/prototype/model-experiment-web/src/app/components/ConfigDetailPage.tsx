@@ -50,6 +50,8 @@ type NodePanelEnvProps = {
   featureSelectionDagContext?: { featureSelectionNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
   /** When set (LGBM tune & train on canvas), enables upstream cascades for data and selection report. */
   tuneTrainDagContext?: { tuneTrainNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
+  /** When set (Model Prediction on canvas), enables upstream cascades for data and best model. */
+  modelPredictionDagContext?: { modelPredictionNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
 };
 
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
@@ -107,6 +109,22 @@ const TUNE_TRAIN_COEF_OVERFIT_PUNISHMENT_ENV = 'tune_train_coef_overfit_punishme
 const TUNE_TRAIN_AUTO_SCALE_POS_WEIGHT_ENV = 'tune_train_auto_scale_pos_weight';
 const TUNE_TRAIN_INIT_HYPERS_ENV = 'tune_train_init_hypers';
 const TUNE_TRAIN_CHECKPOINT_AFTER_NODE_ENV = 'tune_train_checkpoint_after_node';
+const TUNE_TRAIN_NUM_WORKERS_ENV = 'tune_train_num_workers';
+const TUNE_TRAIN_CPU_PER_WORKER_ENV = 'tune_train_cpu_per_worker';
+const TUNE_TRAIN_MEMORY_PER_WORKER_ENV = 'tune_train_memory_per_worker';
+
+const MODEL_PREDICTION_DATA_INPUT_BINDING_ENV = 'model_prediction_data_input_binding';
+const MODEL_PREDICTION_FIXED_DATA_PATH_ENV = 'model_prediction_fixed_data_path';
+const MODEL_PREDICTION_BEST_MODEL_BINDING_ENV = 'model_prediction_best_model_binding';
+const MODEL_PREDICTION_FIXED_BEST_MODEL_PATH_ENV = 'model_prediction_fixed_best_model_path';
+const MODEL_PREDICTION_SAMPLE_SCOPE_ENV = 'model_prediction_sample_scope';
+const MODEL_PREDICTION_AUXILARY_COLS_ENV = 'model_prediction_auxilary_cols';
+const MODEL_PREDICTION_SAMPLE_WEIGHT_COL_ENV = 'model_prediction_sample_weight_col';
+const MODEL_PREDICTION_BATCH_SIZE_ENV = 'model_prediction_batch_size';
+const MODEL_PREDICTION_OUTPUT_COLUMNS_ENV = 'model_prediction_output_columns';
+const MODEL_PREDICTION_NUM_WORKERS_ENV = 'model_prediction_num_workers';
+const MODEL_PREDICTION_CPU_PER_WORKER_ENV = 'model_prediction_cpu_per_worker';
+const MODEL_PREDICTION_MEMORY_PER_WORKER_ENV = 'model_prediction_memory_per_worker';
 
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
@@ -115,7 +133,7 @@ function workflowStepLabel(node: DagNode): string {
     woe_transform: 'WoeTransform',
     feature_selection: 'FeatureSelection',
     tune_train: 'LgbmTuneTrain',
-    infer: 'Infer',
+    infer: 'ModelPrediction',
   };
   return `${p[node.type] ?? 'Node'}_${node.id}`;
 }
@@ -134,9 +152,13 @@ type WoeCascadeKind =
   | 'transform_data'
   | 'transform_encoder'
   | 'feature_selection_data'
-  | 'tune_train_selection_report';
+  | 'tune_train_selection_report'
+  | 'tune_train_best_model';
 
 function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCascadePort[] {
+  if (kind === 'tune_train_best_model' && nodeType === 'tune_train') {
+    return [{ key: 'best_model_output', label: 'best_model_output', typeLabel: 'pkl' }];
+  }
   if (kind === 'tune_train_selection_report' && nodeType === 'feature_selection') {
     return [{ key: 'selection_report_path', label: 'selection_report_path', typeLabel: 'data' }];
   }
@@ -182,6 +204,9 @@ function resolveCascadePortPath(
   kind: WoeCascadeKind,
 ): string {
   const node = nodes.find((n) => n.id === nodeId);
+  if (kind === 'tune_train_best_model' && node?.type === 'tune_train' && portKey === 'best_model_output') {
+    return buildLgbmTuneBestModelOutputPath(task, pipelineEnv);
+  }
   if (kind === 'tune_train_selection_report' && node?.type === 'feature_selection' && portKey === 'selection_report_path') {
     return buildFeatureSelectionSelectionReportPathDisplay(task, pipelineEnv);
   }
@@ -303,7 +328,7 @@ function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
     { id: 'n3', type: 'woe_transform',     label: 'WOE Transform',     sublabel: 'Apply encoder · WOE features',              x: X0+GX*2, y: MID, status: 'ready'   },
     { id: 'n4', type: 'feature_selection', label: 'Feature selection', sublabel: 'IV · Corr · Selection report',              x: X0+GX*3, y: MID, status: 'ready'   },
     { id: 'n5', type: 'tune_train',        label: 'LGBM tune & train', sublabel: 'LightGBM · HPO · Train',                   x: X0+GX*4, y: MID, status: 'pending' },
-    { id: 'n6', type: 'infer',             label: 'inference',         sublabel: 'Batch predict · Score output',              x: X0+GX*5, y: MID, status: 'pending' },
+    { id: 'n6', type: 'infer',             label: 'Model prediction',  sublabel: 'Batch scoring · predict_result',            x: X0+GX*5, y: MID, status: 'pending' },
   ];
   const edges: DagEdge[] = [
     { from: 'n1', to: 'n2' },
@@ -1275,27 +1300,59 @@ function NodeConfigBand({ title, children }: { title: string; children: React.Re
   );
 }
 
+type NodeResourceAdvProfile = 'global' | 'tune_train' | 'model_prediction';
+
 function NodeResourceAdvBlock({
   readOnly,
   pipelineEnv,
   onPatchEnv,
+  profile = 'global',
 }: {
   readOnly?: boolean;
   pipelineEnv?: PipelineEnvRow[];
   onPatchEnv: (key: string, value: string) => void;
+  profile?: NodeResourceAdvProfile;
 }) {
   const [open, setOpen] = useState(false);
   const merged = React.useMemo(
     () => mergePipelineEnvWithDefaults(pipelineEnv),
     [pipelineEnv],
   );
-  const cpu = getPipelineEnvValue(merged, 'default_cpu');
-  const mem = getPipelineEnvValue(merged, 'default_memory');
-  const img = getPipelineEnvValue(merged, 'default_image');
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const inputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+
+  const rayKeys =
+    profile === 'tune_train'
+      ? {
+          num: TUNE_TRAIN_NUM_WORKERS_ENV,
+          cpu: TUNE_TRAIN_CPU_PER_WORKER_ENV,
+          mem: TUNE_TRAIN_MEMORY_PER_WORKER_ENV,
+        }
+      : profile === 'model_prediction'
+        ? {
+            num: MODEL_PREDICTION_NUM_WORKERS_ENV,
+            cpu: MODEL_PREDICTION_CPU_PER_WORKER_ENV,
+            mem: MODEL_PREDICTION_MEMORY_PER_WORKER_ENV,
+          }
+        : null;
+
+  const parsePosInt = (raw: string, fallback: number) => {
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 ? n : fallback;
+  };
+
+  const cpu = getPipelineEnvValue(merged, 'default_cpu');
+  const mem = getPipelineEnvValue(merged, 'default_memory');
+  const img = getPipelineEnvValue(merged, 'default_image');
+
+  const numWorkers =
+    rayKeys !== null ? parsePosInt(getPipelineEnvValue(merged, rayKeys.num), 15) : 15;
+  const cpuPerWorker =
+    rayKeys !== null ? parsePosInt(getPipelineEnvValue(merged, rayKeys.cpu), 2) : 2;
+  const memPerWorkerGb =
+    rayKeys !== null ? parsePosInt(getPipelineEnvValue(merged, rayKeys.mem), 2) : 2;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1307,7 +1364,7 @@ function NodeResourceAdvBlock({
       <button
         type="button"
         disabled={readOnly}
-        onClick={() => !readOnly && setOpen(o => !o)}
+        onClick={() => !readOnly && setOpen((o) => !o)}
         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-colors
           ${open ? 'border-[#13c2c2]/40 bg-[#13c2c2]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}
       >
@@ -1319,46 +1376,116 @@ function NodeResourceAdvBlock({
       </button>
       {open && (
         <div className="flex flex-col gap-2.5 pl-0.5">
-          <div>
-            <p className={labelCls}>default_cpu</p>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={cpu === '' ? '' : Number(cpu)}
-              disabled={readOnly}
-              onChange={e => {
-                const v = e.target.value;
-                onPatchEnv('default_cpu', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
-              }}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <p className={labelCls}>default_memory</p>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={mem === '' ? '' : Number(mem)}
-              disabled={readOnly}
-              onChange={e => {
-                const v = e.target.value;
-                onPatchEnv('default_memory', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
-              }}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <p className={labelCls}>default_image</p>
-            <input
-              type="text"
-              value={img}
-              disabled={readOnly}
-              onChange={e => onPatchEnv('default_image', e.target.value)}
-              className={inputCls}
-            />
-          </div>
+          {rayKeys === null ? (
+            <>
+              <div>
+                <p className={labelCls}>default_cpu</p>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={cpu === '' ? '' : Number(cpu)}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onPatchEnv('default_cpu', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
+                  }}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <p className={labelCls}>default_memory</p>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={mem === '' ? '' : Number(mem)}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onPatchEnv('default_memory', v === '' ? '' : String(Math.max(1, parseInt(v, 10) || 0)));
+                  }}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <p className={labelCls}>default_image</p>
+                <input
+                  type="text"
+                  value={img}
+                  disabled={readOnly}
+                  onChange={(e) => onPatchEnv('default_image', e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className={labelCls}>
+                  num_workers
+                  <FieldTooltip text="Integer &gt;= 1. Ray worker count for this node (tune_train_num_workers / model_prediction_num_workers)." />
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={numWorkers}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    onPatchEnv(
+                      rayKeys.num,
+                      String(Number.isFinite(v) && v >= 1 ? Math.floor(v) : 15),
+                    );
+                  }}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <p className={labelCls}>
+                  cpu_per_worker
+                  <FieldTooltip text="Integer &gt;= 1. CPU cores per worker." />
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={cpuPerWorker}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    onPatchEnv(
+                      rayKeys.cpu,
+                      String(Number.isFinite(v) && v >= 1 ? Math.floor(v) : 2),
+                    );
+                  }}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <p className={labelCls}>
+                  memory_per_worker
+                  <FieldTooltip text="Integer &gt;= 1. Memory per worker in GB." />
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={memPerWorkerGb}
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    onPatchEnv(
+                      rayKeys.mem,
+                      String(Number.isFinite(v) && v >= 1 ? Math.floor(v) : 2),
+                    );
+                  }}
+                  className={inputCls}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1765,6 +1892,18 @@ function parseSampleScopeJson(raw: string): SampleScopeOpt[] {
 
 function stringifySampleScopeJson(scopes: SampleScopeOpt[]): string {
   return JSON.stringify(scopes);
+}
+
+function parseModelPredictionSampleScopeJson(raw: string): SampleScopeOpt[] {
+  try {
+    const a = JSON.parse(raw) as unknown;
+    if (!Array.isArray(a)) return ['test'];
+    const allowed = new Set<string>(SAMPLE_SCOPE_OPTIONS);
+    const ok = a.filter((x): x is SampleScopeOpt => typeof x === 'string' && allowed.has(x));
+    return ok.length ? ok : ['test'];
+  } catch {
+    return ['test'];
+  }
 }
 
 type ReportTabOpt = 'performance' | 'trend' | 'stability' | 'mono';
@@ -4072,7 +4211,12 @@ function ModelTuneConfigPanel({
         </div>
       </NodeConfigBand>
 
-      <NodeResourceAdvBlock readOnly={readOnly} pipelineEnv={task.pipelineEnv} onPatchEnv={onPatchPipelineEnvRow} />
+      <NodeResourceAdvBlock
+        readOnly={readOnly}
+        pipelineEnv={task.pipelineEnv}
+        onPatchEnv={onPatchPipelineEnvRow}
+        profile="tune_train"
+      />
 
       <NodeConfigBand title="Output path">
         <div className="pb-0.5 flex flex-col gap-3.5">
@@ -4120,132 +4264,243 @@ function ModelTuneConfigPanel({
   );
 }
 
-/* ─────────────── Model Inference Config Panel ─────────────── */
-function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
-  const inferredBestModelPath = React.useMemo(
-    () => buildLgbmTuneBestModelOutputPath(task, task.pipelineEnv),
-    [task.id, task.modelName, task.pipelineEnv],
-  );
-  const OUTPUT_PATH = 's3://mlops-artifacts/model-inference/v12/predict_result.parquet';
-
-  const [samplePath, setSamplePath] = useState('');
-  const [modelPath, setModelPath] = useState(inferredBestModelPath);
+/* ─────────────── Model Prediction Config Panel (infer) ─────────────── */
+function ModelInferenceConfigPanel({
+  task,
+  onPatchPipelineEnvRow,
+  readOnly,
+  modelPredictionDagContext,
+}: NodePanelEnvProps) {
+  const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const dataBindingRaw = getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_DATA_INPUT_BINDING_ENV);
+  const dataFixedRaw = getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_FIXED_DATA_PATH_ENV);
+  const bestBindingRaw = getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_BEST_MODEL_BINDING_ENV);
+  const bestFixedRaw = getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_FIXED_BEST_MODEL_PATH_ENV);
+  const [dataFixedMenuChosen, setDataFixedMenuChosen] = useState(false);
+  const [bestFixedMenuChosen, setBestFixedMenuChosen] = useState(false);
+  const [mpDataConfigOpen, setMpDataConfigOpen] = useState(true);
 
   useEffect(() => {
-    setModelPath(inferredBestModelPath);
-  }, [inferredBestModelPath]);
-  const [outputCopied, setOutputCopied] = useState(false);
+    if (!dataBindingRaw.trim() && dataFixedRaw.trim()) setDataFixedMenuChosen(true);
+  }, [task.id, dataBindingRaw, dataFixedRaw]);
 
-  const handleOutputCopy = () => {
-    try {
-      const el = document.createElement('textarea');
-      el.value = OUTPUT_PATH;
-      el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-      document.body.appendChild(el);
-      el.focus(); el.select();
-      document.execCommand('copy');
-      document.body.removeChild(el);
-      setOutputCopied(true);
-      setTimeout(() => setOutputCopied(false), 1800);
-    } catch {
-      navigator.clipboard?.writeText(OUTPUT_PATH).then(() => {
-        setOutputCopied(true);
-        setTimeout(() => setOutputCopied(false), 1800);
-      }).catch(() => {});
-    }
-  };
+  useEffect(() => {
+    if (!bestBindingRaw.trim() && bestFixedRaw.trim()) setBestFixedMenuChosen(true);
+  }, [task.id, bestBindingRaw, bestFixedRaw]);
 
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
-  const inputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-[10px] font-mono text-slate-700
+  const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
-    placeholder:text-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
+
+  const fallbackDataPath = buildWoeTransformDataSavePathDisplay(task, task.pipelineEnv);
+  const fallbackBestModelPath = buildLgbmTuneBestModelOutputPath(task, task.pipelineEnv);
+  const predictResultPath = buildModelPredictionPredictResultPathDisplay(task, task.pipelineEnv);
+
+  const upstreamForPrediction = modelPredictionDagContext
+    ? getUpstreamNodesForTarget(
+        modelPredictionDagContext.edges,
+        modelPredictionDagContext.nodes,
+        modelPredictionDagContext.modelPredictionNodeId,
+      )
+    : [];
+
+  const batchParsed = Number.parseInt(getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_BATCH_SIZE_ENV), 10);
+  const batchSize = Number.isFinite(batchParsed) && batchParsed >= 1 ? batchParsed : 1024;
 
   return (
     <div className="flex flex-col gap-4 px-4 py-3">
-
       <NodeConfigBand title="Input data path">
-      <div className="flex flex-col gap-3">
-      <div>
-        <p className={labelCls}>
-          Load Sample Path
-          <FieldTooltip text="Storage path for samples to score. Supports S3 and Hive; features are read from this path at inference time." />
-        </p>
-        <input
-          type="text"
-          value={samplePath}
-          disabled={readOnly}
-          onChange={e => setSamplePath(e.target.value)}
-          placeholder="s3://... or hive://schema.table"
-          className={inputCls}
-        />
-      </div>
-
-      <div>
-        <p className={labelCls}>
-          Load best_model_path
-          <FieldTooltip text="Path to the model .pkl used for inference. Defaults to LGBM tune &amp; train best_model output; you can override manually." />
-        </p>
-        <div className="flex items-center gap-1.5">
-          <input
-            type="text"
-            value={modelPath}
-            disabled={readOnly}
-            onChange={e => setModelPath(e.target.value)}
-            placeholder="s3://...best_model.pkl"
-            className={`${inputCls} flex-1`}
-          />
-          {!readOnly && (
-            <button
-              onClick={() => setModelPath(inferredBestModelPath)}
-              title="Reset to LGBM tune & train best_model output path"
-              className="shrink-0 h-8 px-2 flex items-center gap-1 rounded-lg border border-slate-200 bg-white
-                text-[9px] font-semibold text-slate-400 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 hover:bg-[#13c2c2]/5
-                transition-all whitespace-nowrap"
-            >
-              <RotateCcw size={9} className="shrink-0" />
-              Reset
-            </button>
+        <div className="flex flex-col gap-3">
+          {modelPredictionDagContext ? (
+            <WoeCascadeBindingField
+              task={task}
+              readOnly={readOnly}
+              upstreamNodes={upstreamForPrediction}
+              allNodes={modelPredictionDagContext.nodes}
+              bindingRaw={dataBindingRaw}
+              fixedPathRaw={dataFixedRaw}
+              fixedMenuChosen={dataFixedMenuChosen}
+              onFixedMenuChosen={setDataFixedMenuChosen}
+              onBindingChange={(raw) => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_DATA_INPUT_BINDING_ENV, raw);
+                if (raw.trim()) {
+                  onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_DATA_PATH_ENV, '');
+                  setDataFixedMenuChosen(false);
+                }
+              }}
+              onFixedPathChange={(path) => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_DATA_PATH_ENV, path);
+                if (path.trim()) onPatchPipelineEnvRow(MODEL_PREDICTION_DATA_INPUT_BINDING_ENV, '');
+              }}
+              onClearAll={() => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_DATA_INPUT_BINDING_ENV, '');
+                onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_DATA_PATH_ENV, '');
+                setDataFixedMenuChosen(false);
+              }}
+              numInputCls={numInputCls}
+              fieldName="data_input"
+              typeBadge="data"
+              cascadeKind="feature_selection_data"
+              cardNoUpstreamHint={`Connect an upstream node on the canvas, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual path.`}
+              portalNoUpstreamHint={`No upstream — connect a node or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+            />
+          ) : (
+            <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+              <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+              <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{fallbackDataPath}</span>
+            </div>
+          )}
+          {modelPredictionDagContext ? (
+            <WoeCascadeBindingField
+              task={task}
+              readOnly={readOnly}
+              upstreamNodes={upstreamForPrediction}
+              allNodes={modelPredictionDagContext.nodes}
+              bindingRaw={bestBindingRaw}
+              fixedPathRaw={bestFixedRaw}
+              fixedMenuChosen={bestFixedMenuChosen}
+              onFixedMenuChosen={setBestFixedMenuChosen}
+              onBindingChange={(raw) => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_BEST_MODEL_BINDING_ENV, raw);
+                if (raw.trim()) {
+                  onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_BEST_MODEL_PATH_ENV, '');
+                  setBestFixedMenuChosen(false);
+                }
+              }}
+              onFixedPathChange={(path) => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_BEST_MODEL_PATH_ENV, path);
+                if (path.trim()) onPatchPipelineEnvRow(MODEL_PREDICTION_BEST_MODEL_BINDING_ENV, '');
+              }}
+              onClearAll={() => {
+                onPatchPipelineEnvRow(MODEL_PREDICTION_BEST_MODEL_BINDING_ENV, '');
+                onPatchPipelineEnvRow(MODEL_PREDICTION_FIXED_BEST_MODEL_PATH_ENV, '');
+                setBestFixedMenuChosen(false);
+              }}
+              numInputCls={numInputCls}
+              fieldName="best_model_path"
+              typeBadge="pkl"
+              cascadeKind="tune_train_best_model"
+              cardNoUpstreamHint={`Connect LGBM tune &amp; train upstream, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual .pkl path.`}
+              portalNoUpstreamHint={`No upstream — connect LGBM tune &amp; train or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+            />
+          ) : (
+            <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+              <FolderOpen size={10} className="shrink-0 text-slate-300 mt-0.5" />
+              <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{fallbackBestModelPath}</span>
+            </div>
           )}
         </div>
-        <p className="mt-1 text-[9px] text-slate-400 font-mono pl-0.5 truncate" title={inferredBestModelPath}>
-          ← LGBM tune &amp; train: {inferredBestModelPath}
-        </p>
-      </div>
-      </div>
+      </NodeConfigBand>
+
+      <NodeConfigBand title="Node configuration">
+        <div className="flex flex-col gap-3">
+          <SampleScopeMultiSelect
+            value={parseModelPredictionSampleScopeJson(getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_SAMPLE_SCOPE_ENV))}
+            readOnly={readOnly}
+            onChange={(next) => onPatchPipelineEnvRow(MODEL_PREDICTION_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
+            labelCls={labelCls}
+            tooltip="Scopes applied when scoring rows (train / test / val / all). Stored as model_prediction_sample_scope. Default test."
+          />
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setMpDataConfigOpen((o) => !o)}
+              className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left
+                ${mpDataConfigOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'}`}
+            >
+              <span className="text-[10px] font-semibold text-slate-600">
+                data_config
+                <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
+                  Overrides Pipeline ENV for this node (model_prediction_* keys).
+                </span>
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-slate-400 shrink-0 transition-transform ${mpDataConfigOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {mpDataConfigOpen && (
+              <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                <div>
+                  <p className={labelCls}>
+                    auxilary_cols
+                    <FieldTooltip text="JSON array; empty inherits Pipeline ENV removed_features. Edit to override model_prediction_auxilary_cols." />
+                  </p>
+                  <textarea
+                    value={tuneTrainEnvOrGlobal(mergedEnv, MODEL_PREDICTION_AUXILARY_COLS_ENV, 'removed_features')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(MODEL_PREDICTION_AUXILARY_COLS_ENV, e.target.value)}
+                    rows={2}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[52px] resize-y py-1.5 text-[10px]`}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    sample_weight_col
+                    <FieldTooltip text="Optional; empty inherits Pipeline ENV sample_weight_column. Edit to override model_prediction_sample_weight_col." />
+                  </p>
+                  <input
+                    type="text"
+                    value={woeFitEnvOrGlobal(mergedEnv, MODEL_PREDICTION_SAMPLE_WEIGHT_COL_ENV, 'sample_weight_column')}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(MODEL_PREDICTION_SAMPLE_WEIGHT_COL_ENV, e.target.value)}
+                    className={numInputCls}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div>
+            <p className={labelCls}>
+              batch_size
+              <FieldTooltip text="Batch size for prediction (model_prediction_batch_size). Minimum 1." />
+            </p>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={batchSize}
+              disabled={readOnly}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                onPatchPipelineEnvRow(
+                  MODEL_PREDICTION_BATCH_SIZE_ENV,
+                  String(Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1024),
+                );
+              }}
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              output_columns
+              <FieldTooltip text="JSON array of output column names, e.g. [&quot;score&quot;,&quot;probability&quot;] (model_prediction_output_columns)." />
+            </p>
+            <input
+              type="text"
+              value={getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_OUTPUT_COLUMNS_ENV)}
+              readOnly={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(MODEL_PREDICTION_OUTPUT_COLUMNS_ENV, e.target.value)}
+              className={numInputCls}
+              spellCheck={false}
+            />
+          </div>
+        </div>
       </NodeConfigBand>
 
       <NodeResourceAdvBlock
         readOnly={readOnly}
         pipelineEnv={task.pipelineEnv}
         onPatchEnv={onPatchPipelineEnvRow}
+        profile="model_prediction"
       />
 
-      <NodeConfigBand title="Output path">
-      <div>
-        <p className={labelCls}>predict_result_output_path</p>
-        <div className="flex items-center gap-1.5">
-          <div
-            className="flex-1 h-8 px-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center overflow-hidden"
-            title={OUTPUT_PATH}
-          >
-            <span className="text-[10px] font-mono text-slate-400 truncate whitespace-nowrap">{OUTPUT_PATH}</span>
-            <span className="ml-2 text-[9px] text-slate-300 italic shrink-0">view only</span>
-          </div>
-          <button
-            onClick={handleOutputCopy}
-            title="Copy output path"
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border transition-all
-              ${outputCopied
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-500'
-                : 'border-slate-200 bg-white text-slate-400 hover:border-[#13c2c2]/50 hover:text-[#13c2c2] hover:bg-[#13c2c2]/5'
-              }`}
-          >
-            {outputCopied ? <CheckIcon size={12} strokeWidth={2.5} /> : <Copy size={12} />}
-          </button>
-        </div>
-      </div>
+      <NodeConfigBand title="Result output">
+        <CopyPathField label="predict_result_path" path={predictResultPath} labelCls={labelCls} />
       </NodeConfigBand>
-
     </div>
   );
 }
@@ -4338,6 +4593,14 @@ function buildLgbmTuneTrainedModelOutputPath(task: TrainingTask, pipelineEnv?: P
 }
 function buildLgbmTuneTrainPredictResultOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
   return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/train_predict_result.parquet`;
+}
+
+function buildModelPredictionPredictResultPathDisplay(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/model_prediction/predict_result.parquet`;
 }
 
 function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
@@ -4650,7 +4913,12 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
               tuneTrainDagContext={{ tuneTrainNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
             />
           ) : node.type === 'infer' ? (
-            <ModelInferenceConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
+            <ModelInferenceConfigPanel
+              task={task}
+              onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+              readOnly={readOnly}
+              modelPredictionDagContext={{ modelPredictionNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
+            />
           ) : (
             <div className="px-4 py-3">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Properties</p>
@@ -4860,7 +5128,7 @@ function runFrontendCheck(nodes: DagNode[], edges: DagEdge[]): CheckResult {
   const items = [
     { label: 'DataSource node exists',  ok: hasSource,    detail: hasSource    ? 'At least one source configured' : 'Add a DataSource node' },
     { label: 'LGBM tune & train exists', ok: hasTrain,     detail: hasTrain     ? 'LGBM tune & train node found'     : 'Add an LGBM tune & train node' },
-    { label: 'Inference node exists',   ok: hasOutput,    detail: hasOutput    ? 'Prediction node configured'       : 'Add an inference node' },
+    { label: 'Model Prediction node exists', ok: hasOutput, detail: hasOutput ? 'Model prediction node on canvas' : 'Add a model prediction node' },
     { label: 'All nodes connected',     ok: allConnected, detail: allConnected ? 'No isolated nodes'              : 'Some nodes are disconnected' },
     { label: 'No cyclic dependencies',  ok: !hasCycle,    detail: !hasCycle    ? 'DAG is acyclic'                 : 'Cycle detected in graph' },
   ];
