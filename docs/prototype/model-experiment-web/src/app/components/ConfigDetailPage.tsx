@@ -922,7 +922,7 @@ function ExpMetaEditModal({ task, onUpdateTask, onClose }: {
   return modal;
 }
 
-/* ─────────────── Execute Config modal (WideTable-aligned) ─────────────── */
+/* ─────────────── Settings modal (experiment-level resource / queue / schedule) ─────────────── */
 function ExecuteConfigModal({
   onClose,
   execConfig,
@@ -972,7 +972,7 @@ function ExecuteConfigModal({
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
           <div>
-            <h2 className="text-sm font-semibold text-slate-800">Execute Config</h2>
+            <h2 className="text-sm font-semibold text-slate-800">Settings</h2>
             <p className="text-[11px] text-slate-400 mt-0.5">Resource · Queue Priority · Scheduler</p>
           </div>
           <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
@@ -6417,7 +6417,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
                 onClick={() => setShowExecuteConfigModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-teal-800 border-2 border-teal-400/80 bg-teal-50/70 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-all shadow-sm"
               >
-                Execute Config
+                Settings
               </button>
 
               {/* Action dropdown */}
