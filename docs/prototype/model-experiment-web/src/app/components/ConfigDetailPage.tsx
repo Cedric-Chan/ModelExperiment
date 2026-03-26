@@ -1556,6 +1556,14 @@ function woeFitEnvOrGlobal(merged: PipelineEnvRow[], nodeKey: string, globalKey:
   return getPipelineEnvValue(merged, globalKey);
 }
 
+/** LGBM tune data_config: empty, whitespace-only, or legacy `[]` means inherit global Pipeline ENV. */
+function tuneTrainEnvOrGlobal(merged: PipelineEnvRow[], nodeKey: string, globalKey: string): string {
+  const raw = getPipelineEnvValue(merged, nodeKey);
+  const v = raw.trim();
+  if (v !== '' && v !== '[]') return raw;
+  return getPipelineEnvValue(merged, globalKey);
+}
+
 function parseWoeFitNBins(merged: PipelineEnvRow[]): 5 | 10 | 15 {
   const n = Number.parseInt(getPipelineEnvValue(merged, WOE_FIT_N_BINS_ENV), 10);
   return [5, 10, 15].includes(n) ? (n as 5 | 10 | 15) : 10;
@@ -3820,10 +3828,10 @@ function ModelTuneConfigPanel({
                 <div>
                   <p className={labelCls}>
                     exclude_cols
-                    <FieldTooltip text="JSON array of columns to exclude from tuning (tune_train_exclude_cols)." />
+                    <FieldTooltip text="JSON array; empty inherits Pipeline ENV exclude_columns. Edit to override tune_train_exclude_cols." />
                   </p>
                   <textarea
-                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_EXCLUDE_COLS_ENV)}
+                    value={tuneTrainEnvOrGlobal(mergedEnv, TUNE_TRAIN_EXCLUDE_COLS_ENV, 'exclude_columns')}
                     readOnly={readOnly}
                     onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_EXCLUDE_COLS_ENV, e.target.value)}
                     rows={2}
@@ -3834,10 +3842,10 @@ function ModelTuneConfigPanel({
                 <div>
                   <p className={labelCls}>
                     auxilary_cols
-                    <FieldTooltip text="JSON array of auxiliary columns stripped from features (tune_train_auxilary_cols)." />
+                    <FieldTooltip text="JSON array; empty inherits Pipeline ENV removed_features. Edit to override tune_train_auxilary_cols." />
                   </p>
                   <textarea
-                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_AUXILARY_COLS_ENV)}
+                    value={tuneTrainEnvOrGlobal(mergedEnv, TUNE_TRAIN_AUXILARY_COLS_ENV, 'removed_features')}
                     readOnly={readOnly}
                     onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_AUXILARY_COLS_ENV, e.target.value)}
                     rows={2}
@@ -3848,11 +3856,11 @@ function ModelTuneConfigPanel({
                 <div>
                   <p className={labelCls}>
                     sample_weight_col
-                    <FieldTooltip text="Optional sample weight column; empty disables (tune_train_sample_weight_col)." />
+                    <FieldTooltip text="Optional; empty inherits Pipeline ENV sample_weight_column. Edit to override tune_train_sample_weight_col." />
                   </p>
                   <input
                     type="text"
-                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV)}
+                    value={woeFitEnvOrGlobal(mergedEnv, TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV, 'sample_weight_column')}
                     readOnly={readOnly}
                     onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV, e.target.value)}
                     className={numInputCls}

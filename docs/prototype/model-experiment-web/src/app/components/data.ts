@@ -121,6 +121,12 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: 'sample_type',
     },
     {
+      name: 'sample_weight_column',
+      description:
+        'Optional global sample weight column; LGBM tune node tune_train_sample_weight_col overrides when non-empty.',
+      value: '',
+    },
+    {
       name: 'exclude_columns',
       description: 'Global exclude list (not used in training but kept in data). Nodes may append excludes without replacing global.',
       value: EXCLUDE_COLUMNS_DEFAULT_JSON,
@@ -409,17 +415,20 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     },
     {
       name: 'tune_train_exclude_cols',
-      description: 'JSON array of columns to exclude from tuning (overrides global exclude_cols when set).',
-      value: '[]',
+      description:
+        'JSON array of columns to exclude from tuning; empty inherits Pipeline ENV exclude_columns (same as global exclude list).',
+      value: '',
     },
     {
       name: 'tune_train_auxilary_cols',
-      description: 'JSON array of auxiliary columns stripped from features (overrides global when set).',
-      value: '[]',
+      description:
+        'JSON array of auxiliary columns stripped from features; empty inherits Pipeline ENV removed_features.',
+      value: '',
     },
     {
       name: 'tune_train_sample_weight_col',
-      description: 'Optional sample weight column name; empty disables.',
+      description:
+        'Optional sample weight column; empty inherits sample_weight_column (global), or disables if global also empty.',
       value: '',
     },
     {
