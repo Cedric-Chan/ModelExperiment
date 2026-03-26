@@ -386,6 +386,84 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: 'false',
     },
     {
+      name: 'tune_train_data_input_binding',
+      description:
+        'LGBM tune/train input data_path cascade `upstreamNodeId|portKey` (e.g. WOE Transform data_save_path). Empty uses upstream picker or FixedValue.',
+      value: '',
+    },
+    {
+      name: 'tune_train_fixed_data_path',
+      description: 'Manual S3 path for tune data when binding empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'tune_train_feature_selection_input_binding',
+      description:
+        'Cascade binding for feature selection report path `upstreamNodeId|selection_report_path` from Feature Selection.',
+      value: '',
+    },
+    {
+      name: 'tune_train_fixed_feature_selection_path',
+      description: 'Manual path to selection_report when binding empty and FixedValue is chosen.',
+      value: '',
+    },
+    {
+      name: 'tune_train_exclude_cols',
+      description: 'JSON array of columns to exclude from tuning (overrides global exclude_cols when set).',
+      value: '[]',
+    },
+    {
+      name: 'tune_train_auxilary_cols',
+      description: 'JSON array of auxiliary columns stripped from features (overrides global when set).',
+      value: '[]',
+    },
+    {
+      name: 'tune_train_sample_weight_col',
+      description: 'Optional sample weight column name; empty disables.',
+      value: '',
+    },
+    {
+      name: 'tune_train_n_trials',
+      description: 'Number of Ray Tune trials (HPO).',
+      value: '10',
+    },
+    {
+      name: 'tune_train_metric_for_train_tune',
+      description: 'Metric to optimize: auc, ks, or gini.',
+      value: 'auc',
+    },
+    {
+      name: 'tune_train_train_val_split',
+      description: 'Train fraction before internal tune train/val split.',
+      value: '0.8',
+    },
+    {
+      name: 'tune_train_train_val_ks_diff_threshold',
+      description: 'Max train vs val KS gap for overfit detection.',
+      value: '0.005',
+    },
+    {
+      name: 'tune_train_coef_overfit_punishment',
+      description: 'Penalty coefficient for KS overfit.',
+      value: '10',
+    },
+    {
+      name: 'tune_train_auto_scale_pos_weight',
+      description: 'When true, auto scale_pos_weight; false uses search space from init_hypers.',
+      value: 'false',
+    },
+    {
+      name: 'tune_train_init_hypers',
+      description: 'JSON: objective, metric, tree_learner, and hyperparameter search ranges (type, lower, upper).',
+      value:
+        '{"objective":"binary","metric":["binary_logloss","auc"],"tree_learner":"data","learning_rate":{"type":"uniform","lower":0.01,"upper":0.03},"max_depth":{"type":"randint","lower":3,"upper":6},"num_leaves":{"type":"randint","lower":20,"upper":100},"feature_fraction":{"type":"uniform","lower":0.4,"upper":0.8},"bagging_fraction":{"type":"uniform","lower":0.4,"upper":0.8},"bagging_freq":{"type":"randint","lower":3,"upper":6},"reg_alpha":{"type":"loguniform","lower":0.1,"upper":100},"reg_lambda":{"type":"loguniform","lower":0.1,"upper":100},"min_gain_to_split":{"type":"uniform","lower":0,"upper":0.2},"scale_pos_weight":{"type":"uniform","lower":50,"upper":150},"min_child_samples":{"type":"randint","lower":600,"upper":1000},"early_stopping_round":{"type":"randint","lower":80,"upper":120}}',
+    },
+    {
+      name: 'tune_train_checkpoint_after_node',
+      description: 'Pause for checkpoint after LGBM tune & train node completes.',
+      value: 'false',
+    },
+    {
       name: 'default_cpu',
       description: 'Default CPU cores when a node does not specify.',
       value: '4',

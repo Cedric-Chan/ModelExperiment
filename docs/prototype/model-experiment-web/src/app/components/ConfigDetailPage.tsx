@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
-  mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow,
+  mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow, getDefaultPipelineEnvRows,
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
@@ -48,6 +48,8 @@ type NodePanelEnvProps = {
   woeTransformDagContext?: { woeTransformNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
   /** When set (Feature Selection on canvas), enables upstream data_path cascade from DAG. */
   featureSelectionDagContext?: { featureSelectionNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
+  /** When set (LGBM tune & train on canvas), enables upstream cascades for data and selection report. */
+  tuneTrainDagContext?: { tuneTrainNodeId: string; nodes: DagNode[]; edges: DagEdge[] };
 };
 
 const WOE_FIT_INPUT_BINDING_ENV = 'woe_fit_input_binding';
@@ -90,13 +92,29 @@ const FEATURE_SELECTION_CORR_THRESHOLD_ENV = 'feature_selection_corr_threshold';
 const FEATURE_SELECTION_PSI_THRESHOLD_ENV = 'feature_selection_psi_threshold';
 const FEATURE_SELECTION_CHECKPOINT_AFTER_NODE_ENV = 'feature_selection_checkpoint_after_node';
 
+const TUNE_TRAIN_DATA_INPUT_BINDING_ENV = 'tune_train_data_input_binding';
+const TUNE_TRAIN_FIXED_DATA_PATH_ENV = 'tune_train_fixed_data_path';
+const TUNE_TRAIN_FEATURE_SELECTION_INPUT_BINDING_ENV = 'tune_train_feature_selection_input_binding';
+const TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV = 'tune_train_fixed_feature_selection_path';
+const TUNE_TRAIN_EXCLUDE_COLS_ENV = 'tune_train_exclude_cols';
+const TUNE_TRAIN_AUXILARY_COLS_ENV = 'tune_train_auxilary_cols';
+const TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV = 'tune_train_sample_weight_col';
+const TUNE_TRAIN_N_TRIALS_ENV = 'tune_train_n_trials';
+const TUNE_TRAIN_METRIC_FOR_TRAIN_TUNE_ENV = 'tune_train_metric_for_train_tune';
+const TUNE_TRAIN_TRAIN_VAL_SPLIT_ENV = 'tune_train_train_val_split';
+const TUNE_TRAIN_TRAIN_VAL_KS_DIFF_THRESHOLD_ENV = 'tune_train_train_val_ks_diff_threshold';
+const TUNE_TRAIN_COEF_OVERFIT_PUNISHMENT_ENV = 'tune_train_coef_overfit_punishment';
+const TUNE_TRAIN_AUTO_SCALE_POS_WEIGHT_ENV = 'tune_train_auto_scale_pos_weight';
+const TUNE_TRAIN_INIT_HYPERS_ENV = 'tune_train_init_hypers';
+const TUNE_TRAIN_CHECKPOINT_AFTER_NODE_ENV = 'tune_train_checkpoint_after_node';
+
 function workflowStepLabel(node: DagNode): string {
   const p: Partial<Record<NodeType, string>> = {
     data_source: 'DataSource',
     woe_fit: 'WoeFit',
     woe_transform: 'WoeTransform',
     feature_selection: 'FeatureSelection',
-    tune_train: 'TuneTrain',
+    tune_train: 'LgbmTuneTrain',
     infer: 'Infer',
   };
   return `${p[node.type] ?? 'Node'}_${node.id}`;
@@ -115,9 +133,13 @@ type WoeCascadeKind =
   | 'fit_data'
   | 'transform_data'
   | 'transform_encoder'
-  | 'feature_selection_data';
+  | 'feature_selection_data'
+  | 'tune_train_selection_report';
 
 function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCascadePort[] {
+  if (kind === 'tune_train_selection_report' && nodeType === 'feature_selection') {
+    return [{ key: 'selection_report_path', label: 'selection_report_path', typeLabel: 'data' }];
+  }
   if (kind === 'fit_data' || kind === 'transform_data' || kind === 'feature_selection_data') {
     if (nodeType === 'data_source') {
       return [
@@ -160,6 +182,9 @@ function resolveCascadePortPath(
   kind: WoeCascadeKind,
 ): string {
   const node = nodes.find((n) => n.id === nodeId);
+  if (kind === 'tune_train_selection_report' && node?.type === 'feature_selection' && portKey === 'selection_report_path') {
+    return buildFeatureSelectionSelectionReportPathDisplay(task, pipelineEnv);
+  }
   if (kind === 'fit_data' || kind === 'transform_data' || kind === 'feature_selection_data') {
     if (node?.type === 'data_source') {
       if (portKey === 'features_data_path') return buildDataSourceFeaturesInputPath(task, pipelineEnv);
@@ -277,7 +302,7 @@ function buildDefaultDag(): { nodes: DagNode[]; edges: DagEdge[] } {
     { id: 'n2', type: 'woe_fit',           label: 'WOE fit',           sublabel: 'Encoder training · Bins',                   x: X0+GX*1, y: MID, status: 'ready'   },
     { id: 'n3', type: 'woe_transform',     label: 'WOE Transform',     sublabel: 'Apply encoder · WOE features',              x: X0+GX*2, y: MID, status: 'ready'   },
     { id: 'n4', type: 'feature_selection', label: 'Feature selection', sublabel: 'IV · Corr · Selection report',              x: X0+GX*3, y: MID, status: 'ready'   },
-    { id: 'n5', type: 'tune_train',        label: 'Tune & Train',      sublabel: 'HPO · Best trial · Final model',            x: X0+GX*4, y: MID, status: 'pending' },
+    { id: 'n5', type: 'tune_train',        label: 'LGBM tune & train', sublabel: 'LightGBM · HPO · Train',                   x: X0+GX*4, y: MID, status: 'pending' },
     { id: 'n6', type: 'infer',             label: 'inference',         sublabel: 'Batch predict · Score output',              x: X0+GX*5, y: MID, status: 'pending' },
   ];
   const edges: DagEdge[] = [
@@ -342,7 +367,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     version: 'v1',
     runId: 'run-20250120-1530',
     createdAt: '2025-01-20 15:30',
-    nodePatches: { n5: { sublabel: 'RandomSearch · Tune+Train (v1)' } },
+    nodePatches: { n5: { sublabel: 'RandomSearch · LGBM tune & train (v1)' } },
     propOverrides: {
       tune_train: [{ label: 'HPO Trials', value: '20' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '1800 s' }, { label: 'Early Stop', value: '10 rounds' }],
       woe_fit: [{ label: 'WOE Bins', value: '8 (fixed)' }, { label: 'Min Bin Rate', value: '3%' }, { label: 'Method', value: 'Optimal' }, { label: 'Output', value: 'Encoder .pkl' }],
@@ -3513,89 +3538,86 @@ function FeatureSelectionConfigPanel({
   );
 }
 
-/* ─────────────── Model Tune + Train Config Panel ─────────────── */
-const INIT_HYPERS_JSON = `{
-    "objective": "binary",
-    "metric": ["binary_logloss", "auc"],
-    "learning_rate": tune.loguniform(0.01, 0.03),
-    "max_depth": tune.quniform(3, 6, 1),
-    "num_leaves": tune.quniform(20, 100, 1),
-    "feature_fraction": tune.uniform(0.4, 0.8),
-    "bagging_fraction": tune.uniform(0.4, 0.8),
-    "bagging_freq": tune.quniform(3, 6, 1),
-    "reg_alpha": tune.loguniform(0.1, 100),
-    "reg_lambda": tune.loguniform(0.1, 100),
-    "min_gain_to_split": tune.uniform(0, 0.2),
-    "scale_pos_weight": tune.uniform(50, 150),
-    "min_child_samples": tune.quniform(600, 1000, 1),
-    "early_stopping_round": tune.quniform(80, 120, 1),
-}`;
+/* ─────────────── LGBM tune & train Config Panel ─────────────── */
+const TUNE_INIT_HYPER_PARAM_KEYS = [
+  'learning_rate',
+  'max_depth',
+  'num_leaves',
+  'feature_fraction',
+  'bagging_fraction',
+  'bagging_freq',
+  'reg_alpha',
+  'reg_lambda',
+  'min_gain_to_split',
+  'scale_pos_weight',
+  'min_child_samples',
+  'early_stopping_round',
+] as const;
+type TuneInitHyperKey = (typeof TUNE_INIT_HYPER_PARAM_KEYS)[number];
 
+const TUNE_HYPER_TYPES = ['uniform', 'randint', 'loguniform'] as const;
+type TuneHyperType = (typeof TUNE_HYPER_TYPES)[number];
 
-function ExpandableCodeBlock({
-  label, value, onChange, readOnly, labelCls, tooltip,
-}: {
-  label: string; value: string; onChange: (v: string) => void;
-  readOnly?: boolean; labelCls: string; tooltip?: string;
-}) {
-  const [modal, setModal] = useState(false);
-  return (
-    <>
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <p className={labelCls}>
-            {label}
-            {tooltip && <FieldTooltip text={tooltip} />}
-          </p>
-          <button
-            onClick={() => setModal(true)}
-            title="Expand"
-            className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold text-slate-400 hover:text-[#0d9e9e] hover:bg-[#13c2c2]/8 border border-transparent hover:border-[#13c2c2]/20 transition-all"
-          >
-            <Maximize2 size={9} /><span>Expand</span>
-          </button>
-        </div>
-        <div className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-          <textarea
-            disabled={readOnly}
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            rows={6}
-            spellCheck={false}
-            className="w-full px-3 py-2.5 text-[10px] font-mono leading-relaxed text-slate-600 bg-transparent resize-none focus:outline-none disabled:cursor-not-allowed"
-          />
-        </div>
-      </div>
-      {modal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setModal(false)} />
-          <div className="relative z-10 w-full max-w-2xl max-h-[80vh] flex flex-col rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
-              <span className="text-xs font-semibold text-slate-700 font-mono">{label}</span>
-              <button onClick={() => setModal(false)} className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-                <X size={13} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto bg-slate-50 p-4">
-              <textarea
-                disabled={readOnly}
-                value={value}
-                onChange={e => onChange(e.target.value)}
-                spellCheck={false}
-                className="w-full h-full min-h-[320px] text-[11px] font-mono leading-relaxed text-slate-600 bg-transparent resize-none focus:outline-none disabled:cursor-not-allowed"
-              />
-            </div>
-            <div className="px-4 py-2.5 border-t border-slate-100 shrink-0 flex justify-end">
-              <button onClick={() => setModal(false)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#13c2c2] text-white hover:bg-[#0d9e9e] transition-colors">Done</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+function getDefaultTuneInitHypersRaw(): string {
+  const rows = getDefaultPipelineEnvRows();
+  const row = rows.find((r) => r.name === TUNE_TRAIN_INIT_HYPERS_ENV);
+  return row?.value ?? '{}';
 }
 
-function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
+function parseTuneInitHypersObject(raw: string): Record<string, unknown> {
+  try {
+    const o = JSON.parse(raw || '{}') as unknown;
+    if (o && typeof o === 'object' && !Array.isArray(o)) return o as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return JSON.parse(getDefaultTuneInitHypersRaw()) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function readTuneHyperSpec(v: unknown, fallback: unknown): { type: TuneHyperType; lower: number; upper: number } {
+  const src = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const fb =
+    fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+      ? (fallback as Record<string, unknown>)
+      : {};
+  const pick = src ?? fb;
+  const tRaw = typeof pick.type === 'string' ? pick.type : String(fb.type ?? 'uniform');
+  const t = (TUNE_HYPER_TYPES as readonly string[]).includes(tRaw) ? (tRaw as TuneHyperType) : 'uniform';
+  const lower = Number(pick.lower ?? fb.lower ?? 0);
+  const upper = Number(pick.upper ?? fb.upper ?? 1);
+  return {
+    type: t,
+    lower: Number.isFinite(lower) ? lower : 0,
+    upper: Number.isFinite(upper) ? upper : 1,
+  };
+}
+
+function ModelTuneConfigPanel({
+  task,
+  onPatchPipelineEnvRow,
+  readOnly,
+  tuneTrainDagContext,
+}: NodePanelEnvProps) {
+  const mergedEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const dataBindingRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_DATA_INPUT_BINDING_ENV);
+  const dataFixedRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_FIXED_DATA_PATH_ENV);
+  const fsBindingRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_FEATURE_SELECTION_INPUT_BINDING_ENV);
+  const fsFixedRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV);
+  const [dataFixedMenuChosen, setDataFixedMenuChosen] = useState(false);
+  const [fsFixedMenuChosen, setFsFixedMenuChosen] = useState(false);
+
+  useEffect(() => {
+    if (!dataBindingRaw.trim() && dataFixedRaw.trim()) setDataFixedMenuChosen(true);
+  }, [task.id, dataBindingRaw, dataFixedRaw]);
+
+  useEffect(() => {
+    if (!fsBindingRaw.trim() && fsFixedRaw.trim()) setFsFixedMenuChosen(true);
+  }, [task.id, fsBindingRaw, fsFixedRaw]);
+
   const labelCls = 'text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1';
   const numInputCls = `w-full h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-mono
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
@@ -3604,173 +3626,484 @@ function ModelTuneConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePan
     appearance-none cursor-pointer transition-colors text-slate-700
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
     disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
-  const textareaCls = `w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-[10px] font-mono text-slate-700 resize-none
+  const hyperNumCls = `w-full h-7 px-1.5 rounded border border-slate-200 bg-white text-[10px] font-mono text-slate-700
     focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20
-    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed placeholder:text-slate-300`;
+    disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`;
 
-  const [woeMergedPath, setWoeMergedPath] = useState('s3://mlops-artifacts/woe/merge/v12/woe_update_merged_result.parquet');
-  const [featSelPath, setFeatSelPath] = useState('s3://mlops-artifacts/feature-selection/v12/feature_selection_report.xlsx');
+  const tuneCheckpointAfterNode =
+    getPipelineEnvValue(mergedEnv, TUNE_TRAIN_CHECKPOINT_AFTER_NODE_ENV).toLowerCase() === 'true';
+  const autoScalePosWeight =
+    getPipelineEnvValue(mergedEnv, TUNE_TRAIN_AUTO_SCALE_POS_WEIGHT_ENV).toLowerCase() === 'true';
 
-  const [initHypers, setInitHypers] = useState(INIT_HYPERS_JSON);
-  const [nTrials, setNTrials] = useState(10);
-  const [searchAlgo, setSearchAlgo] = useState<'bayes' | 'grid' | 'random'>('bayes');
-  const [tuneMetrics, setTuneMetrics] = useState<'auc' | 'ks'>('auc');
-  const [kvDiffThreshold, setKvDiffThreshold] = useState(0.005);
-  const [coefOverfit, setCoefOverfit] = useState(10);
+  const defaultInitObj = parseTuneInitHypersObject(getDefaultTuneInitHypersRaw());
+  const initHypersRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_INIT_HYPERS_ENV);
+  const initHypersObj = parseTuneInitHypersObject(initHypersRaw);
 
-  const [excludeCols, setExcludeCols] = useState('');
-  const [auxiliaryCols, setAuxiliaryCols] = useState('');
+  const nTrialsParsed = Number.parseInt(getPipelineEnvValue(mergedEnv, TUNE_TRAIN_N_TRIALS_ENV), 10);
+  const nTrials = Number.isFinite(nTrialsParsed) && nTrialsParsed >= 1 ? nTrialsParsed : 10;
+
+  const metricRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_METRIC_FOR_TRAIN_TUNE_ENV);
+  const metricForTune =
+    metricRaw === 'ks' || metricRaw === 'gini' || metricRaw === 'auc' ? metricRaw : 'auc';
+
+  const trainValSplitParsed = Number.parseFloat(getPipelineEnvValue(mergedEnv, TUNE_TRAIN_TRAIN_VAL_SPLIT_ENV));
+  const trainValSplit = Number.isFinite(trainValSplitParsed) ? trainValSplitParsed : 0.8;
+
+  const ksThParsed = Number.parseFloat(getPipelineEnvValue(mergedEnv, TUNE_TRAIN_TRAIN_VAL_KS_DIFF_THRESHOLD_ENV));
+  const ksThreshold = Number.isFinite(ksThParsed) ? ksThParsed : 0.005;
+
+  const coefParsed = Number.parseFloat(getPipelineEnvValue(mergedEnv, TUNE_TRAIN_COEF_OVERFIT_PUNISHMENT_ENV));
+  const coefOverfit = Number.isFinite(coefParsed) ? coefParsed : 10;
+
+  const fallbackDataPath = buildWoeTransformDataSavePathDisplay(task, task.pipelineEnv);
+  const fallbackFsReportPath = buildFeatureSelectionSelectionReportPathDisplay(task, task.pipelineEnv);
+
+  const upstreamForTune = tuneTrainDagContext
+    ? getUpstreamNodesForTarget(
+        tuneTrainDagContext.edges,
+        tuneTrainDagContext.nodes,
+        tuneTrainDagContext.tuneTrainNodeId,
+      )
+    : [];
+
+  const patchInitHypers = (updater: (o: Record<string, unknown>) => void) => {
+    const m = mergePipelineEnvWithDefaults(task.pipelineEnv);
+    const raw = getPipelineEnvValue(m, TUNE_TRAIN_INIT_HYPERS_ENV);
+    const o = { ...parseTuneInitHypersObject(raw) };
+    updater(o);
+    onPatchPipelineEnvRow(TUNE_TRAIN_INIT_HYPERS_ENV, JSON.stringify(o));
+  };
+
+  const setHyperRow = (
+    paramKey: TuneInitHyperKey,
+    patch: Partial<{ type: TuneHyperType; lower: number; upper: number }>,
+  ) => {
+    patchInitHypers((o) => {
+      const spec = readTuneHyperSpec(o[paramKey], defaultInitObj[paramKey]);
+      const next = { ...spec, ...patch };
+      o[paramKey] = { type: next.type, lower: next.lower, upper: next.upper };
+    });
+  };
+
+  const objectiveDisp = String(initHypersObj.objective ?? defaultInitObj.objective ?? 'binary');
+  let metricDisp = '[]';
+  try {
+    metricDisp = JSON.stringify(initHypersObj.metric ?? defaultInitObj.metric ?? []);
+  } catch {
+    metricDisp = '[]';
+  }
+  const treeLearnerDisp = String(initHypersObj.tree_learner ?? defaultInitObj.tree_learner ?? '');
+
+  const boHistoryPath = buildLgbmTuneBoHistoryOutputPath(task, task.pipelineEnv);
+  const featureImportancePath = buildLgbmTuneFeatureImportanceOutputPath(task, task.pipelineEnv);
+  const bestModelPath = buildLgbmTuneBestModelOutputPath(task, task.pipelineEnv);
+  const tunePredictPath = buildLgbmTunePredictResultOutputPath(task, task.pipelineEnv);
+  const tuneBestHypersPath = buildLgbmTuneBestHypersOutputPath(task, task.pipelineEnv);
+  const tuneTrialPath = buildLgbmTuneTrialOutputPath(task, task.pipelineEnv);
+  const trainedModelPath = buildLgbmTuneTrainedModelOutputPath(task, task.pipelineEnv);
+  const trainPredictPath = buildLgbmTuneTrainPredictResultOutputPath(task, task.pipelineEnv);
 
   return (
     <div className="px-4 py-3 flex flex-col gap-4">
       <div className="flex items-center gap-1.5 text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
         <Settings size={11} className="shrink-0" />
-        <span className="font-mono tracking-wide">Model Tune &amp; Train</span>
+        <span className="font-mono tracking-wide">LGBM tune &amp; train</span>
       </div>
 
       <NodeConfigBand title="Input data path">
-      <div className="flex flex-col gap-3.5">
-        {/* 1. woe_merged_result_path */}
-        <div>
-          <p className={labelCls}>
-            woe_merged_result_path
-            <FieldTooltip text="Auto-resolved from WOE Update output (update_merged_save_filepath). Override by editing directly." />
-          </p>
-          <div className="flex items-center gap-1 mb-1.5">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-[#13c2c2]/8 text-[#0d9e9e] border border-[#13c2c2]/20">
-              <Database size={8} className="shrink-0" />Auto-resolved · WOE Update
-            </span>
-          </div>
-          <input type="text" disabled={readOnly} value={woeMergedPath}
-            onChange={e => setWoeMergedPath(e.target.value)}
-            className={`${numInputCls} text-[10px]`} />
+        <div className="flex flex-col gap-3">
+          {tuneTrainDagContext ? (
+            <WoeCascadeBindingField
+              task={task}
+              readOnly={readOnly}
+              upstreamNodes={upstreamForTune}
+              allNodes={tuneTrainDagContext.nodes}
+              bindingRaw={dataBindingRaw}
+              fixedPathRaw={dataFixedRaw}
+              fixedMenuChosen={dataFixedMenuChosen}
+              onFixedMenuChosen={setDataFixedMenuChosen}
+              onBindingChange={(raw) => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_DATA_INPUT_BINDING_ENV, raw);
+                if (raw.trim()) {
+                  onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_DATA_PATH_ENV, '');
+                  setDataFixedMenuChosen(false);
+                }
+              }}
+              onFixedPathChange={(path) => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_DATA_PATH_ENV, path);
+                if (path.trim()) onPatchPipelineEnvRow(TUNE_TRAIN_DATA_INPUT_BINDING_ENV, '');
+              }}
+              onClearAll={() => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_DATA_INPUT_BINDING_ENV, '');
+                onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_DATA_PATH_ENV, '');
+                setDataFixedMenuChosen(false);
+              }}
+              numInputCls={numInputCls}
+              fieldName="data_input"
+              typeBadge="data"
+              cascadeKind="feature_selection_data"
+              cardNoUpstreamHint={`Connect an upstream node on the canvas, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual path.`}
+              portalNoUpstreamHint={`No upstream — connect a node or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+            />
+          ) : (
+            <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+              <Database size={10} className="shrink-0 text-slate-300 mt-0.5" />
+              <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{fallbackDataPath}</span>
+            </div>
+          )}
+          {tuneTrainDagContext ? (
+            <WoeCascadeBindingField
+              task={task}
+              readOnly={readOnly}
+              upstreamNodes={upstreamForTune}
+              allNodes={tuneTrainDagContext.nodes}
+              bindingRaw={fsBindingRaw}
+              fixedPathRaw={fsFixedRaw}
+              fixedMenuChosen={fsFixedMenuChosen}
+              onFixedMenuChosen={setFsFixedMenuChosen}
+              onBindingChange={(raw) => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_FEATURE_SELECTION_INPUT_BINDING_ENV, raw);
+                if (raw.trim()) {
+                  onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV, '');
+                  setFsFixedMenuChosen(false);
+                }
+              }}
+              onFixedPathChange={(path) => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV, path);
+                if (path.trim()) onPatchPipelineEnvRow(TUNE_TRAIN_FEATURE_SELECTION_INPUT_BINDING_ENV, '');
+              }}
+              onClearAll={() => {
+                onPatchPipelineEnvRow(TUNE_TRAIN_FEATURE_SELECTION_INPUT_BINDING_ENV, '');
+                onPatchPipelineEnvRow(TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV, '');
+                setFsFixedMenuChosen(false);
+              }}
+              numInputCls={numInputCls}
+              fieldName="feature_selection_input"
+              typeBadge="data"
+              cascadeKind="tune_train_selection_report"
+              cardNoUpstreamHint={`Connect Feature Selection upstream, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual report path.`}
+              portalNoUpstreamHint={`No upstream — connect Feature Selection or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+            />
+          ) : (
+            <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
+              <Filter size={10} className="shrink-0 text-slate-300 mt-0.5" />
+              <span className="text-[10px] text-slate-500 font-mono break-all leading-relaxed">{fallbackFsReportPath}</span>
+            </div>
+          )}
         </div>
+      </NodeConfigBand>
 
-        {/* 2. feature_selection_path */}
-        <div>
-          <p className={labelCls}>
-            feature_selection_path
-            <FieldTooltip text="Auto-resolved from Feature Selection output (feature_selection_report_path). Override by editing directly." />
+      <NodeConfigBand title="Data config">
+        <div className="flex flex-col gap-3">
+          <p className="text-[9px] text-slate-400 leading-snug -mt-1 mb-0.5">
+            Overrides Pipeline ENV semantics for this node (tune_train_* keys).
           </p>
-          <div className="flex items-center gap-1 mb-1.5">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-500 border border-blue-200">
-              <Filter size={8} className="shrink-0" />Auto-resolved · Feature Selection
-            </span>
+          <div>
+            <p className={labelCls}>
+              exclude_cols
+              <FieldTooltip text="JSON array of columns to exclude from tuning (tune_train_exclude_cols)." />
+            </p>
+            <textarea
+              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_EXCLUDE_COLS_ENV)}
+              readOnly={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_EXCLUDE_COLS_ENV, e.target.value)}
+              rows={4}
+              spellCheck={false}
+              className={`${numInputCls} min-h-[88px] resize-y py-1.5 text-[10px]`}
+            />
           </div>
-          <input type="text" disabled={readOnly} value={featSelPath}
-            onChange={e => setFeatSelPath(e.target.value)}
-            className={`${numInputCls} text-[10px]`} />
+          <div>
+            <p className={labelCls}>
+              auxilary_cols
+              <FieldTooltip text="JSON array of auxiliary columns stripped from features (tune_train_auxilary_cols)." />
+            </p>
+            <textarea
+              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_AUXILARY_COLS_ENV)}
+              readOnly={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_AUXILARY_COLS_ENV, e.target.value)}
+              rows={4}
+              spellCheck={false}
+              className={`${numInputCls} min-h-[88px] resize-y py-1.5 text-[10px]`}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              sample_weight_col
+              <FieldTooltip text="Optional sample weight column; empty disables (tune_train_sample_weight_col)." />
+            </p>
+            <input
+              type="text"
+              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV)}
+              readOnly={readOnly}
+              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV, e.target.value)}
+              className={numInputCls}
+            />
+          </div>
         </div>
-      </div>
       </NodeConfigBand>
 
       <NodeConfigBand title="Node configuration">
-      <div className="flex flex-col gap-3.5">
-        {/* 3. init_hypers */}
-        <ExpandableCodeBlock
-          label="init_hypers"
-          value={initHypers}
-          onChange={setInitHypers}
-          readOnly={readOnly}
-          labelCls={labelCls}
-          tooltip="Defines the hyperparameter search space passed to Ray Tune. Supports tune.loguniform / tune.uniform / tune.quniform samplers."
-        />
-
-        {/* 4. n_trials */}
-        <div>
-          <p className={labelCls}>n_trials <FieldTooltip text="Total number of hyperparameter combinations to sample and evaluate. Default: 10." /></p>
-          <input type="number" min={1} step={1} value={nTrials} disabled={readOnly}
-            onChange={e => setNTrials(Number(e.target.value))} className={numInputCls} />
-        </div>
-
-        {/* 5. search_algo */}
-        <div>
-          <p className={labelCls}>search_algo <FieldTooltip text="Hyperparameter search algorithm: bayes = BayesianOptimization (default), grid = GridSearch, random = RandomSearch." /></p>
-          <div className="relative">
-            <select disabled={readOnly} value={searchAlgo}
-              onChange={e => setSearchAlgo(e.target.value as 'bayes' | 'grid' | 'random')} className={selectCls}>
-              <option value="bayes">bayes</option>
-              <option value="grid">grid</option>
-              <option value="random">random</option>
-            </select>
-            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <div className="flex flex-col gap-3.5">
+          <div>
+            <p className={labelCls}>
+              n_trials
+              <FieldTooltip text="Number of HPO trials (tune_train_n_trials). Minimum 1." />
+            </p>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={nTrials}
+              disabled={readOnly}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                onPatchPipelineEnvRow(TUNE_TRAIN_N_TRIALS_ENV, String(Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1));
+              }}
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              metric_for_train_tune
+              <FieldTooltip text="Optimization metric: auc, ks, or gini (tune_train_metric_for_train_tune)." />
+            </p>
+            <div className="relative">
+              <select
+                disabled={readOnly}
+                value={metricForTune}
+                onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_METRIC_FOR_TRAIN_TUNE_ENV, e.target.value)}
+                className={selectCls}
+              >
+                <option value="auc">auc</option>
+                <option value="ks">ks</option>
+                <option value="gini">gini</option>
+              </select>
+              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <p className={labelCls}>
+              train_val_split
+              <FieldTooltip text="Train fraction for internal split (tune_train_train_val_split)." />
+            </p>
+            <input
+              type="number"
+              min={0.01}
+              max={0.99}
+              step={0.01}
+              value={trainValSplit}
+              disabled={readOnly}
+              onChange={(e) =>
+                onPatchPipelineEnvRow(TUNE_TRAIN_TRAIN_VAL_SPLIT_ENV, String(Number(e.target.value)))
+              }
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              train_val_ks_diff_threshold
+              <FieldTooltip text="Max train vs val KS gap (tune_train_train_val_ks_diff_threshold)." />
+            </p>
+            <input
+              type="number"
+              min={0}
+              step={0.001}
+              value={ksThreshold}
+              disabled={readOnly}
+              onChange={(e) =>
+                onPatchPipelineEnvRow(TUNE_TRAIN_TRAIN_VAL_KS_DIFF_THRESHOLD_ENV, String(Number(e.target.value)))
+              }
+              className={numInputCls}
+            />
+          </div>
+          <div>
+            <p className={labelCls}>
+              coef_overfit_punishment
+              <FieldTooltip text="KS overfit penalty coefficient (tune_train_coef_overfit_punishment)." />
+            </p>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={coefOverfit}
+              disabled={readOnly}
+              onChange={(e) =>
+                onPatchPipelineEnvRow(TUNE_TRAIN_COEF_OVERFIT_PUNISHMENT_ENV, String(Number(e.target.value)))
+              }
+              className={numInputCls}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className={`${labelCls} mb-0`}>
+              auto_scale_pos_weight
+              <FieldTooltip text="When true, auto scale_pos_weight; false uses init_hypers range (tune_train_auto_scale_pos_weight)." />
+            </p>
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() =>
+                !readOnly &&
+                onPatchPipelineEnvRow(
+                  TUNE_TRAIN_AUTO_SCALE_POS_WEIGHT_ENV,
+                  autoScalePosWeight ? 'false' : 'true',
+                )
+              }
+              className={`w-7 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0 disabled:opacity-50 ${autoScalePosWeight ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+            >
+              <div
+                className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${autoScalePosWeight ? 'translate-x-3' : 'translate-x-0'}`}
+              />
+            </button>
+          </div>
+          <div>
+            <p className={labelCls}>
+              init_hypers
+              <FieldTooltip text="Structured search space JSON; edit hyper rows below (type, lower, upper). Objective, metric, and tree_learner are read-only here." />
+            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">objective</p>
+                  <div className="h-7 px-2 rounded border border-slate-100 bg-white flex items-center text-[10px] font-mono text-slate-500 truncate" title={objectiveDisp}>
+                    {objectiveDisp}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">tree_learner</p>
+                  <div className="h-7 px-2 rounded border border-slate-100 bg-white flex items-center text-[10px] font-mono text-slate-500 truncate" title={treeLearnerDisp}>
+                    {treeLearnerDisp}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">metric</p>
+                <div className="min-h-7 px-2 py-1 rounded border border-slate-100 bg-white text-[10px] font-mono text-slate-500 break-all leading-snug">
+                  {metricDisp}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80">
+                <div className="grid grid-cols-[minmax(0,1fr)_88px_76px_76px] gap-x-1.5 gap-y-1 items-center text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  <span>Param</span>
+                  <span>type</span>
+                  <span>Lower</span>
+                  <span>Upper</span>
+                </div>
+                <div className="flex flex-col">
+                  {TUNE_INIT_HYPER_PARAM_KEYS.map((paramKey) => {
+                    const spec = readTuneHyperSpec(initHypersObj[paramKey], defaultInitObj[paramKey]);
+                    return (
+                      <div
+                        key={paramKey}
+                        className="grid grid-cols-[minmax(0,1fr)_88px_76px_76px] gap-x-1.5 gap-y-1 items-center py-1.5 border-b border-slate-100/90 last:border-0"
+                      >
+                        <span className="text-[10px] font-mono text-slate-600 truncate pr-1" title={paramKey}>
+                          {paramKey}
+                        </span>
+                        <div className="relative min-w-0">
+                          <select
+                            disabled={readOnly}
+                            value={spec.type}
+                            onChange={(e) =>
+                              setHyperRow(paramKey, { type: e.target.value as TuneHyperType })
+                            }
+                            className={`${selectCls} h-7 text-[10px] pl-1.5 pr-5`}
+                          >
+                            {TUNE_HYPER_TYPES.map((ht) => (
+                              <option key={ht} value={ht}>
+                                {ht}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown size={10} className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                        <input
+                          type="number"
+                          step="any"
+                          value={spec.lower}
+                          disabled={readOnly}
+                          onChange={(e) => setHyperRow(paramKey, { lower: Number(e.target.value) })}
+                          className={hyperNumCls}
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          value={spec.upper}
+                          disabled={readOnly}
+                          onChange={(e) => setHyperRow(paramKey, { upper: Number(e.target.value) })}
+                          className={hyperNumCls}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* 6. tune_metrics */}
-        <div>
-          <p className={labelCls}>tune_metrics <FieldTooltip text="Primary metric used to rank and select the best trial. auc = Area Under ROC Curve (default), ks = KS statistic." /></p>
-          <div className="relative">
-            <select disabled={readOnly} value={tuneMetrics}
-              onChange={e => setTuneMetrics(e.target.value as 'auc' | 'ks')} className={selectCls}>
-              <option value="auc">auc</option>
-              <option value="ks">ks</option>
-            </select>
-            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 7. train_val_ks_diff_threshold */}
-        <div>
-          <p className={labelCls}>train_val_ks_diff_threshold <FieldTooltip text="Max allowed KS gap between train and validation sets. Trials exceeding this are penalized for overfitting. Default: 0.005." /></p>
-          <input type="number" min={0} step={0.001} value={kvDiffThreshold} disabled={readOnly}
-            onChange={e => setKvDiffThreshold(Number(e.target.value))} className={numInputCls} />
-        </div>
-
-        {/* 8. coef_overfit_punishment */}
-        <div>
-          <p className={labelCls}>coef_overfit_punishment <FieldTooltip text="Coefficient applied to the KS overfit penalty. Higher values more aggressively penalize overfitting. Default: 10." /></p>
-          <input type="number" min={0} step={1} value={coefOverfit} disabled={readOnly}
-            onChange={e => setCoefOverfit(Number(e.target.value))} className={numInputCls} />
-        </div>
-
-        {/* 9. tune_exclude_cols */}
-        <div>
-          <p className={labelCls}>tune_exclude_cols <FieldTooltip text="Comma-separated feature columns to exclude from tuning. Leave empty to include all features from the selection report." /></p>
-          <textarea disabled={readOnly} rows={2} value={excludeCols}
-            onChange={e => setExcludeCols(e.target.value)}
-            placeholder="e.g. feature_a, feature_b  (leave empty to skip)"
-            className={textareaCls} />
-        </div>
-
-        {/* 10. auxilary_cols */}
-        <div>
-          <p className={labelCls}>auxilary_cols <FieldTooltip text="Columns stripped from both features and training data entirely — not fed to the model. Comma-separated, e.g. sample_use." /></p>
-          <textarea disabled={readOnly} rows={2} value={auxiliaryCols}
-            onChange={e => setAuxiliaryCols(e.target.value)}
-            placeholder="e.g. sample_use, row_id  (leave empty to skip)"
-            className={textareaCls} />
-        </div>
-      </div>
       </NodeConfigBand>
 
-      <NodeResourceAdvBlock
-        readOnly={readOnly}
-        pipelineEnv={task.pipelineEnv}
-        onPatchEnv={onPatchPipelineEnvRow}
-      />
+      <NodeResourceAdvBlock readOnly={readOnly} pipelineEnv={task.pipelineEnv} onPatchEnv={onPatchPipelineEnvRow} />
 
       <NodeConfigBand title="Output path">
-      <div className="pb-0.5 flex flex-col gap-3.5">
-        <CopyPathField label="tune_artifacts_path"
-          path="s3://mlops-artifacts/model-tune/v12/artifacts/" labelCls={labelCls} />
-        <CopyPathField label="train_best_model_path"
-          path="s3://mlops-artifacts/model-train/v12/best_model.pkl" labelCls={labelCls} />
-        <CopyPathField label="train_predict_result_path"
-          path="s3://mlops-artifacts/model-train/v12/predict_result.parquet" labelCls={labelCls} />
-      </div>
+        <div className="pb-0.5 flex flex-col gap-3.5">
+          <CopyPathField label="bo_history_output" path={boHistoryPath} labelCls={labelCls} />
+          <CopyPathField label="feature_importance_output" path={featureImportancePath} labelCls={labelCls} />
+          <CopyPathField label="best_model_output" path={bestModelPath} labelCls={labelCls} />
+          <CopyPathField label="tune_predict_result_output" path={tunePredictPath} labelCls={labelCls} />
+          <CopyPathField label="tune_best_hypers_output" path={tuneBestHypersPath} labelCls={labelCls} />
+          <CopyPathField label="tune_trial_output" path={tuneTrialPath} labelCls={labelCls} />
+          <CopyPathField label="trained_model_output" path={trainedModelPath} labelCls={labelCls} />
+          <CopyPathField label="train_predict_result_output" path={trainPredictPath} labelCls={labelCls} />
+        </div>
       </NodeConfigBand>
+
+      <div
+        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200/80 border-l-4 border-l-[#13c2c2]/40 bg-gradient-to-r from-[#13c2c2]/[0.07] to-white"
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`${labelCls} mb-0`}>
+            Node checkpoint
+            <FieldTooltip text="When enabled, the run pauses in Checking after this node completes until you confirm artifacts and choose Continue." />
+          </p>
+          <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">
+            Cached checkpoint lets you resume or re-run from this node without redoing upstream work.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() =>
+            !readOnly &&
+            onPatchPipelineEnvRow(
+              TUNE_TRAIN_CHECKPOINT_AFTER_NODE_ENV,
+              tuneCheckpointAfterNode ? 'false' : 'true',
+            )
+          }
+          className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 shrink-0 ${tuneCheckpointAfterNode ? 'bg-[#13c2c2]' : 'bg-slate-200'}`}
+        >
+          <div
+            className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${tuneCheckpointAfterNode ? 'translate-x-3.5' : 'translate-x-0'}`}
+          />
+        </button>
+      </div>
     </div>
   );
 }
 
 /* ─────────────── Model Inference Config Panel ─────────────── */
 function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
-  const BEST_MODEL_PATH = 's3://mlops-artifacts/model-tune/v12/best_model.pkl';
+  const inferredBestModelPath = React.useMemo(
+    () => buildLgbmTuneBestModelOutputPath(task, task.pipelineEnv),
+    [task.id, task.modelName, task.pipelineEnv],
+  );
   const OUTPUT_PATH = 's3://mlops-artifacts/model-inference/v12/predict_result.parquet';
 
   const [samplePath, setSamplePath] = useState('');
-  const [modelPath, setModelPath] = useState(BEST_MODEL_PATH);
+  const [modelPath, setModelPath] = useState(inferredBestModelPath);
+
+  useEffect(() => {
+    setModelPath(inferredBestModelPath);
+  }, [inferredBestModelPath]);
   const [outputCopied, setOutputCopied] = useState(false);
 
   const handleOutputCopy = () => {
@@ -3820,7 +4153,7 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
       <div>
         <p className={labelCls}>
           Load best_model_path
-          <FieldTooltip text="Path to the model .pkl used for inference. Defaults to Model Tune · Train output; you can override manually." />
+          <FieldTooltip text="Path to the model .pkl used for inference. Defaults to LGBM tune &amp; train best_model output; you can override manually." />
         </p>
         <div className="flex items-center gap-1.5">
           <input
@@ -3833,8 +4166,8 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
           />
           {!readOnly && (
             <button
-              onClick={() => setModelPath(BEST_MODEL_PATH)}
-              title="Reset to Model Tune · Train output path"
+              onClick={() => setModelPath(inferredBestModelPath)}
+              title="Reset to LGBM tune & train best_model output path"
               className="shrink-0 h-8 px-2 flex items-center gap-1 rounded-lg border border-slate-200 bg-white
                 text-[9px] font-semibold text-slate-400 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 hover:bg-[#13c2c2]/5
                 transition-all whitespace-nowrap"
@@ -3844,8 +4177,8 @@ function ModelInferenceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: No
             </button>
           )}
         </div>
-        <p className="mt-1 text-[9px] text-slate-400 font-mono pl-0.5 truncate" title={BEST_MODEL_PATH}>
-          ← Tune · Train: {BEST_MODEL_PATH}
+        <p className="mt-1 text-[9px] text-slate-400 font-mono pl-0.5 truncate" title={inferredBestModelPath}>
+          ← LGBM tune &amp; train: {inferredBestModelPath}
         </p>
       </div>
       </div>
@@ -3942,6 +4275,39 @@ function buildFeatureSelectionFeatureListPathDisplay(task: TrainingTask, pipelin
   fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
   const trimmed = fpBase.replace(/\/+$/, '');
   return `${trimmed}/${task.modelName}{run_id}/feature_selection/selected_feature_list.json`;
+}
+
+function buildLgbmTuneOutputDir(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  const merged = mergePipelineEnvWithDefaults(pipelineEnv);
+  let fpBase = getPipelineEnvValue(merged, 'base_train_path');
+  fpBase = fpBase.replace(/\{model_name\}/g, task.modelName);
+  const trimmed = fpBase.replace(/\/+$/, '');
+  return `${trimmed}/${task.modelName}{run_id}/lgbm_tune`;
+}
+
+function buildLgbmTuneBoHistoryOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/bo_history.json`;
+}
+function buildLgbmTuneFeatureImportanceOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/feature_importance.json`;
+}
+function buildLgbmTuneBestModelOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/best_model.pkl`;
+}
+function buildLgbmTunePredictResultOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/tune_predict_result.parquet`;
+}
+function buildLgbmTuneBestHypersOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/tune_best_hypers.json`;
+}
+function buildLgbmTuneTrialOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/tune_trial_log.json`;
+}
+function buildLgbmTuneTrainedModelOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/trained_model.pkl`;
+}
+function buildLgbmTuneTrainPredictResultOutputPath(task: TrainingTask, pipelineEnv?: PipelineEnvRow[]): string {
+  return `${buildLgbmTuneOutputDir(task, pipelineEnv)}/train_predict_result.parquet`;
 }
 
 function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePanelEnvProps) {
@@ -4247,7 +4613,12 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
               featureSelectionDagContext={{ featureSelectionNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
             />
           ) : node.type === 'tune_train' ? (
-            <ModelTuneConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
+            <ModelTuneConfigPanel
+              task={task}
+              onPatchPipelineEnvRow={onPatchPipelineEnvRow}
+              readOnly={readOnly}
+              tuneTrainDagContext={{ tuneTrainNodeId: node.id, nodes: dagNodes, edges: dagEdges }}
+            />
           ) : node.type === 'infer' ? (
             <ModelInferenceConfigPanel task={task} onPatchPipelineEnvRow={onPatchPipelineEnvRow} readOnly={readOnly} />
           ) : (
@@ -4458,7 +4829,7 @@ function runFrontendCheck(nodes: DagNode[], edges: DagEdge[]): CheckResult {
   })();
   const items = [
     { label: 'DataSource node exists',  ok: hasSource,    detail: hasSource    ? 'At least one source configured' : 'Add a DataSource node' },
-    { label: 'Tune & Train exists',     ok: hasTrain,     detail: hasTrain     ? 'Tune & Train node found'          : 'Add a Tune & Train node' },
+    { label: 'LGBM tune & train exists', ok: hasTrain,     detail: hasTrain     ? 'LGBM tune & train node found'     : 'Add an LGBM tune & train node' },
     { label: 'Inference node exists',   ok: hasOutput,    detail: hasOutput    ? 'Prediction node configured'       : 'Add an inference node' },
     { label: 'All nodes connected',     ok: allConnected, detail: allConnected ? 'No isolated nodes'              : 'Some nodes are disconnected' },
     { label: 'No cyclic dependencies',  ok: !hasCycle,    detail: !hasCycle    ? 'DAG is acyclic'                 : 'Cycle detected in graph' },
