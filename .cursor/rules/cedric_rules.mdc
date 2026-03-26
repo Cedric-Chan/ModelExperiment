@@ -1,0 +1,36 @@
+---
+description: cedric_rules — frontend-design; modals close on Esc; git push + deploy watch; deep execution, confirm ambiguities
+alwaysApply: true
+---
+
+# cedric_rules — interaction, modals, git, execution
+
+## 1. Interactive UI changes (React / Vue / CSS / JavaScript)
+
+Any change that affects **interaction or visual styling** in React, Vue, CSS, or browser JavaScript (components, layout, motion, hover/focus states, forms, modals, responsive behavior) must:
+
+1. **Read and follow** the skill at `~/.cursor/skills/frontend-design/SKILL.md` (path: **frontend-design**) before finalizing the change.
+2. **Review** the result against that skill: cohesion with the chosen aesthetic direction, spacing, states, and accessibility—not only “it works.”
+
+If the skill file path differs on the machine, search for `frontend-design/SKILL.md` under the user’s Cursor skills and use that.
+
+## 2. Modal dialogs — Escape to close
+
+Every **modal / dialog / overlay panel** that behaves as a modal (blocks the page, dimmed backdrop, centered sheet, slide-over with focus trap, etc.) must **close when the user presses Escape**, unless the product explicitly forbids it (e.g. a destructive confirmation that requires an explicit button—still prefer Esc if spec allows).
+
+Implementation patterns (pick what fits the stack): `keydown` / `keyup` listener for `Escape` while open (with cleanup), Radix/shadcn `Dialog`’s built-in behavior, or equivalent. New modals must be checked; existing ones should be fixed when touched.
+
+## 3. `git push` — no fire-and-forget
+
+After any `git push` (or equivalent that triggers remote updates / CI / GitHub Pages):
+
+1. **Confirm the push succeeded**: exit code `0`, and `git status` shows a clean sync with `origin` for the pushed branch (e.g. `main...origin/main` with no unpushed commits for that work).
+2. **Monitor deployment when applicable** (e.g. GitHub Actions, Pages): use the GitHub CLI if available (`gh run list`, `gh run watch`, `gh run view <id> --log-failed`) or fetch and inspect workflow status until the relevant run **succeeds** or you have a clear failure reason.
+3. If the push **fails** or CI **fails**: pull logs, diagnose, fix, commit as needed, and **push again**; repeat until the monitored pipeline shows success (or you hit an unrecoverable external blocker you must report explicitly).
+4. **Do not** tell the user “pushed” or “done” based only on issuing the push command. Only report completion after **push confirmed** and, when a deploy pipeline exists for that repo, **deploy success observed** (or a documented failure after retries).
+
+## 4. Execution — depth, tokens, and ambiguity
+
+1. **Do not optimize for token or time savings** at the cost of correctness. Prefer thorough reasoning, reading enough context, and complete implementations over shortcuts.
+2. **Do not guess** when requirements, constraints, or success criteria are unclear. **Ask the user** for the minimum clarification needed, then proceed.
+3. **Priority**: fully satisfying the user’s stated need over speed or brevity—iterate and verify (build, behavior, edge cases) as appropriate.
