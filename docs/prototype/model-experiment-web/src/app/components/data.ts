@@ -302,8 +302,8 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     {
       name: 'feature_selection_input_binding',
       description:
-        'Feature Selection input.data_path binding `upstreamNodeId|portKey`; default n3|data_save_path when WOE Transform is n3.',
-      value: 'n3|data_save_path',
+        'Feature Selection input.data_path cascade binding `upstreamNodeId|portKey` (e.g. n3|data_save_path from WOE Transform). Empty means pick upstream or FixedValue in UI.',
+      value: '',
     },
     {
       name: 'feature_selection_fixed_data_path',
@@ -422,7 +422,7 @@ export function mergePipelineEnvWithDefaults(rows: PipelineEnvRow[] | undefined)
 
 export function getPipelineEnvValue(rows: PipelineEnvRow[] | undefined, key: string): string {
   const hit = rows?.find((r) => r.name === key);
-  if (hit && hit.value !== '') return hit.value;
+  if (hit !== undefined) return hit.value;
   const d = getDefaultPipelineEnvRows().find((r) => r.name === key);
   return d?.value ?? '';
 }

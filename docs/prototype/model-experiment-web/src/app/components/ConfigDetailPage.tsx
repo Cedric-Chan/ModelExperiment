@@ -3333,8 +3333,8 @@ function FeatureSelectionConfigPanel({
               fieldName="data_path"
               typeBadge="data"
               cascadeKind="feature_selection_data"
-              cardNoUpstreamHint={`No upstream node linked to Feature Selection. Draw an incoming edge on the canvas to pick node outputs here, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual S3 path.`}
-              portalNoUpstreamHint={`No upstream nodes — connect Feature Selection to a node on the canvas, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
+              cardNoUpstreamHint={`Connect an upstream node on the canvas, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual path.`}
+              portalNoUpstreamHint={`No upstream — connect a node or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
             />
           ) : (
             <div className="min-h-8 px-2.5 py-1.5 rounded-lg border border-slate-100 bg-slate-50 flex items-start gap-1.5">
