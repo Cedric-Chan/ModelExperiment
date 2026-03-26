@@ -16,6 +16,7 @@ import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
   mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow, getDefaultPipelineEnvRows,
   WOE_FIT_WOE_ENCODER_PATH_MOCK,
+  taskHasActiveRun,
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
@@ -34,6 +35,8 @@ interface ConfigDetailPageProps {
   onBackToConfig?: () => void;
   /** Kill the current runInstance */
   onKill?: () => void;
+  /** Resume pipeline after CHECKING (prototype: sets Run to RUNNING) */
+  onContinueRun?: () => void;
   /** Called when a new run is successfully submitted — receives the new TaskInstance */
   onRunCreated?: (instance: TaskInstance) => void;
 }
@@ -245,6 +248,8 @@ interface DagNode {
   x: number;
   y: number;
   status?: 'ready' | 'pending' | 'locked';
+  /** When true, successful completion of this node moves the Run to CHECKING until Continue/Kill. */
+  isCheckPoint?: boolean;
 }
 
 interface DagEdge {
@@ -445,7 +450,13 @@ function deriveNodeRunStatuses(instance: TaskInstance): Record<string, NodeRunSt
       lateNodes.forEach(id => { result[id] = 'pending'; });
       break;
     case 'QUEUING':
+    case 'WAITING':
       [...earlyNodes, ...midNodes, ...lateNodes].forEach(id => { result[id] = 'pending'; });
+      break;
+    case 'CHECKING':
+      earlyNodes.forEach(id => { result[id] = 'success'; });
+      midNodes.forEach(id => { result[id] = 'success'; });
+      lateNodes.forEach(id => { result[id] = 'pending'; });
       break;
     case 'KILLED':
       earlyNodes.forEach(id => { result[id] = 'success'; });
@@ -5367,13 +5378,17 @@ function ManageDropdown({
 /* ─────────────── Action dropdown (Trigger Run + Kill) ─────────────── */
 function ActionDropdown({
   canTriggerRun,
+  canContinue,
   canKill,
   onTriggerRun,
+  onContinue,
   onKill,
 }: {
   canTriggerRun: boolean;
+  canContinue: boolean;
   canKill: boolean;
   onTriggerRun: () => void;
+  onContinue: () => void;
   onKill: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -5387,14 +5402,15 @@ function ActionDropdown({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const anyEnabled = canTriggerRun || canKill;
+  const anyEnabled = canTriggerRun || canContinue || canKill;
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(p => !p)}
+        disabled={!anyEnabled}
         className={`h-8 flex items-center gap-1.5 pl-2.5 pr-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap shadow-sm
-          ${open
+          ${!anyEnabled ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : open
             ? 'bg-[#0fa8a8] text-white'
             : 'bg-[#13c2c2] text-white hover:bg-[#10a8a8]'}`}
       >
@@ -5404,7 +5420,7 @@ function ActionDropdown({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl border border-slate-200 shadow-2xl z-50 overflow-hidden py-1.5">
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl border border-slate-200 shadow-2xl z-50 overflow-hidden py-1.5">
           <p className="px-3 pt-0.5 pb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select action</p>
 
           {/* Trigger Run */}
@@ -5420,7 +5436,27 @@ function ActionDropdown({
             <div className="min-w-0">
               <p className={`text-xs font-semibold ${canTriggerRun ? 'text-slate-700' : 'text-slate-400'}`}>Trigger Run</p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {canTriggerRun ? 'Execute full pipeline from start' : 'Not available in read-only view'}
+                {canTriggerRun ? 'Execute full pipeline from start' : 'Disabled when another run is active or experiment not ENABLED'}
+              </p>
+            </div>
+          </button>
+
+          <div className="mx-3 border-t border-slate-100 my-0.5" />
+
+          {/* Continue */}
+          <button
+            onClick={() => { if (canContinue) { onContinue(); setOpen(false); } }}
+            disabled={!canContinue}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
+              ${canContinue ? 'hover:bg-violet-50 cursor-pointer' : 'cursor-not-allowed opacity-40'}`}
+          >
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${canContinue ? 'bg-violet-50' : 'bg-slate-100'}`}>
+              <FastForward size={14} className={canContinue ? 'text-violet-600' : 'text-slate-300'} />
+            </div>
+            <div className="min-w-0">
+              <p className={`text-xs font-semibold ${canContinue ? 'text-violet-800' : 'text-slate-400'}`}>Continue</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {canContinue ? 'Resume after CheckPoint review' : 'Only when Run status is CHECKING'}
               </p>
             </div>
           </button>
@@ -5440,7 +5476,7 @@ function ActionDropdown({
             <div className="min-w-0">
               <p className={`text-xs font-semibold ${canKill ? 'text-rose-600' : 'text-slate-400'}`}>Kill</p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {canKill ? 'Terminate the running instance' : 'Only for Waiting / Running status'}
+                {canKill ? 'Terminate this run instance' : 'Not available for this status'}
               </p>
             </div>
           </button>
@@ -6074,7 +6110,7 @@ function SaveUpdatePopover({
 }
 
 /* ─────────────── Main Canvas Page ─────────────── */
-export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, onSave, runInstance, onBackToConfig, onKill, onRunCreated }: ConfigDetailPageProps) {
+export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, onSave, runInstance, onBackToConfig, onKill, onContinueRun, onRunCreated }: ConfigDetailPageProps) {
   const { nodes: initNodes, edges } = buildDefaultDag();
   const [task, setTask]             = useState<TrainingTask>(initialTask);
   useEffect(() => {
@@ -6224,6 +6260,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
   /* ── Confirm Run from modal ── */
   const handleRunConfirm = useCallback((notes: string, useCache: boolean) => {
+    if (taskHasActiveRun(task)) {
+      setShowTriggerModal(false);
+      return;
+    }
     const pad = (n: number) => String(n).padStart(2, '0');
     const now = new Date();
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -6245,8 +6285,14 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
   /* ── Action handlers ── */
   const canKillRun = isRunView && (
-    runInstance?.status === 'RUNNING' || runInstance?.status === 'QUEUING' || runInstance?.status === 'WAITING'
+    runInstance?.status === 'RUNNING'
+    || runInstance?.status === 'QUEUING'
+    || runInstance?.status === 'WAITING'
+    || runInstance?.status === 'CHECKING'
   );
+  const canContinueRun = isRunView && runInstance?.status === 'CHECKING';
+  const canvasCanTriggerRun =
+    !isRunView && !isRunHistoryView && task.status === 'ENABLED' && !taskHasActiveRun(task);
 
   const handleTriggerRun = useCallback(() => {
     // Step 1: config integrity check (with spinner)
@@ -6400,8 +6446,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             <>
               <ActionDropdown
                 canTriggerRun={false}
+                canContinue={canContinueRun}
                 canKill={canKillRun}
                 onTriggerRun={handleTriggerRun}
+                onContinue={() => onContinueRun?.()}
                 onKill={() => onKill?.()}
               />
               <button
@@ -6416,8 +6464,10 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             <>
               <ActionDropdown
                 canTriggerRun={false}
+                canContinue={false}
                 canKill={false}
                 onTriggerRun={handleTriggerRun}
+                onContinue={() => {}}
                 onKill={() => {}}
               />
               <button
@@ -6460,9 +6510,11 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
               {/* Action dropdown */}
               <ActionDropdown
-                canTriggerRun={true}
+                canTriggerRun={canvasCanTriggerRun}
+                canContinue={false}
                 canKill={false}
                 onTriggerRun={handleTriggerRun}
+                onContinue={() => {}}
                 onKill={() => {}}
               />
             </>

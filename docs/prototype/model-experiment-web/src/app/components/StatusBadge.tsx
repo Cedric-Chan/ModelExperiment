@@ -56,6 +56,12 @@ export function InstanceStatusBadge({ status }: InstanceStatusBadgeProps) {
       dot: 'bg-blue-500',
       pulse: true,
     },
+    CHECKING: {
+      label: 'CHECKING',
+      className: 'bg-violet-50 text-violet-800 border border-violet-200',
+      dot: 'bg-violet-500',
+      pulse: true,
+    },
     SUCCESS: {
       label: 'SUCCESS',
       className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',

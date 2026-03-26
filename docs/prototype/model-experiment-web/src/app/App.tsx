@@ -4,6 +4,7 @@ import {
   filterExperimentsVisibleToOperator,
   getDefaultPipelineEnvRows,
   mergePipelineEnvWithDefaults,
+  taskHasActiveRun,
 } from './components/data';
 import { FilterBar, FilterValues, defaultFilters } from './components/FilterBar';
 import { Toolbar, TaskTable, Pagination } from './components/TaskTable';
@@ -121,6 +122,10 @@ export default function App() {
   };
 
   const handleTrigger = (task: TrainingTask) => {
+    if (taskHasActiveRun(task)) {
+      showToast('Cannot trigger a new run while another is QUEUING, WAITING, RUNNING, or CHECKING', 'error');
+      return;
+    }
     const now = new Date();
     const ts = `${now.toISOString().split('T')[0]} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     const latestVersion = task.history[0]?.version || 'V1';
@@ -154,6 +159,34 @@ export default function App() {
         : t
     ));
     showToast(`Instance ${instanceId} killed`, 'info');
+  };
+
+  const handleInstanceContinue = (taskId: string, instanceId: string) => {
+    setTasks((prev) => prev.map((t) =>
+      t.id === taskId
+        ? {
+          ...t,
+          instances: t.instances.map((i) =>
+            i.id === instanceId ? { ...i, status: 'RUNNING' as const } : i
+          ),
+        }
+        : t
+    ));
+    setView((v) =>
+      v.type === 'run' && v.task.id === taskId && v.instance.id === instanceId
+        ? {
+            type: 'run',
+            task: {
+              ...v.task,
+              instances: v.task.instances.map((i) =>
+                i.id === instanceId ? { ...i, status: 'RUNNING' as const } : i
+              ),
+            },
+            instance: { ...v.instance, status: 'RUNNING' as const },
+          }
+        : v
+    );
+    showToast(`Run ${instanceId} continued`, 'success');
   };
 
   const handleSaveConfig = (task: TrainingTask) => {
@@ -195,6 +228,7 @@ export default function App() {
         onBackToConfig={() => setView({ type: 'config', task: view.task })}
         onSave={() => {}}
         onKill={() => handleInstanceKill(view.task.id, view.instance.id)}
+        onContinueRun={() => handleInstanceContinue(view.task.id, view.instance.id)}
       />
     );
   } else {
@@ -238,9 +272,10 @@ export default function App() {
               onCopy={(task) => setModal({ type: 'copy', task })}
               onStatusChange={handleStatusChange}
               onDelete={handleDeleteTask}
-              onInstanceKill={handleInstanceKill}
-              onInstanceArtifact={(inst) => setModal({ type: 'artifact', instance: inst })}
-              onInstanceView={(taskId, instanceId) => {
+        onInstanceKill={handleInstanceKill}
+          onInstanceContinue={handleInstanceContinue}
+          onInstanceArtifact={(inst) => setModal({ type: 'artifact', instance: inst })}
+          onInstanceView={(taskId, instanceId) => {
                 const task = tasks.find(t => t.id === taskId);
                 const instance = task?.instances.find(i => i.id === instanceId);
                 if (task && instance) setView({ type: 'run', task, instance });

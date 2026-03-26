@@ -68,11 +68,11 @@ Benchmark 框架：数据源(Type=S3) → Mega Model → Calibrate(默认关)；
 | 属性 | 含义 | 行为 | 适用节点 |
 |------|------|------|----------|
 | **SavePoint** (`isSavePoint`) | 节点产出作为「恢复点」持久化 | 本节点执行完成后，将其输出（如 WOE Encoder、合并后数据）写入 S3 并记录到 Run 的 SavePoint 列表。用户选择 **Revert** 时，从**最近一个 SavePoint** 加载产出，从该 SavePoint 的**下一节点**按当前配置重新执行。**允许多个节点开启 SavePoint。** | **WOE All Feature**、**WOE Selected Feature** |
-| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；用于产出存档等语义 | Run 状态为 **QUEUING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING；**WAITING** 与 **QUEUING** 可同义）。CheckPoint 节点完成后中间产物已写出，不改变 Run 状态为「暂停」；改配置后执行 = 新 Run id，按最新 Experiment 配置执行，无变更部分可走缓存。**允许多个节点开启 CheckPoint。** | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
+| **CheckPoint** (`isCheckPoint`) | 节点属性，**默认关闭**；**成功执行完毕**后 Run 进入 **`CHECKING`**，等待人工 **Continue / Kill**（与 SavePoint、与 ENV **`*_checkpoint_after_node`** 区分）。**Continue** 后 Run 回到 **RUNNING** 继续后续节点；可多卡点顺序出现。改配置后执行 = 新 Run id。同一 Experiment **串行锁**：存在 **QUEUING / WAITING / RUNNING / CHECKING** 时不可再 **Trigger New Run**。列表子表 **View | Continue | Kill**；画布 **Action** 含 **Continue**（仅 CHECKING）。 | **Feature Selection + Fine Feature Report**、**CheckPoint（择优）**（可选） |
 
 ### 2.2 状态与操作
 
-- **Run 状态**：**QUEUING / RUNNING / SUCCESS / FAILED / KILLED**（无 CHECKING；**WAITING** 与 **QUEUING** 可同义）。SavePoint 产出可被后续新 Run 复用（如改配置后执行 = 新 Run，执行时无变更部分可走缓存）。
+- **Run 状态**：**QUEUING / WAITING / RUNNING / CHECKING / SUCCESS / FAILED / KILLED**。**CHECKING** 由 **`isCheckPoint` 节点成功完成**触发；**Continue** → **RUNNING**。SavePoint 产出可被后续新 Run 复用（如改配置后执行 = 新 Run，执行时无变更部分可走缓存）。
 
 ### 2.3 最近 SavePoint 语义
 
@@ -83,7 +83,7 @@ Benchmark 框架：数据源(Type=S3) → Mega Model → Calibrate(默认关)；
 ### 2.4 节点边界与复用
 
 - **节点 3 之后**：WOE All Feature 产出（Encoder + WOE 数据 + 全量报告）持久化为 SavePoint 后，后续可多次从「节点 4」用不同配置重跑。
-- **节点 4**：Feature Selection + Fine Feature Report 可配置 CheckPoint，完成后中间产物已写出，Run 状态继续为 RUNNING 直至 SUCCESS/FAILED/KILLED。
+- **节点 4**：Feature Selection + Fine Feature Report 可配置 **`isCheckPoint`**：节点**成功完成后** Run 进入 **CHECKING**，经 **Continue** 后继续为 **RUNNING** 直至 SUCCESS/FAILED/KILLED（或由 **Kill** 终止）。
 - **节点 5 之后**：WOE Selected Feature 产出持久化为 SavePoint（后续 Model Tune & Train 存档点），新 Run 可复用该 SavePoint 产出（无变更部分走缓存）。
 - **约束**：画布内 **允许多个 SavePoint、多个 CheckPoint**（CheckPoint 为节点属性、默认关闭）。改配置后执行 = 新 Run，按最新 Experiment 配置，执行时无变更部分可走缓存；**Trigger Run** 弹窗内 **Use Cache** 表达缓存策略；不提供「自动从最近 SavePoint 重跑」。
 

@@ -4,7 +4,7 @@ import {
   ChevronRight, ChevronDown, RefreshCw,
   AlertTriangle, Plus, Settings, Bell, X, HelpCircle
 } from 'lucide-react';
-import { TrainingTask, TaskInstance, CURRENT_USER, IS_ADMIN } from './data';
+import { TrainingTask, TaskInstance, CURRENT_USER, IS_ADMIN, taskHasActiveRun } from './data';
 import { TaskStatusBadge, InstanceStatusBadge, RegionBadge } from './StatusBadge';
 
 /* ─── Description Tooltip ─── */
@@ -591,13 +591,15 @@ function AlertModal({ taskId, onClose }: { taskId: string; onClose: () => void }
 interface InstanceRowProps {
   instance: TaskInstance;
   onView: () => void;
+  onContinue: () => void;
   onKill: () => void;
   onArtifact: () => void;
 }
 
-function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps) {
+function InstanceRow({ instance, onView, onContinue, onKill, onArtifact }: InstanceRowProps) {
   const s = instance.status;
-  const canKill = ['RUNNING'].includes(s);
+  const canContinue = s === 'CHECKING';
+  const canKill = ['RUNNING', 'QUEUING', 'WAITING', 'CHECKING'].includes(s);
 
   const moreItems: DropdownItem[] = [
     {
@@ -627,9 +629,15 @@ function InstanceRow({ instance, onView, onKill, onArtifact }: InstanceRowProps)
         <div className="flex items-center gap-0.5 flex-nowrap">
           {/* View — always available */}
           <ActionBtn label="View" onClick={onView} />
+          {/* Continue — CHECKING only */}
+          {canContinue ? (
+            <ActionBtn label="Continue" variant="primary" onClick={onContinue} />
+          ) : (
+            <ActionBtn label="Continue" disabled />
+          )}
           {/* Kill */}
           {canKill ? (
-            <PopConfirm message="Kill this running instance?" onConfirm={onKill} danger confirmLabel="Kill">
+            <PopConfirm message="Kill this run instance?" onConfirm={onKill} danger confirmLabel="Kill">
               <ActionBtn label="Kill" variant="danger" />
             </PopConfirm>
           ) : (
@@ -659,6 +667,7 @@ interface TaskRowProps {
   onStatusChange: (status: 'ENABLED' | 'DISABLED') => void;
   onDelete: () => void;
   onInstanceView: (instanceId: string) => void;
+  onInstanceContinue: (instanceId: string) => void;
   onInstanceKill: (instanceId: string) => void;
   onInstanceArtifact: (instance: TaskInstance) => void;
 }
@@ -676,7 +685,7 @@ const STICKY3 = COL.toggle + COL.expId; // left offset for EXP Name
 function TaskRow({
   task, onEdit, onTrigger, onCopy,
   onStatusChange, onDelete,
-  onInstanceView, onInstanceKill, onInstanceArtifact
+  onInstanceView, onInstanceContinue, onInstanceKill, onInstanceArtifact
 }: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
@@ -771,6 +780,22 @@ function TaskRow({
         <td className="py-4 pl-1 pr-3">
           <div className="flex items-center gap-0.5 flex-nowrap">
             <ActionBtn label="Edit" onClick={onEdit} />
+            <span
+              title={
+                task.status !== 'ENABLED'
+                  ? 'Enable the experiment to trigger a run'
+                  : taskHasActiveRun(task)
+                    ? 'Another run is QUEUING, RUNNING, or CHECKING—finish or kill it first'
+                    : 'Trigger a new run from list (same lock as canvas)'
+              }
+              className="inline-flex"
+            >
+              <ActionBtn
+                label="New Run"
+                onClick={onTrigger}
+                disabled={task.status !== 'ENABLED' || taskHasActiveRun(task)}
+              />
+            </span>
             <ActionBtn label="Copy" onClick={onCopy} />
             <ActionBtn label="Alert" onClick={() => setShowAlertModal(true)} />
             <PopConfirm
@@ -805,7 +830,7 @@ function TaskRow({
                   <col style={{ width: 104 }} />
                   <col style={{ width: 104 }} />
                   <col style={{ width: 60 }} />
-                  <col style={{ width: 129 }} />
+                  <col style={{ width: 200 }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-slate-100/80 border-b border-slate-200">
@@ -836,6 +861,7 @@ function TaskRow({
                         key={inst.id}
                         instance={inst}
                         onView={() => onInstanceView(inst.id)}
+                        onContinue={() => onInstanceContinue(inst.id)}
                         onKill={() => onInstanceKill(inst.id)}
                         onArtifact={() => onInstanceArtifact(inst)}
                       />
@@ -1000,6 +1026,7 @@ interface TaskTableProps {
   onStatusChange: (taskId: string, status: 'ENABLED' | 'DISABLED') => void;
   onDelete: (taskId: string) => void;
   onInstanceView: (taskId: string, instanceId: string) => void;
+  onInstanceContinue: (taskId: string, instanceId: string) => void;
   onInstanceKill: (taskId: string, instanceId: string) => void;
   onInstanceArtifact: (instance: TaskInstance) => void;
   page: number;
@@ -1009,7 +1036,7 @@ interface TaskTableProps {
 export function TaskTable({
   tasks, onEdit, onTrigger, onCopy,
   onStatusChange, onDelete,
-  onInstanceView, onInstanceKill, onInstanceArtifact,
+  onInstanceView, onInstanceContinue, onInstanceKill, onInstanceArtifact,
   page, pageSize,
 }: TaskTableProps) {
   const paginated = tasks.slice((page - 1) * pageSize, page * pageSize);
@@ -1097,6 +1124,7 @@ export function TaskTable({
                 onStatusChange={(status) => onStatusChange(task.id, status)}
                 onDelete={() => onDelete(task.id)}
                 onInstanceView={(id) => onInstanceView(task.id, id)}
+                onInstanceContinue={(id) => onInstanceContinue(task.id, id)}
                 onInstanceKill={(id) => onInstanceKill(task.id, id)}
                 onInstanceArtifact={onInstanceArtifact}
               />

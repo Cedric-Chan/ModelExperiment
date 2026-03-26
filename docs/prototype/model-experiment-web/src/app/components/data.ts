@@ -1,7 +1,23 @@
 export type ModelLevel = 'sub' | 'mega';
 
 export type TaskStatus = 'DRAFT' | 'ENABLED' | 'DISABLED';
-export type InstanceStatus = 'QUEUING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'KILLED';
+export type InstanceStatus =
+  | 'QUEUING'
+  | 'WAITING'
+  | 'RUNNING'
+  | 'CHECKING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'KILLED';
+
+/** Run is "in flight" for per-Experiment serial Trigger lock (QUEUING ≈ WAITING). */
+export const INSTANCE_STATUSES_BLOCKING_NEW_RUN: InstanceStatus[] = [
+  'QUEUING',
+  'WAITING',
+  'RUNNING',
+  'CHECKING',
+];
+
 export type Region = 'SG' | 'ID' | 'TH' | 'MY' | 'PH' | 'VN';
 export type Framework = 'XGBoost' | 'LightGBM' | 'TensorFlow' | 'PyTorch' | 'Benchmark';
 export type BizTeam = 'DataSci' | 'Policy' | 'AntiFraud' | 'RiskData' | 'Aimos' | 'MoneeAlgo';
@@ -66,6 +82,10 @@ export interface TrainingTask {
   templateExperimentName?: string;
   /** Pipeline-level global variables for this experiment. */
   pipelineEnv?: PipelineEnvRow[];
+}
+
+export function taskHasActiveRun(task: TrainingTask): boolean {
+  return task.instances.some((i) => INSTANCE_STATUSES_BLOCKING_NEW_RUN.includes(i.status));
 }
 
 const EXCLUDE_COLUMNS_DEFAULT_JSON = JSON.stringify([
@@ -697,8 +717,9 @@ export const initialMockTasks: TrainingTask[] = [
         rayVersion: '2.10.0',
       },
       {
-        id: 'inst-103', taskId: 't1', status: 'QUEUING', bindTask: 'V3',
-        triggerTime: '2025-03-02 07:00', startTime: '-',
+        id: 'inst-103', taskId: 't1', status: 'CHECKING', bindTask: 'V3',
+        notes: 'Paused after CheckPoint node (tune_train)—review then Continue or Kill',
+        triggerTime: '2025-03-02 07:00', startTime: '2025-03-02 07:02',
         finishTime: '-', duration: '-',
         rayVersion: '2.9.3',
       },
