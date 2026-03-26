@@ -15,6 +15,7 @@ import {
 import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
   mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow, getDefaultPipelineEnvRows,
+  WOE_FIT_WOE_ENCODER_PATH_MOCK,
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
@@ -2987,14 +2988,14 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                       woe_encoder_path
                       <FieldTooltip
                         text={
-                          'Input encoder .pkl for the update step. Empty field shows this node’s encoder_save_path; edit to point at another run (e.g. change {run_id}), then apply feature updates — result is written to encoder_save_path for this run.'
+                          'Input encoder .pkl for the update step. Uses a concrete prototype S3 path by default; edit to any other real S3 path (e.g. another run’s encoder). Result overwrites encoder_save_path for this run.'
                         }
                       />
                     </p>
                     {!readOnly && getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_ENCODER_PATH_ENV).trim() !== '' && (
                       <button
                         type="button"
-                        title="Clear override; show default encoder_save_path"
+                        title="Clear to empty; UI shows prototype default S3 path"
                         onClick={() => onPatchPipelineEnvRow(WOE_FIT_WOE_ENCODER_PATH_ENV, '')}
                         className="shrink-0 h-7 px-2 flex items-center gap-1 rounded-lg border border-slate-200 bg-white text-[9px] font-semibold text-slate-400 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 hover:bg-[#13c2c2]/5 transition-all"
                       >
@@ -3006,7 +3007,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                   <textarea
                     value={(() => {
                       const s = getPipelineEnvValue(mergedEnv, WOE_FIT_WOE_ENCODER_PATH_ENV);
-                      return s.trim() !== '' ? s : encoderPath;
+                      return s.trim() !== '' ? s : WOE_FIT_WOE_ENCODER_PATH_MOCK;
                     })()}
                     readOnly={readOnly}
                     onChange={(e) => onPatchPipelineEnvRow(WOE_FIT_WOE_ENCODER_PATH_ENV, e.target.value)}

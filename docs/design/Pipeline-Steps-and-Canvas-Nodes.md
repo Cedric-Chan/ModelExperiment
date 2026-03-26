@@ -175,7 +175,7 @@ S3 类型用于 Benchmark 或从已有 S3 数据继续下游；用户必须显�
 - **配置区 3**：All Feature Report（可选）（encoder_load_path、report_filepath、sample_type、pkey、dim、reports 等）。
 - SavePoint 写入：Encoder 路径 + 全量报告路径 + 该节点产出元数据。
 
-**Model Experiment 原型画布（独立 WOE Fit 节点）— `woe_update` 与 `woe_encoder_path`**：开启 `woe_update` 后，在逐特征更新行**之前**展示 **`woe_encoder_path`**（Pipeline ENV：`woe_fit_woe_encoder_path`）大文本框。ENV **为空**时界面回显与节点输出 **`encoder_save_path`** 相同的解析路径（含 `{run_id}` 等占位）。语义：**读入**该路径的 encoder `.pkl`，按 `woe_fit_woe_updates_json` 做二次加工后，**覆盖写回**本节点约定的 **`encoder_save_path`**（下游 WOE Transform 仍消费该输出）。新 Run 若只想微调 update，可将路径中的 `{run_id}` 改为历史某次执行产生的 encoder 路径，轻加工后转存为当前 Run 对应的 `encoder_save_path`。
+**Model Experiment 原型画布（独立 WOE Fit 节点）— `woe_update` 与 `woe_encoder_path`**：开启 `woe_update` 后，在逐特征更新行**之前**展示 **`woe_encoder_path`**（Pipeline ENV：`woe_fit_woe_encoder_path`）大文本框。默认值与 ENV **为空**时的回显均为**一条真实可引用的 S3 URI**（原型 mock：`s3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/acard_ft_user_v1_best_ks_5bin.pkl`），不使用 `{run_id}` 等模板占位。语义：**读入**该路径的 encoder `.pkl`，按 `woe_fit_woe_updates_json` 做二次加工后，**覆盖写回**本节点约定的 **`encoder_save_path`**（下游 WOE Transform 仍消费该输出）。新 Run 若只想微调 update，可将 S3 路径改为历史某次执行产出的 encoder 对象路径，轻加工后转存为当前 Run 对应的 `encoder_save_path`。
 
 ### 5.2 节点：Feature Selection + Fine Feature Report
 
