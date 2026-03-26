@@ -923,7 +923,7 @@ function ExpMetaEditModal({ task, onUpdateTask, onClose }: {
 }
 
 /* ─────────────── Settings modal (experiment-level resource / queue / schedule) ─────────────── */
-function ExecuteConfigModal({
+function SettingsModal({
   onClose,
   execConfig,
   onSaveExec,
@@ -6069,7 +6069,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
   const [execConfig, setExecConfig] = useState<TaskConfigState>({ resourceTier: 'Medium', queuePriority: 'Normal' });
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ mode: 'once', cronExpr: '0 6 * * *', time: '00:00', timezone: 'UTC+8' });
   const [showExpMetaEditModal, setShowExpMetaEditModal] = useState(false);
-  const [showExecuteConfigModal, setShowExecuteConfigModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [envModalRows, setEnvModalRows] = useState<PipelineEnvRow[]>([]);
   const [checking, setChecking]       = useState(false);
@@ -6153,14 +6153,14 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
       if (e.key !== 'Escape') return;
       // Close any open overlay in priority order; stop at the first one found
       if (showTriggerModal)         { setShowTriggerModal(false); return; }
-      if (showExecuteConfigModal)   { setShowExecuteConfigModal(false); return; }
+      if (showSettingsModal)   { setShowSettingsModal(false); return; }
       if (showEnvModal)             { setShowEnvModal(false); return; }
       if (showExpMetaEditModal)     { setShowExpMetaEditModal(false); return; }
       if (showCheckPanel)           { setShowCheckPanel(false); return; }
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [showTriggerModal, showExecuteConfigModal, showEnvModal, showExpMetaEditModal, showCheckPanel]);
+  }, [showTriggerModal, showSettingsModal, showEnvModal, showExpMetaEditModal, showCheckPanel]);
 
   // Track canvas container size for minimap viewport rect
   useEffect(() => {
@@ -6297,9 +6297,9 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             onClose={() => setShowExpMetaEditModal(false)}
           />
         )}
-        {showExecuteConfigModal && (
-          <ExecuteConfigModal
-            onClose={() => setShowExecuteConfigModal(false)}
+        {showSettingsModal && (
+          <SettingsModal
+            onClose={() => setShowSettingsModal(false)}
             execConfig={execConfig}
             onSaveExec={patch => setExecConfig(prev => ({ ...prev, ...patch }))}
             scheduleConfig={scheduleConfig}
@@ -6414,7 +6414,9 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
 
               <button
                 type="button"
-                onClick={() => setShowExecuteConfigModal(true)}
+                title="Settings"
+                aria-label="Settings"
+                onClick={() => setShowSettingsModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-teal-800 border-2 border-teal-400/80 bg-teal-50/70 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-all shadow-sm"
               >
                 Settings
