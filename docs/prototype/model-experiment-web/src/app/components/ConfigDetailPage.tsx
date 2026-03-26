@@ -4246,8 +4246,8 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
 
         {activeTab === 'lastrun' && (
           <div className="px-4 py-3 flex flex-col gap-3">
-            {/* View WOE Binning — WOE fit / transform */}
-            {(node.type === 'woe_fit' || node.type === 'woe_transform') && (
+            {/* View WOE Binning — WOE fit only */}
+            {node.type === 'woe_fit' && (
               <>
                 <button
                   onClick={() => setShowBinning(true)}

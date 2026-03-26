@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { X, FileText } from 'lucide-react';
+import { X, FileText, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export type FeatureReportTabOpt = 'performance' | 'trend' | 'stability' | 'mono';
 
 const ALL_TABS: FeatureReportTabOpt[] = ['performance', 'trend', 'stability', 'mono'];
+
+/** Mock scale: mirrors pipelines with 3k+ features */
+const FEATURE_COUNT = 3200;
+const PAGE_SIZE = 100;
 
 export interface FeatureReportModalProps {
   onClose: () => void;
@@ -33,8 +37,17 @@ const MOCK_VARS = [
   'contact_book_size',
 ];
 
-function buildPerformanceMock(runId: string) {
-  return MOCK_VARS.map((v, i) => {
+function genFeatureNames(): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < FEATURE_COUNT; i++) {
+    const base = MOCK_VARS[i % MOCK_VARS.length];
+    out.push(`${base}_${String(i + 1).padStart(4, '0')}`);
+  }
+  return out;
+}
+
+function buildPerformanceMock(runId: string, names: string[]) {
+  return names.map((v, i) => {
     const r = seededRand(runId, i + 11);
     return {
       var: v,
@@ -49,12 +62,12 @@ function buildPerformanceMock(runId: string) {
   });
 }
 
-function buildTrendMock(runId: string) {
+function buildTrendMock(runId: string, names: string[]) {
   const rows: Record<string, string | number>[] = [];
-  MOCK_VARS.slice(0, 5).forEach((v, vi) => {
-    const bins = vi % 2 === 0 ? 6 : 5;
+  names.forEach((v, vi) => {
+    const bins = 5 + (vi % 3);
     for (let b = 0; b < bins; b++) {
-      const r = seededRand(runId, vi * 100 + b);
+      const r = seededRand(runId, vi * 7 + b);
       const total = Math.round(8000 + r * 120000);
       const bad = Math.round(total * (0.04 + r * 0.12));
       rows.push({
@@ -74,13 +87,12 @@ function buildTrendMock(runId: string) {
   return rows;
 }
 
-function buildStabilityMock(runId: string, dimLabel: string) {
+function buildStabilityMock(runId: string, dimLabel: string, names: string[]) {
   const segs = [`${dimLabel}_A`, `${dimLabel}_B`, `${dimLabel}_C`];
   const metrics = ['auc', 'ks', 'psi'];
   const rows: Record<string, string | number>[] = [];
-  MOCK_VARS.slice(0, 6).forEach((v, vi) => {
+  names.forEach((v, vi) => {
     metrics.forEach((m, mi) => {
-      const r0 = seededRand(runId, vi * 30 + mi);
       const row: Record<string, string | number> = { var: v, metrics: m };
       segs.forEach((s, si) => {
         row[s] = m === 'psi' ? 0.02 + seededRand(runId, vi + si + 99) * 0.08 : 0.55 + seededRand(runId, vi + si) * 0.12;
@@ -91,8 +103,8 @@ function buildStabilityMock(runId: string, dimLabel: string) {
   return { rows, dimCols: segs };
 }
 
-function buildMonoMock(runId: string) {
-  return MOCK_VARS.map((v, i) => {
+function buildMonoMock(runId: string, names: string[]) {
+  return names.map((v, i) => {
     const r = seededRand(runId, i + 200);
     return {
       var: v,
@@ -123,6 +135,99 @@ function fmtPct(n: number) {
   return Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : '—';
 }
 
+function filterByVar<T extends { var: string }>(rows: T[], q: string): T[] {
+  const t = q.trim().toLowerCase();
+  if (!t) return rows;
+  return rows.filter((r) => r.var.toLowerCase().includes(t));
+}
+
+function PaginatedDataShell({
+  featureQuery,
+  onFeatureQueryChange,
+  filteredCount,
+  page,
+  totalPages,
+  onPageChange,
+  children,
+}: {
+  featureQuery: string;
+  onFeatureQueryChange: (v: string) => void;
+  filteredCount: number;
+  page: number;
+  totalPages: number;
+  onPageChange: (p: number) => void;
+  children: React.ReactNode;
+}) {
+  const pageNums = useMemo(() => {
+    const nums: number[] = [];
+    const delta = 2;
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || (p >= page - delta && p <= page + delta)) nums.push(p);
+    }
+    return nums;
+  }, [page, totalPages]);
+
+  return (
+    <div className="flex flex-col min-h-0 flex-1 border border-slate-100 rounded-lg overflow-hidden bg-white">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/80 shrink-0">
+        <div className="relative flex-1 min-w-[160px] max-w-md">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="search"
+            value={featureQuery}
+            onChange={(e) => onFeatureQueryChange(e.target.value)}
+            placeholder="Filter by feature (var)…"
+            className="w-full h-8 pl-8 pr-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400
+              focus:outline-none focus:border-[#13c2c2]/60 focus:ring-1 focus:ring-[#13c2c2]/20"
+          />
+        </div>
+        <span className="text-[10px] text-slate-400 shrink-0 hidden sm:inline">
+          {filteredCount.toLocaleString()} match{filteredCount !== 1 ? 'es' : ''}
+        </span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto max-h-[min(48vh,520px)]">{children}</div>
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-slate-100 bg-white shrink-0 flex-wrap">
+        <span className="text-[11px] text-slate-400">
+          {filteredCount.toLocaleString()} row{filteredCount !== 1 ? 's' : ''} · {PAGE_SIZE} / page
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500
+              hover:border-[#13c2c2] hover:text-[#13c2c2] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          {pageNums.map((p, i) => (
+            <React.Fragment key={p}>
+              {i > 0 && pageNums[i - 1] !== p - 1 && <span className="w-6 text-center text-[10px] text-slate-400">…</span>}
+              <button
+                type="button"
+                onClick={() => onPageChange(p)}
+                className={`min-w-[1.75rem] h-7 px-1 text-[11px] rounded border transition-colors
+                  ${page === p ? 'bg-[#13c2c2] border-[#13c2c2] text-white font-semibold' : 'border-slate-200 text-slate-600 hover:border-[#13c2c2] hover:text-[#13c2c2]'}`}
+              >
+                {p}
+              </button>
+            </React.Fragment>
+          ))}
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500
+              hover:border-[#13c2c2] hover:text-[#13c2c2] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FeatureReportModal({
   onClose,
   runId,
@@ -132,6 +237,18 @@ export function FeatureReportModal({
   lastRunFeatureReportOn,
 }: FeatureReportModalProps) {
   const [tab, setTab] = useState<FeatureReportTabOpt>('performance');
+  const [featureQuery, setFeatureQuery] = useState('');
+  const [page, setPage] = useState(1);
+
+  const featureNames = useMemo(() => genFeatureNames(), []);
+  const perf = useMemo(() => buildPerformanceMock(runId, featureNames), [runId, featureNames]);
+  const trend = useMemo(() => buildTrendMock(runId, featureNames), [runId, featureNames]);
+  const stability = useMemo(() => buildStabilityMock(runId, stabilityDimLabel || 'dim', featureNames), [runId, stabilityDimLabel, featureNames]);
+  const mono = useMemo(() => buildMonoMock(runId, featureNames), [runId, featureNames]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tab, featureQuery]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -140,11 +257,6 @@ export function FeatureReportModal({
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
   }, [onClose]);
-
-  const perf = useMemo(() => buildPerformanceMock(runId), [runId]);
-  const trend = useMemo(() => buildTrendMock(runId), [runId]);
-  const stability = useMemo(() => buildStabilityMock(runId, stabilityDimLabel || 'dim'), [runId, stabilityDimLabel]);
-  const mono = useMemo(() => buildMonoMock(runId), [runId]);
 
   function tabBody(t: FeatureReportTabOpt): React.ReactNode {
     if (!configFeatureReportOn) {
@@ -174,89 +286,181 @@ export function FeatureReportModal({
     }
 
     if (t === 'performance') {
+      const filtered = filterByVar(perf, featureQuery);
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      const safePage = Math.min(page, totalPages);
+      const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
       return (
-        <div className="overflow-auto max-h-[min(52vh,560px)] border border-slate-100 rounded-lg">
-          <table className="w-full text-sm border-collapse min-w-[880px]">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-sky-50 border-b border-slate-200">
-                {['var', 'auc', 'ks', 'zero_rate', 'missing_rate', 'iv', 'missing_treat', 'remark'].map((c) => (
-                  <th
-                    key={c}
-                    className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
-                  >
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {perf.map((row) => (
-                <tr key={row.var} className="hover:bg-slate-50/80">
-                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs text-slate-800">{row.var}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.auc)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.ks)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.zero_rate)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.missing_rate)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.iv)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-xs text-slate-600">{row.missing_treat}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-xs text-amber-700">{row.remark || '—'}</td>
+        <PaginatedDataShell
+          featureQuery={featureQuery}
+          onFeatureQueryChange={setFeatureQuery}
+          filteredCount={filtered.length}
+          page={safePage}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        >
+          {slice.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-sm text-slate-400">No rows match the filter.</div>
+          ) : (
+            <table className="w-full text-sm border-collapse min-w-[880px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-sky-50 border-b border-slate-200">
+                  {['var', 'auc', 'ks', 'zero_rate', 'missing_rate', 'iv', 'missing_treat', 'remark'].map((c) => (
+                    <th
+                      key={c}
+                      className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {c}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {slice.map((row) => (
+                  <tr key={row.var} className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs text-slate-800">{row.var}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.auc)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.ks)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.zero_rate)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.missing_rate)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.iv)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-xs text-slate-600">{row.missing_treat}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-xs text-amber-700">{row.remark || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </PaginatedDataShell>
       );
     }
 
     if (t === 'trend') {
+      const filtered = filterByVar(trend as { var: string }[], featureQuery) as typeof trend;
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      const safePage = Math.min(page, totalPages);
+      const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
       return (
-        <div className="overflow-auto max-h-[min(52vh,560px)] border border-slate-100 rounded-lg">
-          <table className="w-full text-sm border-collapse min-w-[960px]">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-sky-50 border-b border-slate-200">
-                {['var', 'bin', 'total', 'total_ratio', 'bad', 'bad_rate', 'woe', 'iv', 'type', 'remark'].map((c) => (
-                  <th
-                    key={c}
-                    className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
-                  >
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {trend.map((row, idx) => (
-                <tr key={`${row.var}-${idx}`} className="hover:bg-slate-50/80">
-                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.var}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-[11px]">{row.bin}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{row.total}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.total_ratio as number)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{row.bad}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.bad_rate as number)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.woe as number)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.iv as number)}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-xs">{row.type}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 text-xs text-amber-700">{(row.remark as string) || '—'}</td>
+        <PaginatedDataShell
+          featureQuery={featureQuery}
+          onFeatureQueryChange={setFeatureQuery}
+          filteredCount={filtered.length}
+          page={safePage}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        >
+          {slice.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-sm text-slate-400">No rows match the filter.</div>
+          ) : (
+            <table className="w-full text-sm border-collapse min-w-[960px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-sky-50 border-b border-slate-200">
+                  {['var', 'bin', 'total', 'total_ratio', 'bad', 'bad_rate', 'woe', 'iv', 'type', 'remark'].map((c) => (
+                    <th
+                      key={c}
+                      className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {c}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {slice.map((row, idx) => (
+                  <tr key={`${row.var}-${(safePage - 1) * PAGE_SIZE + idx}`} className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.var}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 font-mono text-[11px]">{row.bin}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{row.total}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.total_ratio as number)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{row.bad}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmtPct(row.bad_rate as number)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.woe as number)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt4(row.iv as number)}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-xs">{row.type}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 text-xs text-amber-700">{(row.remark as string) || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </PaginatedDataShell>
       );
     }
 
     if (t === 'stability') {
       const { rows, dimCols } = stability;
       const headers = ['var', 'metrics', ...dimCols];
+      const filtered = filterByVar(rows as { var: string }[], featureQuery) as typeof rows;
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      const safePage = Math.min(page, totalPages);
+      const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
       return (
-        <div className="overflow-auto max-h-[min(52vh,560px)] border border-slate-100 rounded-lg">
-          <p className="text-[10px] text-slate-400 px-2 py-1.5 border-b border-slate-100 bg-slate-50/80">
-            Stability metrics sheet (<span className="font-mono">df_metrics</span> / PSI wide) · dim segments: {dimCols.join(', ')}
+        <PaginatedDataShell
+          featureQuery={featureQuery}
+          onFeatureQueryChange={setFeatureQuery}
+          filteredCount={filtered.length}
+          page={safePage}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        >
+          <p className="text-[10px] text-slate-400 px-2 py-1.5 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-[5]">
+            Stability metrics (<span className="font-mono">df_metrics</span>) · segments: {dimCols.join(', ')}
           </p>
+          {slice.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-sm text-slate-400">No rows match the filter.</div>
+          ) : (
+            <table className="w-full text-sm border-collapse min-w-[720px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-sky-50 border-b border-slate-200">
+                  {headers.map((c) => (
+                    <th
+                      key={c}
+                      className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {slice.map((row, idx) => (
+                  <tr key={`${row.var}-${row.metrics}-${(safePage - 1) * PAGE_SIZE + idx}`} className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.var}</td>
+                    <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.metrics}</td>
+                    {dimCols.map((dc) => (
+                      <td key={dc} className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                        {fmt4(row[dc] as number)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </PaginatedDataShell>
+      );
+    }
+
+    const filtered = filterByVar(mono, featureQuery);
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    return (
+      <PaginatedDataShell
+        featureQuery={featureQuery}
+        onFeatureQueryChange={setFeatureQuery}
+        filteredCount={filtered.length}
+        page={safePage}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      >
+        {slice.length === 0 ? (
+          <div className="flex items-center justify-center py-16 text-sm text-slate-400">No rows match the filter.</div>
+        ) : (
           <table className="w-full text-sm border-collapse min-w-[720px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-sky-50 border-b border-slate-200">
-                {headers.map((c) => (
+                {['var', 'type', 'fit_trend', 'trans_trend', 'fit_lift', 'trans_lift'].map((c) => (
                   <th
                     key={c}
                     className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
@@ -267,52 +471,20 @@ export function FeatureReportModal({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => (
-                <tr key={`${row.var}-${row.metrics}-${idx}`} className="hover:bg-slate-50/80">
+              {slice.map((row) => (
+                <tr key={row.var} className="hover:bg-slate-50/80">
                   <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.var}</td>
-                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.metrics}</td>
-                  {dimCols.map((dc) => (
-                    <td key={dc} className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">
-                      {row.metrics === 'psi' ? fmt4(row[dc] as number) : fmt4(row[dc] as number)}
-                    </td>
-                  ))}
+                  <td className="border border-slate-100 px-2 py-1.5 text-xs">{row.type}</td>
+                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.fit_trend}</td>
+                  <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.trans_trend}</td>
+                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt2(row.fit_lift)}</td>
+                  <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt2(row.trans_lift)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      );
-    }
-
-    return (
-      <div className="overflow-auto max-h-[min(52vh,560px)] border border-slate-100 rounded-lg">
-        <table className="w-full text-sm border-collapse min-w-[720px]">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-sky-50 border-b border-slate-200">
-              {['var', 'type', 'fit_trend', 'trans_trend', 'fit_lift', 'trans_lift'].map((c) => (
-                <th
-                  key={c}
-                  className="border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
-                >
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {mono.map((row) => (
-              <tr key={row.var} className="hover:bg-slate-50/80">
-                <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.var}</td>
-                <td className="border border-slate-100 px-2 py-1.5 text-xs">{row.type}</td>
-                <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.fit_trend}</td>
-                <td className="border border-slate-100 px-2 py-1.5 font-mono text-xs">{row.trans_trend}</td>
-                <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt2(row.fit_lift)}</td>
-                <td className="border border-slate-100 px-2 py-1.5 text-right tabular-nums">{fmt2(row.trans_lift)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        )}
+      </PaginatedDataShell>
     );
   }
 
@@ -343,6 +515,8 @@ export function FeatureReportModal({
                     · stability dim <span className="font-mono text-slate-500">{stabilityDimLabel}</span>
                   </>
                 ) : null}
+                <span className="text-slate-300"> · </span>
+                <span className="text-slate-500">{FEATURE_COUNT.toLocaleString()} features (mock)</span>
               </p>
             </div>
           </div>
@@ -369,7 +543,7 @@ export function FeatureReportModal({
           ))}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-hidden p-4">{tabBody(tab)}</div>
+        <div className="flex-1 min-h-0 overflow-hidden p-4 flex flex-col">{tabBody(tab)}</div>
       </div>
     </div>,
     document.body,
