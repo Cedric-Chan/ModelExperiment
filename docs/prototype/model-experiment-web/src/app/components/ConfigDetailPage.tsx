@@ -19,6 +19,7 @@ import {
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
 import { FeatureReportModal } from './FeatureReportModal';
+import { FeatureSelectionReportModal } from './FeatureSelectionReportModal';
 
 interface ConfigDetailPageProps {
   task: TrainingTask;
@@ -4155,6 +4156,7 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
   const [showBinning, setShowBinning] = useState(false);
   const [showFeatureReport, setShowFeatureReport] = useState(false);
+  const [showSelectionReport, setShowSelectionReport] = useState(false);
 
   const props = propOverrides?.[node.type] ?? DEFAULT_PROPS[node.type] ?? [];
   const runInfo = lastRunMap[node.type];
@@ -4170,6 +4172,25 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
     const fr = runInfo.artifact.find((a) => a.label === 'feature_report')?.value?.trim().toLowerCase() ?? '';
     const p = runInfo.artifact.find((a) => a.label === 'feature_report_save_path')?.value?.trim() ?? '';
     return fr === 'on' && p !== '' && p !== '—';
+  })();
+
+  const fsActiveMethods = parseFsMethodsJson(getPipelineEnvValue(mergedPanelEnv, FEATURE_SELECTION_SELECT_METHODS_ENV));
+  const fsIvThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedPanelEnv, FEATURE_SELECTION_IV_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.02;
+  })();
+  const fsCorrThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedPanelEnv, FEATURE_SELECTION_CORR_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.7;
+  })();
+  const fsPsiThreshold = (() => {
+    const n = Number.parseFloat(getPipelineEnvValue(mergedPanelEnv, FEATURE_SELECTION_PSI_THRESHOLD_ENV));
+    return Number.isFinite(n) ? n : 0.1;
+  })();
+  const lastRunHasSelectionReport = (() => {
+    if (!runInfo?.artifact?.length) return false;
+    const p = runInfo.artifact.find((a) => a.label === 'Report path')?.value?.trim() ?? '';
+    return p !== '' && p !== '—';
   })();
 
   const statusStyle: Record<string, { dot: string; text: string; bg: string }> = {
@@ -4293,6 +4314,37 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
                     reportTabs={woeTransformReportTabs}
                     stabilityDimLabel={woeTransformStabilityDim}
                     lastRunFeatureReportOn={lastRunFeatureReportArtifactOn}
+                  />
+                )}
+              </>
+            )}
+            {node.type === 'feature_selection' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowSelectionReport(true)}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
+                    bg-gradient-to-r from-[#13c2c2]/10 to-cyan-50
+                    border border-[#13c2c2]/30 hover:border-[#13c2c2] hover:from-[#13c2c2]/15 hover:to-cyan-100/80
+                    text-[#13c2c2] hover:text-[#0d9e9e] transition-all group shadow-sm"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-[#13c2c2]/15 border border-[#13c2c2]/30 flex items-center justify-center shrink-0 group-hover:bg-[#13c2c2]/25 transition-colors">
+                    <Filter size={14} className="text-[#13c2c2]" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-xs font-semibold">View selection report</p>
+                    <p className="text-[10px] text-[#13c2c2]/70 mt-0.5">selection_report · pass/fail per method →</p>
+                  </div>
+                </button>
+                {showSelectionReport && (
+                  <FeatureSelectionReportModal
+                    onClose={() => setShowSelectionReport(false)}
+                    runId={runInfo?.runId ?? '—'}
+                    activeMethods={fsActiveMethods}
+                    ivThreshold={fsIvThreshold}
+                    corrThreshold={fsCorrThreshold}
+                    psiThreshold={fsPsiThreshold}
+                    lastRunHasSelectionReport={lastRunHasSelectionReport}
                   />
                 )}
               </>
