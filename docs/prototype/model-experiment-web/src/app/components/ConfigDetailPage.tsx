@@ -3609,6 +3609,7 @@ function ModelTuneConfigPanel({
   const fsFixedRaw = getPipelineEnvValue(mergedEnv, TUNE_TRAIN_FIXED_FEATURE_SELECTION_PATH_ENV);
   const [dataFixedMenuChosen, setDataFixedMenuChosen] = useState(false);
   const [fsFixedMenuChosen, setFsFixedMenuChosen] = useState(false);
+  const [tuneDataConfigOpen, setTuneDataConfigOpen] = useState(true);
 
   useEffect(() => {
     if (!dataBindingRaw.trim() && dataFixedRaw.trim()) setDataFixedMenuChosen(true);
@@ -3793,57 +3794,73 @@ function ModelTuneConfigPanel({
         </div>
       </NodeConfigBand>
 
-      <NodeConfigBand title="Data config">
-        <div className="flex flex-col gap-3">
-          <p className="text-[9px] text-slate-400 leading-snug -mt-1 mb-0.5">
-            Overrides Pipeline ENV semantics for this node (tune_train_* keys).
-          </p>
-          <div>
-            <p className={labelCls}>
-              exclude_cols
-              <FieldTooltip text="JSON array of columns to exclude from tuning (tune_train_exclude_cols)." />
-            </p>
-            <textarea
-              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_EXCLUDE_COLS_ENV)}
-              readOnly={readOnly}
-              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_EXCLUDE_COLS_ENV, e.target.value)}
-              rows={4}
-              spellCheck={false}
-              className={`${numInputCls} min-h-[88px] resize-y py-1.5 text-[10px]`}
-            />
-          </div>
-          <div>
-            <p className={labelCls}>
-              auxilary_cols
-              <FieldTooltip text="JSON array of auxiliary columns stripped from features (tune_train_auxilary_cols)." />
-            </p>
-            <textarea
-              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_AUXILARY_COLS_ENV)}
-              readOnly={readOnly}
-              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_AUXILARY_COLS_ENV, e.target.value)}
-              rows={4}
-              spellCheck={false}
-              className={`${numInputCls} min-h-[88px] resize-y py-1.5 text-[10px]`}
-            />
-          </div>
-          <div>
-            <p className={labelCls}>
-              sample_weight_col
-              <FieldTooltip text="Optional sample weight column; empty disables (tune_train_sample_weight_col)." />
-            </p>
-            <input
-              type="text"
-              value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV)}
-              readOnly={readOnly}
-              onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV, e.target.value)}
-              className={numInputCls}
-            />
-          </div>
-        </div>
-      </NodeConfigBand>
-
       <NodeConfigBand title="Node configuration">
         <div className="flex flex-col gap-3.5">
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setTuneDataConfigOpen((o) => !o)}
+              className={`w-full flex items-center justify-between px-3 py-2 transition-colors text-left
+                ${tuneDataConfigOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'}`}
+            >
+              <span className="text-[10px] font-semibold text-slate-600">
+                data_config
+                <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
+                  Overrides Pipeline ENV for this node (tune_train_* keys).
+                </span>
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-slate-400 shrink-0 transition-transform ${tuneDataConfigOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {tuneDataConfigOpen && (
+              <div className="border-t border-slate-100 px-3 py-2.5 flex flex-col gap-2 bg-white">
+                <div>
+                  <p className={labelCls}>
+                    exclude_cols
+                    <FieldTooltip text="JSON array of columns to exclude from tuning (tune_train_exclude_cols)." />
+                  </p>
+                  <textarea
+                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_EXCLUDE_COLS_ENV)}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_EXCLUDE_COLS_ENV, e.target.value)}
+                    rows={2}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[52px] resize-y py-1.5 text-[10px]`}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    auxilary_cols
+                    <FieldTooltip text="JSON array of auxiliary columns stripped from features (tune_train_auxilary_cols)." />
+                  </p>
+                  <textarea
+                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_AUXILARY_COLS_ENV)}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_AUXILARY_COLS_ENV, e.target.value)}
+                    rows={2}
+                    spellCheck={false}
+                    className={`${numInputCls} min-h-[52px] resize-y py-1.5 text-[10px]`}
+                  />
+                </div>
+                <div>
+                  <p className={labelCls}>
+                    sample_weight_col
+                    <FieldTooltip text="Optional sample weight column; empty disables (tune_train_sample_weight_col)." />
+                  </p>
+                  <input
+                    type="text"
+                    value={getPipelineEnvValue(mergedEnv, TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV)}
+                    readOnly={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(TUNE_TRAIN_SAMPLE_WEIGHT_COL_ENV, e.target.value)}
+                    className={numInputCls}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
           <div>
             <p className={labelCls}>
               n_trials
@@ -3996,9 +4013,14 @@ function ModelTuneConfigPanel({
                         key={paramKey}
                         className="grid grid-cols-[minmax(0,1fr)_88px_76px_76px] gap-x-1.5 gap-y-1 items-center py-1.5 border-b border-slate-100/90 last:border-0"
                       >
-                        <span className="text-[10px] font-mono text-slate-600 truncate pr-1" title={paramKey}>
-                          {paramKey}
-                        </span>
+                        <div
+                          className="min-w-0 min-h-7 flex items-center pr-1 cursor-help"
+                          title={paramKey}
+                        >
+                          <span className="text-[10px] font-mono text-slate-600 truncate block w-full">
+                            {paramKey}
+                          </span>
+                        </div>
                         <div className="relative min-w-0">
                           <select
                             disabled={readOnly}
