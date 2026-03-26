@@ -18,6 +18,7 @@ import {
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
+import { FeatureReportModal } from './FeatureReportModal';
 
 interface ConfigDetailPageProps {
   task: TrainingTask;
@@ -4153,9 +4154,23 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
   const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
   const [showBinning, setShowBinning] = useState(false);
+  const [showFeatureReport, setShowFeatureReport] = useState(false);
 
   const props = propOverrides?.[node.type] ?? DEFAULT_PROPS[node.type] ?? [];
   const runInfo = lastRunMap[node.type];
+
+  const mergedPanelEnv = React.useMemo(() => mergePipelineEnvWithDefaults(task.pipelineEnv), [task.pipelineEnv]);
+  const woeTransformFeatureReportConfigOn =
+    getPipelineEnvValue(mergedPanelEnv, WOE_TRANSFORM_FEATURE_REPORT_ENV).toLowerCase() !== 'false';
+  const woeTransformReportTabs = parseReportTabsJson(getPipelineEnvValue(mergedPanelEnv, WOE_TRANSFORM_REPORT_TABS_ENV));
+  const woeTransformStabilityDim = getPipelineEnvValue(mergedPanelEnv, WOE_TRANSFORM_STABILITY_DIM_ENV).trim() || 'user_id';
+
+  const lastRunFeatureReportArtifactOn = (() => {
+    if (!runInfo?.artifact?.length) return false;
+    const fr = runInfo.artifact.find((a) => a.label === 'feature_report')?.value?.trim().toLowerCase() ?? '';
+    const p = runInfo.artifact.find((a) => a.label === 'feature_report_save_path')?.value?.trim() ?? '';
+    return fr === 'on' && p !== '' && p !== '—';
+  })();
 
   const statusStyle: Record<string, { dot: string; text: string; bg: string }> = {
     SUCCESS: { dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -4250,6 +4265,36 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
                   </div>
                 </button>
                 {showBinning && <WoeBinningModal onClose={() => setShowBinning(false)} />}
+              </>
+            )}
+            {node.type === 'woe_transform' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowFeatureReport(true)}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
+                    bg-gradient-to-r from-[#13c2c2]/10 to-cyan-50
+                    border border-[#13c2c2]/30 hover:border-[#13c2c2] hover:from-[#13c2c2]/15 hover:to-cyan-100/80
+                    text-[#13c2c2] hover:text-[#0d9e9e] transition-all group shadow-sm"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-[#13c2c2]/15 border border-[#13c2c2]/30 flex items-center justify-center shrink-0 group-hover:bg-[#13c2c2]/25 transition-colors">
+                    <FileText size={14} className="text-[#13c2c2]" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-xs font-semibold">View feature report</p>
+                    <p className="text-[10px] text-[#13c2c2]/70 mt-0.5">Performance · trend · stability · mono →</p>
+                  </div>
+                </button>
+                {showFeatureReport && (
+                  <FeatureReportModal
+                    onClose={() => setShowFeatureReport(false)}
+                    runId={runInfo?.runId ?? '—'}
+                    configFeatureReportOn={woeTransformFeatureReportConfigOn}
+                    reportTabs={woeTransformReportTabs}
+                    stabilityDimLabel={woeTransformStabilityDim}
+                    lastRunFeatureReportOn={lastRunFeatureReportArtifactOn}
+                  />
+                )}
               </>
             )}
             {runInfo ? (
