@@ -4936,7 +4936,11 @@ function RegularNodePanel({
   const [showBinning, setShowBinning] = useState(false);
   const [showFeatureReport, setShowFeatureReport] = useState(false);
   const [showSelectionReport, setShowSelectionReport] = useState(false);
-  const [rayLogOpen, setRayLogOpen] = useState(false);
+  const [rayLogOpen, setRayLogOpen] = useState(true);
+
+  useEffect(() => {
+    setRayLogOpen(true);
+  }, [node.id]);
 
   const props = propOverrides?.[node.type] ?? DEFAULT_PROPS[node.type] ?? [];
   const runInfo = lastRunMap[node.type];
