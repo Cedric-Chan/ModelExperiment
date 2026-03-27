@@ -16,6 +16,8 @@ import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
   mergePipelineEnvWithDefaults, getPipelineEnvValue, upsertPipelineEnvRow, getDefaultPipelineEnvRows,
   WOE_FIT_WOE_ENCODER_PATH_MOCK,
+  isPipelineResourceEnvName,
+  PIPELINE_RESOURCE_ENV_FALLBACK_ROWS,
 } from './data';
 import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge';
 import { WoeBinningModal } from './WoeBinningModal';
@@ -38,6 +40,8 @@ interface ConfigDetailPageProps {
   onContinueRun?: () => void;
   /** Called when a new run is successfully submitted — receives the new TaskInstance */
   onRunCreated?: (instance: TaskInstance) => void;
+  /** Open mock Ray log viewer (prototype) */
+  onOpenRayLog?: (payload: { logId: string; title: string }) => void;
 }
 
 /** Passed into per-node config panels for pipeline ENV read/write. */
@@ -125,7 +129,6 @@ const MODEL_PREDICTION_SAMPLE_SCOPE_ENV = 'model_prediction_sample_scope';
 const MODEL_PREDICTION_AUXILARY_COLS_ENV = 'model_prediction_auxilary_cols';
 const MODEL_PREDICTION_SAMPLE_WEIGHT_COL_ENV = 'model_prediction_sample_weight_col';
 const MODEL_PREDICTION_BATCH_SIZE_ENV = 'model_prediction_batch_size';
-const MODEL_PREDICTION_OUTPUT_COLUMNS_ENV = 'model_prediction_output_columns';
 const MODEL_PREDICTION_NUM_WORKERS_ENV = 'model_prediction_num_workers';
 const MODEL_PREDICTION_CPU_PER_WORKER_ENV = 'model_prediction_cpu_per_worker';
 const MODEL_PREDICTION_MEMORY_PER_WORKER_ENV = 'model_prediction_memory_per_worker';
@@ -161,7 +164,7 @@ type WoeCascadeKind =
 
 function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCascadePort[] {
   if (kind === 'tune_train_best_model' && nodeType === 'tune_train') {
-    return [{ key: 'best_model_output', label: 'best_model_output', typeLabel: 'pkl' }];
+    return [{ key: 'best_model_output', label: 'best_model_output', typeLabel: 'model' }];
   }
   if (kind === 'tune_train_selection_report' && nodeType === 'feature_selection') {
     return [{ key: 'selection_report_path', label: 'selection_report_path', typeLabel: 'data' }];
@@ -180,7 +183,7 @@ function outputPortsForCascade(nodeType: NodeType, kind: WoeCascadeKind): WoeCas
     return [{ key: 'output', label: 'output', typeLabel: 'string', disabled: true }];
   }
   if (nodeType === 'woe_fit') {
-    return [{ key: 'encoder_save_path', label: 'encoder_save_path', typeLabel: 'pkl' }];
+    return [{ key: 'encoder_save_path', label: 'encoder_save_path', typeLabel: 'model' }];
   }
   return [];
 }
@@ -418,7 +421,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
 const DEFAULT_PROPS: Record<NodeType, { label: string; value: string }[]> = {
   data_source:       [{ label: 'data_source', value: 'Hive' }, { label: 'table_name', value: 'risk.feature_store_v12' }, { label: 'schema', value: 'risk' }, { label: 'partition_filter', value: "grass_date >= '2024-01-01'" }, { label: 'label_column', value: 'label_dpd30_3term' }],
   woe_fit:           [{ label: 'n_bins', value: '10' }, { label: 'min_bin_rate', value: '5%' }, { label: 'method', value: 'OptimalBinning' }, { label: 'encoder_output', value: 's3://…/encoder.pkl' }],
-  woe_transform:     [{ label: 'data_path', value: 'cascade / FixedValue' }, { label: 'encoder_path', value: 'WoeFit encoder_save_path' }, { label: 'sample_scope', value: '["train"]' }, { label: 'feature_report', value: 'true' }],
+  woe_transform:     [{ label: 'data_path', value: 'cascade / FixedValue' }, { label: 'encoder_path', value: 'WoeFit encoder_save_path' }, { label: 'sample_use_col', value: '["train"]' }, { label: 'feature_report', value: 'true' }],
   feature_selection: [{ label: 'Selection Method', value: 'IV + Corr filter' }, { label: 'IV Threshold', value: '≥ 0.02' }, { label: 'Corr Threshold', value: '< 0.85' }, { label: 'Output', value: 'selection_report.csv' }],
   tune_train:        [{ label: 'HPO Trials', value: '50' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '20 rounds' }],
   infer:             [{ label: 'Mode', value: 'Batch scoring' }, { label: 'Input', value: 'Best model artifact' }, { label: 'Output', value: 'Hive / Parquet' }, { label: 'Partition', value: 'dt=today' }],
@@ -783,9 +786,8 @@ function RunHistoryDropdown({
 }
 
 /* ─────────────── Shared types ─────────────── */
-type ResourceTier  = 'Low' | 'Medium' | 'High';
 type QueuePriority = 'Normal' | 'Important' | 'Critical';
-interface TaskConfigState { resourceTier: ResourceTier; queuePriority: QueuePriority; }
+interface TaskConfigState { queuePriority: QueuePriority; }
 
 /** ONCE = manual trigger only; Cron = scheduler expression (WideTable-aligned). */
 interface ScheduleConfig { mode: 'once' | 'cron'; cronExpr: string; time: string; timezone: string; }
@@ -942,6 +944,8 @@ function SettingsModal({
   scheduleConfig,
   onUpdateSchedule,
   readOnly,
+  mergedPipelineEnv,
+  onSaveResourceDefaults,
 }: {
   onClose: () => void;
   execConfig: TaskConfigState;
@@ -949,19 +953,30 @@ function SettingsModal({
   scheduleConfig: ScheduleConfig;
   onUpdateSchedule: (cfg: ScheduleConfig) => void;
   readOnly?: boolean;
+  mergedPipelineEnv: PipelineEnvRow[];
+  onSaveResourceDefaults: (patch: { defaultCpu: string; defaultMemory: string; defaultImage: string }) => void;
 }) {
-  const [resourceTier, setResourceTier] = useState<ResourceTier>(execConfig.resourceTier);
   const [queuePriority, setQueuePriority] = useState<QueuePriority>(execConfig.queuePriority);
+  const [defaultCpu, setDefaultCpu] = useState(() => getPipelineEnvValue(mergedPipelineEnv, 'default_cpu'));
+  const [defaultMemory, setDefaultMemory] = useState(() => getPipelineEnvValue(mergedPipelineEnv, 'default_memory'));
+  const [defaultImage, setDefaultImage] = useState(() => getPipelineEnvValue(mergedPipelineEnv, 'default_image'));
   const [schedMode, setSchedMode] = useState<'once' | 'cron'>(scheduleConfig.mode);
   const [cronExpr, setCronExpr] = useState(scheduleConfig.cronExpr);
   const cron = parseCronEnglish(cronExpr);
 
+  const resFb = PIPELINE_RESOURCE_ENV_FALLBACK_ROWS;
+
   useEffect(() => {
-    setResourceTier(execConfig.resourceTier);
     setQueuePriority(execConfig.queuePriority);
     setSchedMode(scheduleConfig.mode);
     setCronExpr(scheduleConfig.cronExpr);
-  }, [execConfig.resourceTier, execConfig.queuePriority, scheduleConfig.mode, scheduleConfig.cronExpr]);
+  }, [execConfig.queuePriority, scheduleConfig.mode, scheduleConfig.cronExpr]);
+
+  useEffect(() => {
+    setDefaultCpu(getPipelineEnvValue(mergedPipelineEnv, 'default_cpu'));
+    setDefaultMemory(getPipelineEnvValue(mergedPipelineEnv, 'default_memory'));
+    setDefaultImage(getPipelineEnvValue(mergedPipelineEnv, 'default_image'));
+  }, [mergedPipelineEnv]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -970,12 +985,12 @@ function SettingsModal({
   }, [onClose]);
 
   const handleSave = () => {
-    onSaveExec({ resourceTier, queuePriority });
+    onSaveExec({ queuePriority });
+    onSaveResourceDefaults({ defaultCpu, defaultMemory, defaultImage });
     onUpdateSchedule({ ...scheduleConfig, mode: schedMode, cronExpr });
     onClose();
   };
 
-  const tierColors: Record<ResourceTier, string> = { Low: 'text-slate-600', Medium: 'text-amber-600', High: 'text-rose-600' };
   const priorityColors: Record<QueuePriority, string> = { Normal: 'text-slate-600', Important: 'text-indigo-600', Critical: 'text-rose-600' };
 
   return ReactDOM.createPortal(
@@ -985,7 +1000,7 @@ function SettingsModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-slate-800">Settings</h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Resource · Queue Priority · Scheduler</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Defaults · Queue Priority · Scheduler</p>
           </div>
           <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
             <X size={15} />
@@ -994,15 +1009,59 @@ function SettingsModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
           <div>
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5">Resource</p>
-            <select
-              value={resourceTier}
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              default_cpu
+              <FieldTooltip
+                detach
+                text={`Default CPU cores when a node does not specify (Pipeline ENV key default_cpu). Placeholder: ${resFb.find((r) => r.name === 'default_cpu')?.value ?? '4'}.`}
+              />
+            </p>
+            <input
+              type="number"
+              min={1}
+              step={1}
               disabled={readOnly}
-              onChange={e => setResourceTier(e.target.value as ResourceTier)}
-              className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-medium ${tierColors[resourceTier]}`}
-            >
-              {(['Low', 'Medium', 'High'] as ResourceTier[]).map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+              placeholder={resFb.find((r) => r.name === 'default_cpu')?.value ?? '4'}
+              value={defaultCpu}
+              onChange={(e) => setDefaultCpu(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-mono"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              default_memory
+              <FieldTooltip
+                detach
+                text={`Default memory (GB) when a node does not specify (default_memory). Placeholder: ${resFb.find((r) => r.name === 'default_memory')?.value ?? '8'}.`}
+              />
+            </p>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              disabled={readOnly}
+              placeholder={resFb.find((r) => r.name === 'default_memory')?.value ?? '8'}
+              value={defaultMemory}
+              onChange={(e) => setDefaultMemory(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-mono"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              default_image
+              <FieldTooltip
+                detach
+                text={`Default Docker image when a node does not specify (default_image). Placeholder: ${resFb.find((r) => r.name === 'default_image')?.value ?? 'risk-model-training:latest'}.`}
+              />
+            </p>
+            <input
+              type="text"
+              disabled={readOnly}
+              placeholder={resFb.find((r) => r.name === 'default_image')?.value ?? 'risk-model-training:latest'}
+              value={defaultImage}
+              onChange={(e) => setDefaultImage(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-teal-400 font-mono"
+            />
           </div>
           <div>
             <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5">Queue Priority</p>
@@ -1537,8 +1596,8 @@ function SampleTypeColumnSection({
   return (
     <div className="flex flex-col gap-2.5">
       <p className={labelCls}>
-        sample_type_column
-        <FieldTooltip text="ENV key sample_type_column: column with train/test/val/all. Use Existing picks a column; Auto Generate applies split_ratio + random_seed at runtime." />
+        sample_use_col
+        <FieldTooltip text="ENV key sample_use_col: Hive column whose values are train / test / val. Use Existing picks a column; Auto Generate applies split_ratio + random_seed at runtime." />
       </p>
       <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
         {(['use_existing', 'auto_generate'] as const).map(m => (
@@ -1568,7 +1627,7 @@ function SampleTypeColumnSection({
           />
           {colValue && !colsDisabled && (
             <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-              Downstream uses <span className="font-mono text-slate-500">{colValue}</span> (train / test / val / all).
+              Downstream uses <span className="font-mono text-slate-500">{colValue}</span> (train / test / val).
             </p>
           )}
         </div>
@@ -1887,15 +1946,18 @@ function AlgoDictFieldRow({
 
 const WOE_FIT_FIXED_VALUE_LABEL = 'FixedValue';
 
-type SampleScopeOpt = 'train' | 'test' | 'val' | 'all';
-const SAMPLE_SCOPE_OPTIONS: SampleScopeOpt[] = ['train', 'test', 'val', 'all'];
+type SampleScopeOpt = 'train' | 'test' | 'val';
+const SAMPLE_SCOPE_OPTIONS: SampleScopeOpt[] = ['train', 'test', 'val'];
+const SAMPLE_SCOPE_ALL: SampleScopeOpt[] = ['train', 'test', 'val'];
 
 function parseSampleScopeJson(raw: string): SampleScopeOpt[] {
   try {
     const a = JSON.parse(raw) as unknown;
     if (!Array.isArray(a)) return ['train'];
+    const tokens = a.map((x) => String(x).trim());
+    if (tokens.includes('all')) return [...SAMPLE_SCOPE_ALL];
     const allowed = new Set<string>(SAMPLE_SCOPE_OPTIONS);
-    const ok = a.filter((x): x is SampleScopeOpt => typeof x === 'string' && allowed.has(x));
+    const ok = tokens.filter((x): x is SampleScopeOpt => allowed.has(x));
     return ok.length ? ok : ['train'];
   } catch {
     return ['train'];
@@ -1910,8 +1972,10 @@ function parseModelPredictionSampleScopeJson(raw: string): SampleScopeOpt[] {
   try {
     const a = JSON.parse(raw) as unknown;
     if (!Array.isArray(a)) return ['test'];
+    const tokens = a.map((x) => String(x).trim());
+    if (tokens.includes('all')) return [...SAMPLE_SCOPE_ALL];
     const allowed = new Set<string>(SAMPLE_SCOPE_OPTIONS);
-    const ok = a.filter((x): x is SampleScopeOpt => typeof x === 'string' && allowed.has(x));
+    const ok = tokens.filter((x): x is SampleScopeOpt => allowed.has(x));
     return ok.length ? ok : ['test'];
   } catch {
     return ['test'];
@@ -1972,7 +2036,7 @@ function SampleScopeMultiSelect({
   return (
     <div ref={rootRef} className="relative">
       <p className={labelCls}>
-        sample_scope
+        sample_use_col
         <FieldTooltip text={tooltip} />
       </p>
       <button
@@ -1990,6 +2054,15 @@ function SampleScopeMultiSelect({
       </button>
       {open && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+          <button
+            type="button"
+            disabled={readOnly}
+            onClick={() => !readOnly && onChange([...SAMPLE_SCOPE_ALL])}
+            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left border-b border-slate-100"
+          >
+            <span className="text-[11px] font-semibold text-[#0d9e9e]">Select all</span>
+            <span className="text-[10px] text-slate-400">(train, test, val)</span>
+          </button>
           {SAMPLE_SCOPE_OPTIONS.map((o) => {
             const checked = value.includes(o);
             return (
@@ -2107,7 +2180,7 @@ type WoeCascadeBindingFieldProps = {
   onClearAll: () => void;
   numInputCls: string;
   fieldName: string;
-  typeBadge: 'data' | 'pkl';
+  typeBadge: 'data' | 'model';
   cascadeKind: WoeCascadeKind;
   cardNoUpstreamHint: string;
   portalNoUpstreamHint: string;
@@ -2757,7 +2830,7 @@ function WoeFitConfigPanel({ task, onPatchPipelineEnvRow, readOnly, woeFitDagCon
                   readOnly={readOnly}
                   onChange={(next) => onPatchPipelineEnvRow(WOE_FIT_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
                   labelCls={labelCls}
-                  tooltip="Multi-scope row filter: train, test, val, and/or all. At least one scope must stay selected. Stored as woe_fit_sample_scope (JSON array)."
+                  tooltip="Multi-select train / test / val (Select all = all three; legacy JSON &quot;all&quot; expands the same). At least one scope required. Stored as woe_fit_sample_scope (JSON array)."
                 />
                 <div>
                   <p className={labelCls}>
@@ -3255,7 +3328,7 @@ function WoeTransformConfigPanel({
                 }}
                 numInputCls={numInputCls}
                 fieldName="encoder_path"
-                typeBadge="pkl"
+                typeBadge="model"
                 cascadeKind="transform_encoder"
                 cardNoUpstreamHint={`No WOE Fit upstream for encoder .pkl. Connect WOE Fit to WOE Transform on the canvas, or use ${WOE_FIT_FIXED_VALUE_LABEL} for a manual path.`}
                 portalNoUpstreamHint={`No upstream nodes — connect a WoeFit node, or choose ${WOE_FIT_FIXED_VALUE_LABEL}.`}
@@ -3283,7 +3356,7 @@ function WoeTransformConfigPanel({
             readOnly={readOnly}
             onChange={(next) => onPatchPipelineEnvRow(WOE_TRANSFORM_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
             labelCls={labelCls}
-            tooltip="Scopes applied when transforming rows (train / test / val / all). Stored as woe_transform_sample_scope."
+            tooltip="Scopes when transforming rows: train / test / val. Stored as woe_transform_sample_scope (JSON). Legacy &quot;all&quot; expands to all three."
           />
           <div className="flex items-center justify-between gap-2">
             <p className={`${labelCls} mb-0`}>
@@ -3304,37 +3377,41 @@ function WoeTransformConfigPanel({
               />
             </button>
           </div>
-          <div>
-            <p className={labelCls}>
-              stability_dim
-              <FieldTooltip text="Hive column used as the stability dimension in reports (woe_transform_stability_dim)." />
-            </p>
-            <div className="relative">
-              <select
-                value={stabilityDimSelect}
-                disabled={readOnly}
-                onChange={(e) => onPatchPipelineEnvRow(WOE_TRANSFORM_STABILITY_DIM_ENV, e.target.value)}
-                className={selectCls}
-              >
-                {stabilityDims.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={11}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          {featureReportOn && (
+            <>
+              <div>
+                <p className={labelCls}>
+                  stability_dim
+                  <FieldTooltip text="Hive column used as the stability dimension in reports (woe_transform_stability_dim)." />
+                </p>
+                <div className="relative">
+                  <select
+                    value={stabilityDimSelect}
+                    disabled={readOnly}
+                    onChange={(e) => onPatchPipelineEnvRow(WOE_TRANSFORM_STABILITY_DIM_ENV, e.target.value)}
+                    className={selectCls}
+                  >
+                    {stabilityDims.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={11}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                </div>
+              </div>
+              <ReportTabsMultiSelect
+                value={parseReportTabsJson(getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_REPORT_TABS_ENV))}
+                readOnly={readOnly}
+                onChange={(next) => onPatchPipelineEnvRow(WOE_TRANSFORM_REPORT_TABS_ENV, stringifyReportTabsJson(next))}
+                labelCls={labelCls}
+                tooltip="Report sections to include: performance, trend, stability, mono. Stored as JSON in woe_transform_report_tabs."
               />
-            </div>
-          </div>
-          <ReportTabsMultiSelect
-            value={parseReportTabsJson(getPipelineEnvValue(mergedEnv, WOE_TRANSFORM_REPORT_TABS_ENV))}
-            readOnly={readOnly}
-            onChange={(next) => onPatchPipelineEnvRow(WOE_TRANSFORM_REPORT_TABS_ENV, stringifyReportTabsJson(next))}
-            labelCls={labelCls}
-            tooltip="Report sections to include: performance, trend, stability, mono. Stored as JSON in woe_transform_report_tabs."
-          />
+            </>
+          )}
         </div>
       </NodeConfigBand>
 
@@ -3572,7 +3649,7 @@ function FeatureSelectionConfigPanel({
             readOnly={readOnly}
             onChange={(next) => onPatchPipelineEnvRow(FEATURE_SELECTION_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
             labelCls={labelCls}
-            tooltip="Scopes for selection input rows (train / test / val / all). Stored as feature_selection_sample_scope."
+            tooltip="Scopes for selection input: train / test / val. Stored as feature_selection_sample_scope (JSON). Legacy &quot;all&quot; expands to all three."
           />
           <div>
             <p className={labelCls}>
@@ -4425,7 +4502,7 @@ function ModelInferenceConfigPanel({
               }}
               numInputCls={numInputCls}
               fieldName="best_model_path"
-              typeBadge="pkl"
+              typeBadge="model"
               cascadeKind="tune_train_best_model"
               cardNoUpstreamHint={`Connect LGBM tune &amp; train upstream, or ${WOE_FIT_FIXED_VALUE_LABEL} for a manual .pkl path.`}
               portalNoUpstreamHint={`No upstream — connect LGBM tune &amp; train or ${WOE_FIT_FIXED_VALUE_LABEL}.`}
@@ -4446,7 +4523,7 @@ function ModelInferenceConfigPanel({
             readOnly={readOnly}
             onChange={(next) => onPatchPipelineEnvRow(MODEL_PREDICTION_SAMPLE_SCOPE_ENV, stringifySampleScopeJson(next))}
             labelCls={labelCls}
-            tooltip="Scopes applied when scoring rows (train / test / val / all). Stored as model_prediction_sample_scope. Default test."
+            tooltip="Scopes when scoring: train / test / val. Stored as model_prediction_sample_scope (JSON). Default [&quot;test&quot;]. Legacy &quot;all&quot; expands to all three."
           />
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <button
@@ -4518,20 +4595,6 @@ function ModelInferenceConfigPanel({
                 );
               }}
               className={numInputCls}
-            />
-          </div>
-          <div>
-            <p className={labelCls}>
-              output_columns
-              <FieldTooltip text="JSON array of output column names, e.g. [&quot;score&quot;,&quot;probability&quot;] (model_prediction_output_columns)." />
-            </p>
-            <input
-              type="text"
-              value={getPipelineEnvValue(mergedEnv, MODEL_PREDICTION_OUTPUT_COLUMNS_ENV)}
-              readOnly={readOnly}
-              onChange={(e) => onPatchPipelineEnvRow(MODEL_PREDICTION_OUTPUT_COLUMNS_ENV, e.target.value)}
-              className={numInputCls}
-              spellCheck={false}
             />
           </div>
         </div>
@@ -4669,13 +4732,13 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
 
   const [labelCol, setLabelCol] = useState(() => getPipelineEnvValue(mergedEnv, 'label_column'));
   const [categoricalCol, setCategoricalCol] = useState(() => getPipelineEnvValue(mergedEnv, 'categorical_columns'));
-  const [sampleTypeCol, setSampleTypeCol] = useState(() => getPipelineEnvValue(mergedEnv, 'sample_type_column'));
+  const [sampleTypeCol, setSampleTypeCol] = useState(() => getPipelineEnvValue(mergedEnv, 'sample_use_col'));
 
   useEffect(() => {
     const m = mergePipelineEnvWithDefaults(task.pipelineEnv);
     setLabelCol(getPipelineEnvValue(m, 'label_column'));
     setCategoricalCol(getPipelineEnvValue(m, 'categorical_columns'));
-    setSampleTypeCol(getPipelineEnvValue(m, 'sample_type_column'));
+    setSampleTypeCol(getPipelineEnvValue(m, 'sample_use_col'));
   }, [task.id, task.pipelineEnv]);
 
   const schemaReady = tableScheme.trim() !== '' && tableName.trim() !== '';
@@ -4847,7 +4910,17 @@ function DataSourceConfigPanel({ task, onPatchPipelineEnvRow, readOnly }: NodePa
 }
 
 /* ────────���────── Regular node panel ─────────────── */
-function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow, dagNodes, dagEdges }: {
+function RegularNodePanel({
+  node,
+  lastRunMap,
+  propOverrides,
+  readOnly,
+  task,
+  onPatchPipelineEnvRow,
+  dagNodes,
+  dagEdges,
+  onOpenRayLog,
+}: {
   node: DagNode;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
@@ -4856,12 +4929,14 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
   onPatchPipelineEnvRow: (key: string, value: string) => void;
   dagNodes: DagNode[];
   dagEdges: DagEdge[];
+  onOpenRayLog?: (payload: { logId: string; title: string }) => void;
 }) {
   const style = NODE_STYLES[node.type] ?? NODE_STYLES.data_source;
   const [activeTab, setActiveTab] = useState<'config' | 'lastrun'>('config');
   const [showBinning, setShowBinning] = useState(false);
   const [showFeatureReport, setShowFeatureReport] = useState(false);
   const [showSelectionReport, setShowSelectionReport] = useState(false);
+  const [rayLogOpen, setRayLogOpen] = useState(false);
 
   const props = propOverrides?.[node.type] ?? DEFAULT_PROPS[node.type] ?? [];
   const runInfo = lastRunMap[node.type];
@@ -5107,6 +5182,41 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
                 <p className="text-xs text-slate-400">No run data available</p>
               </div>
             )}
+            <div className="rounded-lg border border-slate-100 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setRayLogOpen((o) => !o)}
+                className="w-full flex items-center justify-between px-2.5 py-2 bg-slate-50/80 hover:bg-slate-50 text-left transition-colors"
+              >
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ray Log</span>
+                <ChevronDown size={14} className={`text-slate-400 transition-transform shrink-0 ${rayLogOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {rayLogOpen && (
+                <div className="px-2.5 py-2 flex flex-col gap-1.5 bg-white border-t border-slate-100">
+                  {(
+                    [
+                      { title: 'Ray driver log', suffix: 'driver' },
+                      { title: 'Ray worker #0', suffix: 'worker-0' },
+                      { title: 'Task stderr', suffix: 'stderr' },
+                    ] as const
+                  ).map(({ title, suffix }) => {
+                    const logId = `${runInfo?.runId ?? 'norun'}:${node.id}:${suffix}`;
+                    return (
+                      <button
+                        key={suffix}
+                        type="button"
+                        disabled={!onOpenRayLog}
+                        onClick={() => onOpenRayLog?.({ logId, title })}
+                        className="text-left text-[11px] text-[#0d9e9e] hover:underline disabled:text-slate-300 disabled:no-underline"
+                      >
+                        <span className="font-medium">{title}</span>
+                        <span className="block text-[10px] text-slate-400 font-mono truncate">{logId}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -5119,7 +5229,17 @@ function RegularNodePanel({ node, lastRunMap, propOverrides, readOnly, task, onP
 /* ─────────────── End Node panel ─────────────── */
 
 /* ─────────────── Property panel dispatcher ─────────────── */
-function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatchPipelineEnvRow, dagNodes, dagEdges }: {
+function PropertyPanel({
+  node,
+  lastRunMap,
+  propOverrides,
+  readOnly,
+  task,
+  onPatchPipelineEnvRow,
+  dagNodes,
+  dagEdges,
+  onOpenRayLog,
+}: {
   node: DagNode | null;
   lastRunMap: LastRunMap;
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
@@ -5128,6 +5248,7 @@ function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatc
   onPatchPipelineEnvRow: (key: string, value: string) => void;
   dagNodes: DagNode[];
   dagEdges: DagEdge[];
+  onOpenRayLog?: (payload: { logId: string; title: string }) => void;
 }) {
   if (!node) return (
     <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 px-6">
@@ -5145,6 +5266,7 @@ function PropertyPanel({ node, lastRunMap, propOverrides, readOnly, task, onPatc
       onPatchPipelineEnvRow={onPatchPipelineEnvRow}
       dagNodes={dagNodes}
       dagEdges={dagEdges}
+      onOpenRayLog={onOpenRayLog}
     />
   );
 }
@@ -6109,7 +6231,18 @@ function SaveUpdatePopover({
 }
 
 /* ─────────────── Main Canvas Page ─────────────── */
-export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, onSave, runInstance, onBackToConfig, onKill, onContinueRun, onRunCreated }: ConfigDetailPageProps) {
+export function ConfigDetailPage({
+  task: initialTask,
+  onBack,
+  onPersistDraft,
+  onSave,
+  runInstance,
+  onBackToConfig,
+  onKill,
+  onContinueRun,
+  onRunCreated,
+  onOpenRayLog,
+}: ConfigDetailPageProps) {
   const { nodes: initNodes, edges } = buildDefaultDag();
   const [task, setTask]             = useState<TrainingTask>(initialTask);
   useEffect(() => {
@@ -6137,7 +6270,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
   const [selectedId, setSelectedId] = useState<string | null>('n1');
   const [zoom, setZoom]             = useState(0.72);
   const [pan, setPan]               = useState({ x: 32, y: 80 });
-  const [execConfig, setExecConfig] = useState<TaskConfigState>({ resourceTier: 'Medium', queuePriority: 'Normal' });
+  const [execConfig, setExecConfig] = useState<TaskConfigState>({ queuePriority: 'Normal' });
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ mode: 'once', cronExpr: '0 6 * * *', time: '00:00', timezone: 'UTC+8' });
   const [showExpMetaEditModal, setShowExpMetaEditModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -6376,10 +6509,20 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
           <SettingsModal
             onClose={() => setShowSettingsModal(false)}
             execConfig={execConfig}
-            onSaveExec={patch => setExecConfig(prev => ({ ...prev, ...patch }))}
+            onSaveExec={(patch) => setExecConfig((prev) => ({ ...prev, ...patch }))}
             scheduleConfig={scheduleConfig}
             onUpdateSchedule={setScheduleConfig}
             readOnly={isRunHistoryView || isRunView}
+            mergedPipelineEnv={mergePipelineEnvWithDefaults(task.pipelineEnv)}
+            onSaveResourceDefaults={({ defaultCpu, defaultMemory, defaultImage }) => {
+              setTask((prev) => {
+                let pe = prev.pipelineEnv;
+                pe = upsertPipelineEnvRow(pe, 'default_cpu', defaultCpu);
+                pe = upsertPipelineEnvRow(pe, 'default_memory', defaultMemory);
+                pe = upsertPipelineEnvRow(pe, 'default_image', defaultImage);
+                return { ...prev, pipelineEnv: pe };
+              });
+            }}
           />
         )}
         {showEnvModal && (
@@ -6388,9 +6531,12 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             onChangeRows={setEnvModalRows}
             onClose={() => setShowEnvModal(false)}
             onApply={() => {
+              const prevFull = mergePipelineEnvWithDefaults(task.pipelineEnv);
+              const resourceOnly = prevFull.filter((r) => isPipelineResourceEnvName(r.name));
+              const combined = [...envModalRows, ...resourceOnly];
               setTask((prev) => ({
                 ...prev,
-                pipelineEnv: mergePipelineEnvWithDefaults(envModalRows).map((r) => ({ ...r })),
+                pipelineEnv: mergePipelineEnvWithDefaults(combined).map((r) => ({ ...r })),
               }));
               setShowEnvModal(false);
             }}
@@ -6483,7 +6629,11 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
               <button
                 type="button"
                 onClick={() => {
-                  setEnvModalRows(mergePipelineEnvWithDefaults(task.pipelineEnv).map((r) => ({ ...r })));
+                  setEnvModalRows(
+                    mergePipelineEnvWithDefaults(task.pipelineEnv)
+                      .filter((r) => !isPipelineResourceEnvName(r.name))
+                      .map((r) => ({ ...r })),
+                  );
                   setShowEnvModal(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 border border-slate-200 bg-white rounded-lg hover:border-[#13c2c2]/60 hover:text-[#0d9e9e] transition-all shadow-sm"
@@ -6692,6 +6842,7 @@ export function ConfigDetailPage({ task: initialTask, onBack, onPersistDraft, on
             task={task}
             dagNodes={effectiveNodes}
             dagEdges={edges}
+            onOpenRayLog={onOpenRayLog}
             onPatchPipelineEnvRow={(key, value) => {
               setTask(prev => ({ ...prev, pipelineEnv: upsertPipelineEnvRow(prev.pipelineEnv, key, value) }));
             }}

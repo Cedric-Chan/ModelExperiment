@@ -127,8 +127,8 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: CATEGORICAL_COLUMNS_DEFAULT_JSON,
     },
     {
-      name: 'sample_type_column',
-      description: 'Column name for sample split; values include train / test / val / all.',
+      name: 'sample_use_col',
+      description: 'Hive column that marks sample split; cell values are train / test / val.',
       value: 'sample_type',
     },
     {
@@ -173,7 +173,7 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     {
       name: 'woe_fit_sample_scope',
       description:
-        'JSON array of sample scopes used when fitting: train, test, val, all. Default ["train"].',
+        'JSON array of scopes when fitting: train, test, val (legacy "all" expands to all three). Default ["train"].',
       value: '["train"]',
     },
     {
@@ -299,7 +299,7 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     },
     {
       name: 'woe_transform_sample_scope',
-      description: 'JSON array: train, test, val, all for transform row filter. Default ["train"].',
+      description: 'JSON array: train, test, val for transform row filter (legacy "all" → all three). Default ["train"].',
       value: '["train"]',
     },
     {
@@ -335,7 +335,7 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     },
     {
       name: 'feature_selection_sample_scope',
-      description: 'JSON array train / test / val / all for selection input filter.',
+      description: 'JSON array train / test / val for selection input filter (legacy "all" → all three).',
       value: '["train"]',
     },
     {
@@ -528,7 +528,7 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
     },
     {
       name: 'model_prediction_sample_scope',
-      description: 'JSON array: train, test, val, all for prediction row filter. Default ["test"].',
+      description: 'JSON array: train, test, val for prediction row filter (legacy "all" → all three). Default ["test"].',
       value: '["test"]',
     },
     {
@@ -549,11 +549,6 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       value: '1024',
     },
     {
-      name: 'model_prediction_output_columns',
-      description: 'JSON array of output column names (e.g. score, probability).',
-      value: '["score","probability"]',
-    },
-    {
       name: 'model_prediction_num_workers',
       description: 'Ray / distributed worker count for model prediction (Adv. Conf).',
       value: '15',
@@ -568,22 +563,39 @@ export function getDefaultPipelineEnvRows(): PipelineEnvRow[] {
       description: 'Memory per worker in GB for model prediction (Adv. Conf).',
       value: '2',
     },
-    {
-      name: 'default_cpu',
-      description: 'Default CPU cores when a node does not specify.',
-      value: '4',
-    },
-    {
-      name: 'default_memory',
-      description: 'Default memory size when a node does not specify.',
-      value: '8',
-    },
-    {
-      name: 'default_image',
-      description: 'Default Docker image when a node does not specify.',
-      value: 'risk-model-training:latest',
-    },
   ];
+}
+
+/** Managed in Settings UI, not the Pipeline ENV table; merged in for reads/persistence. */
+export const PIPELINE_RESOURCE_ENV_NAMES = ['default_cpu', 'default_memory', 'default_image'] as const;
+export type PipelineResourceEnvName = (typeof PIPELINE_RESOURCE_ENV_NAMES)[number];
+
+export const PIPELINE_RESOURCE_ENV_FALLBACK_ROWS: PipelineEnvRow[] = [
+  {
+    name: 'default_cpu',
+    description: 'Default CPU cores when a node does not specify.',
+    value: '4',
+  },
+  {
+    name: 'default_memory',
+    description: 'Default memory size when a node does not specify.',
+    value: '8',
+  },
+  {
+    name: 'default_image',
+    description: 'Default Docker image when a node does not specify.',
+    value: 'risk-model-training:latest',
+  },
+];
+
+export function isPipelineResourceEnvName(name: string): name is PipelineResourceEnvName {
+  return (PIPELINE_RESOURCE_ENV_NAMES as readonly string[]).includes(name);
+}
+
+function appendPipelineResourceEnvRows(rows: PipelineEnvRow[]): PipelineEnvRow[] {
+  const have = new Set(rows.map((r) => r.name));
+  const add = PIPELINE_RESOURCE_ENV_FALLBACK_ROWS.filter((r) => !have.has(r.name));
+  return add.length ? [...rows, ...add] : rows;
 }
 
 /** Merge stored ENV with spec defaults: keep user rows by name, fill missing keys. */
@@ -600,14 +612,13 @@ export function mergePipelineEnvWithDefaults(rows: PipelineEnvRow[] | undefined)
     };
   });
   const extra = (rows ?? []).filter((r) => !defaults.some((d) => d.name === r.name));
-  return [...merged, ...extra];
+  return appendPipelineResourceEnvRows([...merged, ...extra]);
 }
 
 export function getPipelineEnvValue(rows: PipelineEnvRow[] | undefined, key: string): string {
-  const hit = rows?.find((r) => r.name === key);
-  if (hit !== undefined) return hit.value;
-  const d = getDefaultPipelineEnvRows().find((r) => r.name === key);
-  return d?.value ?? '';
+  const full = mergePipelineEnvWithDefaults(rows);
+  const hit = full.find((r) => r.name === key);
+  return hit?.value ?? '';
 }
 
 export function upsertPipelineEnvRow(
@@ -616,7 +627,13 @@ export function upsertPipelineEnvRow(
   value: string,
 ): PipelineEnvRow[] {
   const base = mergePipelineEnvWithDefaults(rows);
-  return base.map((r) => (r.name === key ? { ...r, value } : r));
+  const idx = base.findIndex((r) => r.name === key);
+  if (idx >= 0) {
+    return base.map((r, i) => (i === idx ? { ...r, value } : r));
+  }
+  const res = PIPELINE_RESOURCE_ENV_FALLBACK_ROWS.find((r) => r.name === key);
+  if (res) return [...base, { ...res, value }];
+  return [...base, { name: key, description: '', value }];
 }
 
 export const REGIONS: Region[] = ['SG', 'ID', 'TH', 'MY', 'PH', 'VN'];

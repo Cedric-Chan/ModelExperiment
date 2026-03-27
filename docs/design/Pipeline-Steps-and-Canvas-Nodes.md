@@ -15,7 +15,7 @@
 5. **Tune & Train**（规范：Hyperparameter Tuning + Model Training，合并为单节点）  
 6. **inference**（画布 UI；合作方规范：Model Prediction）
 
-**Pipeline / 实验级**：规范中的 `model_level`、`base_train_path`、`label_column`、全局排除列等仍在 **非画布** 区域配置；**ENV（全局变量表：Parameters / Description / Value）** 在画布顶栏入口配置，与「pipeline 级别、各节点共享」语义一致（详见规范「pipeline级别配置」与 ENV UI）。
+**Pipeline / 实验级**：规范中的 `model_level`、`base_train_path`、`label_column`、全局排除列等仍在 **非画布** 区域配置；**ENV（全局变量表：Parameters / Description / Value）** 在画布顶栏入口配置，与「pipeline 级别、各节点共享」语义一致（详见规范「pipeline级别配置」与 ENV UI）。**`default_cpu` / `default_memory` / `default_image`** 在顶栏 **Settings** 维护，**不列入** ENV 表（仍随实验持久化）。级联路径 **类型角标** 对 Encoder / best model 等显示为 **model**；节点 **sample_use_col** 为多选 train/test/val（含 Select all）；**Last Run** 含折叠 **Ray Log**（原型）。细则见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 文首「Partner v2.0 与当前原型」段。
 
 **SavePoint / CheckPoint 边标签**：本 6 节点线性原型 **不展示** 旧版边侧 SavePoint 标签；多 SavePoint、多 CheckPoint 的完整语义见下文「Superseded / deferred」，后端落地时可再挂接。
 
@@ -29,7 +29,7 @@
 
 **术语**：**Experiment** = Model Experiment（模型实验）；画布节点 = **Experiment Component**（实验物料，基于 **Component Template**）；**Run** = 一次有顺序的执行记录，绑定配置与产物，改配置后执行 = 新 Run。
 
-画布 **DAG 仅含管道节点**（无独立的 Start / End 占位节点；与 [Feature WideTable 画布](https://github.com/Cedric-Chan/FeatureStore) 一致：**实验级元信息、资源队列与调度**在顶栏 **Edit Meta** / **Execute Config** 中配置，不占用画布节点）。
+画布 **DAG 仅含管道节点**（无独立的 Start / End 占位节点；与 [Feature WideTable 画布](https://github.com/Cedric-Chan/FeatureStore) 一致：**实验级元信息、默认资源、队列与调度**在顶栏 **Edit Meta** / **Settings**（及 **ENV**）中配置，不占用画布节点；当前 Web 原型 **Settings** 为显式 `default_*` + Queue + Schedule，无 Resource Tier 下拉）。
 
 整体顺序（单域）：
 

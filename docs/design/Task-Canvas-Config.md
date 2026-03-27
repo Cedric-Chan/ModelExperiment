@@ -2,7 +2,7 @@
 
 本文档基于 [MODEL_PIPELINE.md](../MODEL_PIPELINE.md)、[分布式训练使用手册_v1.3.md](../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)，以 **LightGBM（LGBM）** 为例，说明：① 原始 Python Sample 的完整 Step 与主要 Function；② 当前 **Experiment 画布**的节点划分、配置要点及与 Python Step 的映射关系。单域、不涉及多域。画布配置入口在 **Experiment 层级**；Experiment 保留当前/最新画布配置，每次 Run 携带配置快照，中间产物与配置均绑定 **Run id**。见 [Naming-And-Responsibilities.md](./Naming-And-Responsibilities.md)。
 
-**Partner v2.0 与当前原型**：合作方节点说明见 [`docs/architecture/frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。[`model-experiment-web`](../prototype/model-experiment-web/) 画布现为 **6 节点线性 DAG**（data source → WOE fit → WOE Transform → Feature selection → Tune & Train → inference）及顶栏 **ENV**；下文「合并节点 / 九节点 SOP」仍描述 Python 全量 Step 与历史产品设计，实现映射时以 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 *Partner spec v2.0* 与 *Superseded / deferred* 为准。
+**Partner v2.0 与当前原型**：合作方节点说明见 [`docs/architecture/frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。[`model-experiment-web`](../prototype/model-experiment-web/) 画布现为 **6 节点线性 DAG**（data source → WOE fit → WOE Transform → Feature selection → Tune & Train → inference）及顶栏 **ENV**、**Settings**。**Settings** 维护 **`default_cpu` / `default_memory` / `default_image`**（带占位默认值与 hover 说明）；此三项**不出现在** Pipeline **ENV** 表格，但仍随实验配置持久化。画布级联 **Input/Output path** 上 Encoder、best model 等产物的**类型角标**为 **model**（物理文件仍可为 `.pkl`）。各管道节点的 **sample_use_col** 为下拉多选 **train / test / val**，支持 **Select all**（不单独存 `all` 枚举；遗留 JSON 中的 `all` 在 UI 层展开为三者）；ENV 键仍为 `woe_fit_sample_scope`、`woe_transform_sample_scope` 等 JSON。**Data source** 侧全局列名配置 ENV 键为 **`sample_use_col`**。**WOE Transform** 仅当 **feature_report** 开启时展示 **stability_dim** 与 **report_tab**。**Model Prediction** 无 **output_columns** 配置项。**Last Run** 下提供可折叠 **Ray Log**（多条 Mock 链接跳转原型日志页）。下文「合并节点 / 九节点 SOP」仍描述 Python 全量 Step 与历史产品设计，实现映射时以 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 *Partner spec v2.0* 与 *Superseded / deferred* 为准。
 
 ---
 
@@ -156,9 +156,9 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 
 以下配置项均对应 MODEL_PIPELINE.md 中各 Step 的输入/输出参数；命名统一用 path 形式（如 encoder_save_path、data_path）。
 
-**顶栏：Edit Meta / Execute Config**（对应 Step 0，实验级）  
-- **在做什么**：**Edit Meta** 展示并编辑 Owner、Description 等；**Execute Config** 配置 Resource Tier、Queue Priority、Schedule（ONCE / Cron）、Pipeline Input Fields；样式与 Feature WideTable 画布 **Execute Config** 对齐。修改直接写 Experiment 实体或执行侧配置，不写入 Run 配置快照中的实验级字段。  
-- **主要配置项**：与 [Pipeline-Steps-and-Canvas-Nodes.md §三](./Pipeline-Steps-and-Canvas-Nodes.md) 一致。
+**顶栏：Edit Meta / Settings**（对应 Step 0，实验级；Web 原型）  
+- **在做什么**：**Edit Meta** 展示并编辑 Owner、Description 等；**Settings** 配置 **`default_cpu` / `default_memory` / `default_image`**、Queue Priority、Schedule（ONCE / Cron）。**不再**使用 Resource Tier 下拉；默认资源与镜像以 Settings 中显式字段为准。Pipeline **ENV** 弹窗**不包含**上述三个默认资源键。  
+- **主要配置项**：与 [Pipeline-Steps-and-Canvas-Nodes.md §三](./Pipeline-Steps-and-Canvas-Nodes.md) 一致（全量产品可仍含 Execute Config / Pipeline Input Fields 等扩展）。
 
 **节点 1：数据源 DataSource**（对应 Step 1，画布首位管道节点）  
 - **在做什么**：配置数据来源与标签列，平台将解析结果注入后续各 Step 的 data_path / sample_path、label、sample_use_col；**categorical_col** 注入 WOE 的 categorical_features。  

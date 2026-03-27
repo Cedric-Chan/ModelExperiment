@@ -25,7 +25,15 @@ type ModalState =
 type ViewState =
   | { type: 'list' }
   | { type: 'config'; task: TrainingTask }
-  | { type: 'run'; task: TrainingTask; instance: TaskInstance };
+  | { type: 'run'; task: TrainingTask; instance: TaskInstance }
+  | {
+      type: 'rayLog';
+      task: TrainingTask;
+      logId: string;
+      title: string;
+      fromConfig: boolean;
+      runInstance?: TaskInstance;
+    };
 
 export default function App() {
   const [tasks, setTasks] = useState<TrainingTask[]>(initialMockTasks);
@@ -174,7 +182,36 @@ export default function App() {
   };
 
   let main: React.ReactNode;
-  if (view.type === 'config') {
+  if (view.type === 'rayLog') {
+    main = (
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-slate-950 text-slate-200">
+        <header className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={() =>
+              view.fromConfig
+                ? setView({ type: 'config', task: view.task })
+                : setView({
+                    type: 'run',
+                    task: view.task,
+                    instance: view.runInstance!,
+                  })
+            }
+            className="text-sm font-medium text-teal-400 hover:text-teal-300"
+          >
+            Back
+          </button>
+          <span className="text-sm font-semibold text-white">{view.title}</span>
+          <span className="text-[11px] font-mono text-slate-500 ml-auto truncate max-w-[min(100%,28rem)]" title={view.logId}>
+            {view.logId}
+          </span>
+        </header>
+        <pre className="flex-1 min-h-0 overflow-auto p-4 text-[11px] font-mono text-slate-400 leading-relaxed whitespace-pre-wrap">
+          {`[mock Ray log]\nExperiment: ${view.task.taskName}\n${view.title}\nlog_id: ${view.logId}\n\n… streaming log lines would appear here …\n`}
+        </pre>
+      </div>
+    );
+  } else if (view.type === 'config') {
     main = (
       <ConfigDetailPage
         key={`experiment-config-${view.task.id}`}
@@ -191,6 +228,15 @@ export default function App() {
           setTasks(prev => prev.map(t => t.id === view.task.id ? updatedTask : t));
           setView({ type: 'run', task: updatedTask, instance });
         }}
+        onOpenRayLog={({ logId, title }) =>
+          setView({
+            type: 'rayLog',
+            task: view.task,
+            logId,
+            title,
+            fromConfig: true,
+          })
+        }
       />
     );
   } else if (view.type === 'run') {
@@ -204,6 +250,16 @@ export default function App() {
         onSave={() => {}}
         onKill={() => handleInstanceKill(view.task.id, view.instance.id)}
         onContinueRun={() => handleInstanceContinue(view.task.id, view.instance.id)}
+        onOpenRayLog={({ logId, title }) =>
+          setView({
+            type: 'rayLog',
+            task: view.task,
+            logId,
+            title,
+            fromConfig: false,
+            runInstance: view.instance,
+          })
+        }
       />
     );
   } else {
