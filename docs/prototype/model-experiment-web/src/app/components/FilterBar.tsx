@@ -19,34 +19,27 @@ interface FilterBarProps {
   onReset: () => void;
 }
 
-/* ─── Label (FeatureStore: uppercase gray) ─── */
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="block select-none text-sm font-medium tracking-wide text-gray-600">
-      {children}
-    </label>
-  );
-}
-
 /* ─── Fuzzy search input ─── */
 interface TextInputProps {
+  id?: string;
   value: string;
   placeholder: string;
   onChange: (val: string) => void;
 }
-function SearchInput({ value, placeholder, onChange }: TextInputProps) {
+function SearchInput({ id, value, placeholder, onChange }: TextInputProps) {
   return (
-    <div className="relative w-full">
+    <div className="relative w-full min-w-0">
       <Search
-        size={16}
-        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
       />
       <input
+        id={id}
         type="text"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-9 text-[15px] text-gray-800
+        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-8 text-[15px] text-gray-800
           placeholder:text-gray-400
           transition-all focus:border-teal-400 focus:bg-white focus:outline-none"
       />
@@ -54,7 +47,7 @@ function SearchInput({ value, placeholder, onChange }: TextInputProps) {
         <button
           type="button"
           onClick={() => onChange('')}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
         >
           <X size={14} />
         </button>
@@ -63,40 +56,50 @@ function SearchInput({ value, placeholder, onChange }: TextInputProps) {
   );
 }
 
-/* ─── FilterBar (visual parity with FeatureStore WideTable FilterBar; instant filter, no Query) ─── */
+const labelCls =
+  'block select-none text-xs font-medium text-gray-600';
+
+/* ─── FilterBar (compact single-row on large screens) ─── */
 export function FilterBar({ filters, onChange, onReset }: FilterBarProps) {
   const hasFilter = Boolean(filters.expName || filters.model || filters.owner);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4 sm:px-8">
-        <div className="flex items-center gap-2.5">
-          <div className="h-5 w-1 rounded-full bg-teal-500" />
-          <span className="text-base font-semibold uppercase tracking-wide text-gray-600">Filters</span>
+    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 px-4 py-3 sm:px-5 lg:flex-row lg:flex-wrap lg:items-end lg:gap-x-4 lg:gap-y-2">
+        <div className="flex shrink-0 items-center gap-2 lg:pb-0.5">
+          <div className="h-5 w-1 shrink-0 rounded-full bg-teal-500" />
+          <span className="text-sm font-medium text-gray-700">Filters</span>
         </div>
-      </div>
 
-      <div className="px-6 py-6 sm:px-8">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>EXPERIMENT NAME</Label>
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <label htmlFor="filter-exp-name" className={labelCls}>
+              Experiment name
+            </label>
             <SearchInput
+              id="filter-exp-name"
               value={filters.expName}
               placeholder="Search experiment name…"
               onChange={(v) => onChange({ ...filters, expName: v })}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>MODEL</Label>
+          <div className="flex min-w-0 flex-col gap-1">
+            <label htmlFor="filter-model" className={labelCls}>
+              Model
+            </label>
             <SearchInput
+              id="filter-model"
               value={filters.model}
               placeholder="Search model name…"
               onChange={(v) => onChange({ ...filters, model: v })}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>OWNER</Label>
+          <div className="flex min-w-0 flex-col gap-1">
+            <label htmlFor="filter-owner" className={labelCls}>
+              Owner
+            </label>
             <SearchInput
+              id="filter-owner"
               value={filters.owner}
               placeholder="Search owner…"
               onChange={(v) => onChange({ ...filters, owner: v })}
@@ -105,11 +108,11 @@ export function FilterBar({ filters, onChange, onReset }: FilterBarProps) {
         </div>
 
         {hasFilter && (
-          <div className="mt-4 flex justify-end">
+          <div className="flex justify-end sm:justify-end lg:ml-auto lg:shrink-0">
             <button
               type="button"
               onClick={onReset}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-[15px] text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-[15px] text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
             >
               <RotateCcw size={15} />
               Reset

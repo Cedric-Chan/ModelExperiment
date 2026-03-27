@@ -10,12 +10,12 @@ import { TaskStatusBadge, InstanceStatusBadge, RegionBadge } from './StatusBadge
 /* ─── Description Tooltip ─── */
 function DescTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
-  if (!text) return <span className="text-sm italic text-gray-300">—</span>;
+  if (!text) return <span className="text-[15px] italic text-gray-300">—</span>;
   return (
     <div className="relative max-w-full" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <p className="cursor-default truncate text-sm text-gray-600">{text}</p>
+      <p className="cursor-default truncate text-[15px] text-gray-600">{text}</p>
       {show && (
-        <div className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg bg-slate-800 px-3 py-2 text-sm leading-relaxed text-white shadow-xl">
+        <div className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg bg-slate-800 px-3 py-2 text-[15px] leading-relaxed text-white shadow-xl">
           <div className="absolute -top-1.5 left-4 w-3 h-3 bg-slate-800 rotate-45 rounded-sm" />
           {text}
         </div>
@@ -38,7 +38,7 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
 
   if (disabled) {
     return (
-      <button disabled className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-slate-300 cursor-not-allowed ${className}`}>
+      <button disabled className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-slate-300 cursor-not-allowed ${className}`}>
         {label}
       </button>
     );
@@ -46,14 +46,14 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
 
   if (isDanger) {
     return (
-      <button onClick={onClick} className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer ${className}`}>
+      <button onClick={onClick} className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer ${className}`}>
         {label}
       </button>
     );
   }
 
   return (
-    <button onClick={onClick} className={`inline-flex items-center rounded px-2.5 py-1.5 text-sm font-medium text-teal-600 transition-colors hover:bg-teal-50/80 hover:text-teal-700 cursor-pointer ${className}`}>
+    <button onClick={onClick} className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-colors hover:bg-teal-50/80 hover:text-teal-700 cursor-pointer ${className}`}>
         {label}
       </button>
   );
@@ -614,18 +614,18 @@ function InstanceRow({ instance, onView, onContinue, onKill, onArtifact }: Insta
 
   return (
     <tr className="group hover:bg-blue-50/30 transition-colors border-b border-slate-100 last:border-0">
-      <td className="whitespace-nowrap py-3.5 pl-14 pr-3 font-mono text-sm font-medium text-blue-600">
+      <td className="whitespace-nowrap py-2.5 pl-12 pr-2 font-mono text-[15px] font-medium text-blue-600">
         {instance.id}
       </td>
-      <td className="whitespace-nowrap px-3 py-3.5"><InstanceStatusBadge status={instance.status} /></td>
-      <td className="max-w-[180px] px-3 py-3.5 text-sm text-gray-600">
+      <td className="whitespace-nowrap px-2 py-2.5"><InstanceStatusBadge status={instance.status} /></td>
+      <td className="max-w-[180px] px-2 py-2.5 text-[15px] text-gray-600">
         <DescTooltip text={instance.notes ?? ''} />
       </td>
-      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.triggerTime}</td>
-      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.startTime}</td>
-      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-600">{instance.finishTime}</td>
-      <td className="whitespace-nowrap truncate px-3 py-3.5 font-mono text-sm text-gray-700">{instance.duration}</td>
-      <td className="py-3 pl-3 pr-4">
+      <td className="whitespace-nowrap truncate px-2 py-2.5 font-mono text-[15px] text-gray-600">{instance.triggerTime}</td>
+      <td className="whitespace-nowrap truncate px-2 py-2.5 font-mono text-[15px] text-gray-600">{instance.startTime}</td>
+      <td className="whitespace-nowrap truncate px-2 py-2.5 font-mono text-[15px] text-gray-600">{instance.finishTime}</td>
+      <td className="whitespace-nowrap truncate px-2 py-2.5 font-mono text-[15px] text-gray-700">{instance.duration}</td>
+      <td className="py-2.5 pl-2 pr-3">
         <div className="flex items-center gap-0.5 flex-nowrap">
           {/* View — always available */}
           <ActionBtn label="View" onClick={onView} />
@@ -646,7 +646,7 @@ function InstanceRow({ instance, onView, onContinue, onKill, onArtifact }: Insta
           {/* More ▾ — Artifact + Log */}
           <Dropdown
             trigger={
-              <button className="inline-flex items-center gap-0.5 rounded px-2.5 py-1.5 text-sm font-medium text-teal-600 transition-all hover:bg-teal-50/80">
+              <button className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-all hover:bg-teal-50/80">
                 More <ChevronDown size={12} />
               </button>
             }
@@ -673,9 +673,9 @@ interface TaskRowProps {
 
 // Column pixel widths — must match <colgroup> exactly
 const COL = {
-  toggle: 40,   // col 1
-  expId:  112,  // col 2
-  expName: 200, // col 3
+  toggle: 36,   // col 1
+  expId:  106,  // col 2
+  expName: 186, // col 3
   // col 4–8 are non-sticky, auto-laid out by table-fixed
 };
 const STICKY2 = COL.toggle;             // left offset for EXP ID
@@ -700,7 +700,7 @@ function TaskRow({
       <tr className={`border-b border-gray-50 transition-colors group cursor-default ${expanded ? 'bg-teal-50/60' : 'hover:bg-gray-50'}`}>
 
         {/* Col 1 — toggle (sticky) */}
-        <td className={`py-4 pl-4 pr-3 sticky left-0 z-10 transition-colors ${stickyBg}`}>
+        <td className={`py-2.5 pl-2.5 pr-2 sticky left-0 z-10 transition-colors ${stickyBg}`}>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); if (task.instances.length > 0) setExpanded(!expanded); }}
@@ -718,31 +718,31 @@ function TaskRow({
 
         {/* Col 2 — Exp ID (sticky) */}
         <td
-          className={`py-4 pr-2 sticky z-10 transition-colors ${stickyBg}`}
+          className={`py-2.5 pr-2 sticky z-10 transition-colors ${stickyBg}`}
           style={{ left: STICKY2 }}
         >
-          <span className="block truncate font-mono text-sm text-gray-600">{task.id}</span>
+          <span className="block truncate font-mono text-[15px] text-gray-600">{task.id}</span>
         </td>
 
         {/* Col 3 — Exp Name (sticky) — has right-side shadow to indicate stickiness */}
         <td
-          className={`py-4 pr-3 sticky z-10 transition-colors ${stickyBg} after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200`}
+          className={`py-2.5 pr-2 sticky z-10 transition-colors ${stickyBg} after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-gray-200`}
           style={{ left: STICKY3, position: 'sticky' }}
         >
           <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="block truncate text-base font-semibold text-gray-900 transition-colors group-hover:text-teal-600">{task.taskName}</span>
+            <span className="block truncate text-[16px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-teal-600">{task.taskName}</span>
             {task.instances.length > 0 && (
-              <span className="text-xs text-slate-500">{task.instances.length} run{task.instances.length > 1 ? 's' : ''}</span>
+              <span className="text-[13px] text-slate-500">{task.instances.length} run{task.instances.length > 1 ? 's' : ''}</span>
             )}
           </div>
         </td>
 
         {/* Col 4 — Model */}
-        <td className="py-4 pr-2">
+        <td className="py-2.5 pr-2">
           <div className="flex flex-wrap items-center gap-1 overflow-hidden">
-            <span className="truncate font-mono text-sm text-gray-800">{task.modelName}</span>
+            <span className="truncate font-mono text-[15px] text-gray-800">{task.modelName}</span>
             {task.modelVersion && (
-              <span className="shrink-0 rounded border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold leading-tight text-teal-700">
+              <span className="shrink-0 rounded border border-teal-100 bg-teal-50 px-1.5 py-0.5 text-[13px] font-semibold leading-tight text-teal-700">
                 {task.modelVersion}
               </span>
             )}
@@ -751,32 +751,32 @@ function TaskRow({
         </td>
 
         {/* Col 5 — Owner */}
-        <td className="py-4 pr-2">
+        <td className="py-2.5 pr-2">
           <div className="flex items-center gap-1 overflow-hidden">
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-[10px] font-medium text-white">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-[11px] font-medium text-white">
               {task.owner[0].toUpperCase()}
             </div>
-            <span className="truncate text-sm text-gray-700">{task.owner}</span>
+            <span className="truncate text-[15px] text-gray-700">{task.owner}</span>
           </div>
         </td>
 
         {/* Col 6 — Biz Team */}
-        <td className="py-4 pr-2">
-          <span className="inline-block max-w-full truncate rounded-md border border-purple-100 bg-purple-50 px-2 py-0.5 text-sm text-purple-700">{task.bizTeam ?? '—'}</span>
+        <td className="py-2.5 pr-2">
+          <span className="inline-block max-w-full truncate rounded-md border border-purple-100 bg-purple-50 px-1.5 py-0.5 text-[15px] text-purple-700">{task.bizTeam ?? '—'}</span>
         </td>
 
         {/* Col 7 — Description */}
-        <td className="py-4 pr-2">
+        <td className="py-2.5 pr-2">
           <DescTooltip text={task.description} />
         </td>
 
         {/* Col 8 — Update Time */}
-        <td className="py-4 pr-2">
-          <span className="block truncate font-mono text-sm text-gray-600">{task.updateTime}</span>
+        <td className="py-2.5 pr-2">
+          <span className="block truncate font-mono text-[15px] text-gray-600">{task.updateTime}</span>
         </td>
 
         {/* Col 9 — Actions */}
-        <td className="py-4 pl-1 pr-3">
+        <td className="py-2.5 pl-0.5 pr-2">
           <div className="flex items-center gap-0.5 flex-nowrap">
             <ActionBtn label="Edit" onClick={onEdit} />
             <ActionBtn label="Copy" onClick={onCopy} />
@@ -818,16 +818,16 @@ function TaskRow({
                 <thead>
                   <tr className="bg-slate-100/80 border-b border-slate-200">
                     {[
-                      { label: 'Run ID',       cls: 'pl-14 pr-3' },
-                      { label: 'Run Status',   cls: 'px-3' },
-                      { label: 'Notes',        cls: 'px-3' },
-                      { label: 'Trigger Time', cls: 'px-3' },
-                      { label: 'Start Time',   cls: 'px-3' },
-                      { label: 'Finish Time',  cls: 'px-3' },
-                      { label: 'Duration',     cls: 'px-3' },
-                      { label: 'Actions',      cls: 'pl-3 pr-4' },
+                      { label: 'Run ID',       cls: 'pl-12 pr-2' },
+                      { label: 'Run Status',   cls: 'px-2' },
+                      { label: 'Notes',        cls: 'px-2' },
+                      { label: 'Trigger Time', cls: 'px-2' },
+                      { label: 'Start Time',   cls: 'px-2' },
+                      { label: 'Finish Time',  cls: 'px-2' },
+                      { label: 'Duration',     cls: 'px-2' },
+                      { label: 'Actions',      cls: 'pl-2 pr-3' },
                     ].map(h => (
-                      <th key={h.label} className={`py-3 ${h.cls} text-left text-sm font-medium tracking-wide text-slate-600 whitespace-nowrap`}>
+                      <th key={h.label} className={`py-2.5 ${h.cls} text-left text-[15px] font-medium tracking-wide text-slate-600 whitespace-nowrap`}>
                         {h.label}
                       </th>
                     ))}
@@ -836,7 +836,7 @@ function TaskRow({
                 <tbody className="divide-y divide-slate-100">
                   {task.instances.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-sm text-gray-500">No runs found for this experiment.</td>
+                      <td colSpan={8} className="py-8 text-center text-[15px] text-gray-500">No runs found for this experiment.</td>
                     </tr>
                   ) : (
                     task.instances.map((inst) => (
@@ -874,12 +874,12 @@ interface ToolbarProps {
 
 export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, ownByMe, onOwnByMeChange }: ToolbarProps) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-6 py-4 sm:px-8">
+    <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
         <div className="h-5 w-1 shrink-0 rounded-full bg-teal-500" />
         <span className="text-base text-gray-800">
           Model Experiments List
-          <span className="ml-2 text-sm text-gray-500">
+          <span className="ml-2 text-[15px] text-gray-500">
             (Showing <strong className="font-semibold text-gray-700">{filtered}</strong> of{' '}
             <strong className="font-semibold text-gray-700">{total}</strong>)
           </span>
@@ -890,7 +890,7 @@ export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, 
         <button
           type="button"
           onClick={() => onOwnByMeChange(!ownByMe)}
-          className={`flex select-none items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-all ${
+          className={`flex select-none items-center gap-2 rounded-lg border px-4 py-2 text-[15px] transition-all ${
             ownByMe
               ? 'bg-teal-50 border-teal-300 text-teal-700'
               : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
@@ -1023,7 +1023,7 @@ export function TaskTable({
 }: TaskTableProps) {
   const paginated = tasks.slice((page - 1) * pageSize, page * pageSize);
 
-  const thCls = 'whitespace-nowrap px-3 py-3.5 text-left text-sm font-semibold tracking-wide text-gray-600';
+  const thCls = 'whitespace-nowrap px-2 py-2.5 text-left text-[15px] font-semibold tracking-wide text-gray-600';
 
   return (
     <div className="w-full overflow-x-auto">
@@ -1032,7 +1032,7 @@ export function TaskTable({
         This is the ONLY reliable way to prevent content overflow between columns.
         min-w ensures the table never collapses below a usable size.
       */}
-      <table className="w-full table-fixed border-collapse" style={{ minWidth: 1240 }}>
+      <table className="w-full table-fixed border-collapse" style={{ minWidth: 1180 }}>
         <colgroup>
           {/* Col 1: toggle */}
           <col style={{ width: COL.toggle }} />
@@ -1041,23 +1041,23 @@ export function TaskTable({
           {/* Col 3: Exp Name */}
           <col style={{ width: COL.expName }} />
           {/* Col 4: Model */}
-          <col style={{ width: 200 }} />
+          <col style={{ width: 186 }} />
           {/* Col 5: Owner */}
-          <col style={{ width: 140 }} />
+          <col style={{ width: 128 }} />
           {/* Col 6: Biz Team */}
-          <col style={{ width: 120 }} />
+          <col style={{ width: 108 }} />
           {/* Col 7: Description */}
-          <col style={{ width: 220 }} />
+          <col style={{ width: 196 }} />
           {/* Col 8: Update Time */}
-          <col style={{ width: 168 }} />
+          <col style={{ width: 156 }} />
           {/* Col 9: Actions */}
-          <col style={{ width: 180 }} />
+          <col style={{ width: 164 }} />
         </colgroup>
 
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
             {/* Col 1 — toggle header (sticky) */}
-            <th className="sticky left-0 z-20 w-11 bg-gray-50 py-3.5 pl-4 pr-3" />
+            <th className="sticky left-0 z-20 w-11 bg-gray-50 py-2.5 pl-2.5 pr-2" />
 
             {/* Col 2 — Exp ID (sticky) */}
             <th
@@ -1080,7 +1080,7 @@ export function TaskTable({
             <th className={thCls}>Biz Team</th>
             <th className={thCls}>Description</th>
             <th className={thCls}>Update Time</th>
-            <th className={`${thCls} pr-3`}>Actions</th>
+            <th className={`${thCls} pr-2`}>Actions</th>
           </tr>
         </thead>
 
