@@ -3,7 +3,6 @@ import {
   X, ChevronDown, Package,
   Check, Info, Copy, Clock, User,
   Search, AlertTriangle, ChevronRight, Tag,
-  FlaskConical, Layers, Users, FileText,
 } from 'lucide-react';
 import {
   TrainingTask, TaskInstance, HistoryVersion, BIZ_TEAMS, BizTeam, REGISTERED_MODELS, ALL_OWNERS,
@@ -23,6 +22,8 @@ interface ModalProps {
   panelClassName?: string;
   /** Classes on the scrollable body wrapper (default: vertical scroll). */
   bodyClassName?: string;
+  /** Override default header strip (border/background/padding). */
+  headerClassName?: string;
 }
 
 export function Modal({
@@ -34,6 +35,7 @@ export function Modal({
   size = 'md',
   panelClassName = '',
   bodyClassName = 'overflow-y-auto flex-1 min-h-0',
+  headerClassName,
 }: ModalProps) {
   const sizeClass = {
     sm: 'max-w-sm',
@@ -61,7 +63,12 @@ export function Modal({
       <div
         className={`relative w-full ${sizeClass} bg-white rounded-[1.25rem] shadow-[0_25px_80px_-12px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/60 flex flex-col max-h-[92vh] ${panelClassName}`}
       >
-        <div className="flex items-start justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 via-white to-teal-50/30 shrink-0">
+        <div
+          className={
+            headerClassName
+              ?? 'flex items-start justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 via-white to-teal-50/30 shrink-0'
+          }
+        >
           <div className="min-w-0 flex-1">
             {headerContent ?? (
               <>
@@ -110,32 +117,29 @@ const inputCls =
 const selectCls =
   'h-10 px-3.5 rounded-xl border border-slate-200/90 bg-white text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] hover:border-[#13c2c2]/55 focus:outline-none focus:border-[#13c2c2] focus:ring-[3px] focus:ring-[#13c2c2]/12 transition-all w-full appearance-none cursor-pointer';
 
-interface ExperimentFormSectionProps {
-  step: string;
-  title: string;
-  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
-  children: React.ReactNode;
-}
+/** Compact controls for Create/Edit experiment modal only */
+const minimalInputCls =
+  'h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20 w-full';
+const minimalTriggerCls =
+  'flex items-center gap-2 h-9 px-3 w-full rounded-md border border-slate-200 bg-white text-sm text-left transition-colors focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20';
 
-function ExperimentFormSection({ step, title, icon: Icon, children }: ExperimentFormSectionProps) {
+function MinimalField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/40 to-teal-50/[0.12] p-4 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_8px_24px_-12px_rgba(15,23,42,0.08)]">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#13c2c2]/[0.12] text-[#0a8f8f] ring-1 ring-[#13c2c2]/20">
-          <Icon size={17} strokeWidth={2.25} />
-        </div>
-        <div className="min-w-0 pt-0.5">
-          <p
-            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#0d9e9e]"
-            style={{ fontFamily: '"IBM Plex Mono", ui-monospace, monospace' }}
-          >
-            {step}
-          </p>
-          <h4 className="text-sm font-semibold text-slate-900 tracking-tight mt-0.5">{title}</h4>
-        </div>
-      </div>
-      <div className="space-y-3">{children}</div>
-    </section>
+    <div className="flex flex-col gap-1">
+      <label className="text-sm text-slate-700">
+        {label}
+        {required && <span className="text-rose-500 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
   );
 }
 
@@ -217,8 +221,8 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
       <button
         type="button"
         onClick={handleOpen}
-        className={`flex items-center gap-2 h-10 px-3.5 w-full rounded-xl border bg-white text-sm transition-all text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]
-          ${error ? 'border-rose-400 ring-[3px] ring-rose-400/20' : open ? 'border-[#13c2c2] ring-[3px] ring-[#13c2c2]/12' : 'border-slate-200/90 hover:border-[#13c2c2]/55'}`}
+        className={`${minimalTriggerCls}
+          ${error ? 'border-rose-400 ring-2 ring-rose-400/25' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
       >
         {value ? (
           <>
@@ -357,8 +361,8 @@ function ExperimentTemplateSelect({ value, onChange, options, error }: Experimen
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 h-10 px-3.5 w-full rounded-xl border bg-white text-sm transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]
-          ${error ? 'border-rose-400 ring-[3px] ring-rose-400/20' : open ? 'border-[#13c2c2] ring-[3px] ring-[#13c2c2]/12' : 'border-slate-200/90 hover:border-[#13c2c2]/55'}`}
+        className={`${minimalTriggerCls}
+          ${error ? 'border-rose-400 ring-2 ring-rose-400/25' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
       >
         <span className={`flex-1 text-left truncate ${!value ? 'text-slate-400' : 'text-slate-800'}`}>
           {value || 'Optional — select experiment…'}
@@ -414,8 +418,8 @@ function BizTeamSelect({ value, onChange, error }: BizTeamSelectProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 h-10 px-3.5 w-full rounded-xl border bg-white text-sm transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]
-          ${error ? 'border-rose-400 ring-[3px] ring-rose-400/20' : open ? 'border-[#13c2c2] ring-[3px] ring-[#13c2c2]/12' : 'border-slate-200/90 hover:border-[#13c2c2]/55'}`}
+        className={`${minimalTriggerCls}
+          ${error ? 'border-rose-400 ring-2 ring-rose-400/25' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
       >
         <span className={`flex-1 text-left truncate ${!value ? 'text-slate-400' : 'text-slate-800'}`}>
           {value || 'Select biz team…'}
@@ -474,8 +478,8 @@ function MultiOwnerSelect({ value, onChange, error }: MultiOwnerSelectProps) {
   return (
     <div ref={ref} className="relative">
       <div
-        className={`flex flex-wrap gap-1.5 min-h-[40px] px-2.5 py-2 rounded-xl border bg-white cursor-text transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]
-          ${error ? 'border-rose-400 ring-[3px] ring-rose-400/20' : open ? 'border-[#13c2c2] ring-[3px] ring-[#13c2c2]/12' : 'border-slate-200/90 hover:border-[#13c2c2]/55'}`}
+        className={`flex flex-wrap gap-1.5 min-h-9 px-2 py-1.5 rounded-md border border-slate-200 bg-white cursor-text transition-colors
+          ${error ? 'border-rose-400 ring-2 ring-rose-400/25' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
         onClick={() => { setOpen(true); inputRef.current?.focus(); }}
       >
         {/* selected pills */}
@@ -607,262 +611,152 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
     : isCopy
       ? 'Copy Model Experiment'
       : 'Create Model Experiment';
-  const subline = isEdit
-    ? `Editing: ${task!.taskName}`
-    : isCopy
-      ? `Copy from: ${task?.taskName ?? ''}`
-      : 'Bind a registered model, assign owners, and describe intent—then open the canvas.';
-  const modePill = isEdit ? 'Edit' : isCopy ? 'Duplicate' : 'New experiment';
   const submitLabel = isEdit ? 'Save Changes' : isCopy ? 'Create Copy' : 'To Canvas';
 
   return (
     <Modal
       title={headline}
       headerContent={(
-        <div className="flex flex-col gap-2 pr-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#13c2c2]/30 bg-gradient-to-r from-[#13c2c2]/12 to-teal-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0a6b6b]">
-              <FlaskConical size={13} className="text-[#13c2c2]" strokeWidth={2.25} />
-              {modePill}
-            </span>
-            <span
-              className="hidden sm:inline text-[10px] text-slate-400"
-              style={{ fontFamily: '"IBM Plex Mono", ui-monospace, monospace' }}
-            >
-              MODEL · EXP
-            </span>
-          </div>
-          <h3 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">{headline}</h3>
-          <p className="text-xs sm:text-sm text-slate-500 max-w-2xl leading-snug line-clamp-2">{subline}</p>
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">{headline}</h3>
+          {(isEdit || isCopy) && task && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isEdit ? `Editing: ${task.taskName}` : `From: ${task.taskName}`}
+            </p>
+          )}
         </div>
       )}
+      headerClassName="flex items-start justify-between gap-4 shrink-0 border-b border-slate-200 bg-white px-4 py-3"
       onClose={onClose}
-      size="2xl"
+      size="lg"
       panelClassName="overflow-hidden"
-      bodyClassName="flex flex-1 flex-col min-h-0 overflow-hidden"
+      bodyClassName="flex flex-1 flex-col min-h-0 overflow-hidden bg-white"
     >
-      <div className="flex flex-1 flex-col md:flex-row min-h-0 max-h-[min(78vh,820px)]">
-        {/* Sidebar — lab rail (md+) */}
-        <aside className="hidden md:flex w-[180px] lg:w-[200px] shrink-0 flex-col justify-between bg-[#0c1222] text-slate-200 p-4 lg:p-5 relative overflow-hidden">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.14]"
-            style={{
-              backgroundImage: `repeating-linear-gradient(
-                -36deg,
-                transparent,
-                transparent 5px,
-                rgba(45, 212, 191, 0.06) 5px,
-                rgba(45, 212, 191, 0.06) 6px
-              )`,
-            }}
-          />
-          <div className="pointer-events-none absolute -right-16 top-1/4 h-48 w-48 rounded-full bg-[#13c2c2]/20 blur-3xl" />
-          <div className="relative z-[1] space-y-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
-              <Layers className="text-[#5eead4]" size={20} strokeWidth={1.75} />
-            </div>
-            <p className="text-[11px] leading-snug text-slate-400">
-              Required fields unlock the canvas. Template is optional.
-            </p>
-            <ul className="space-y-2 text-[10px] text-slate-500">
-              <li className="flex gap-2">
-                <span className="text-[#5eead4] shrink-0">01</span>
-                <span>Identity &amp; name</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-[#5eead4] shrink-0">02</span>
-                <span>Model binding</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-[#5eead4] shrink-0">03</span>
-                <span>Ownership</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-[#5eead4] shrink-0">04</span>
-                <span>Scope &amp; notes</span>
-              </li>
-            </ul>
-          </div>
-          <p
-            className="relative z-[1] text-[9px] uppercase tracking-[0.2em] text-slate-600"
-            style={{ fontFamily: '"IBM Plex Mono", ui-monospace, monospace' }}
-          >
-            config · snapshot
-          </p>
-        </aside>
+      {/* sm+: single sheet without inner scroll; narrow viewports may scroll */}
+      <div className="flex flex-1 flex-col min-h-0 max-h-[85vh] overflow-y-auto sm:max-h-none sm:overflow-hidden">
+        <div className="px-4 py-3 space-y-3 sm:space-y-2.5 flex-1 min-h-0">
+          <MinimalField label="Experiment name" required>
+            <input
+              className={`${minimalInputCls} ${errors.expName ? 'border-rose-400 ring-2 ring-rose-400/20' : ''}`}
+              placeholder="Experiment name"
+              value={form.expName}
+              onChange={(e) => setForm({ ...form, expName: e.target.value })}
+            />
+            {errors.expName && <p className="text-xs text-rose-600 mt-0.5">{errors.expName}</p>}
+          </MinimalField>
 
-        {/* Form column */}
-        <div className="flex flex-1 flex-col min-w-0 min-h-0 bg-[linear-gradient(180deg,#fafbfc_0%,#ffffff_45%)]">
-          <div className="flex-1 min-h-0 overflow-y-auto xl:overflow-hidden px-4 py-4 sm:px-5 sm:py-4">
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:grid-rows-2 xl:gap-x-4 xl:gap-y-3 min-h-0 xl:[grid-template-rows:minmax(0,1fr)_minmax(0,1fr)]">
-              {/* Mobile order 01→02→03→04; xl: [01][03] / [02][04] */}
-              <div className="min-h-0 overflow-hidden xl:col-start-1 xl:row-start-1">
-                <ExperimentFormSection step="01 · Identity" title="Experiment identity" icon={Tag}>
-                  <Field label="Experiment Name" required hint="Unique name to identify this experiment">
-                    <input
-                      className={`${inputCls} ${errors.expName ? 'border-rose-400 ring-[3px] ring-rose-400/20' : ''}`}
-                      placeholder="e.g. XGBoost Churn v3"
-                      value={form.expName}
-                      onChange={(e) => setForm({ ...form, expName: e.target.value })}
-                    />
-                    {errors.expName && <p className="text-xs text-rose-500 mt-0.5">{errors.expName}</p>}
-                  </Field>
-
-                  {isEdit && (
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Model level</label>
-                      <div className="mt-1.5 flex items-center gap-2 min-h-10 px-3.5 py-2.5 rounded-xl border border-slate-200/80 bg-slate-50/90 text-sm text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-                        <Tag size={14} className="text-slate-400 shrink-0" />
-                        <span className="font-mono uppercase tracking-wide">{form.modelLevel}</span>
-                        <span
-                          className="text-[10px] text-slate-400 ml-auto shrink-0 uppercase tracking-wider"
-                          style={{ fontFamily: '"IBM Plex Mono", ui-monospace, monospace' }}
-                        >
-                          read only
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1.5">Pipeline training target tier — fixed after create</p>
-                    </div>
-                  )}
-                </ExperimentFormSection>
+          {isEdit && (
+            <MinimalField label="Model level">
+              <div className={`${minimalInputCls} flex items-center bg-slate-50 text-slate-600`}>
+                <span className="font-mono text-xs uppercase">{form.modelLevel}</span>
+                <span className="text-[10px] text-slate-400 ml-auto">Read-only</span>
               </div>
+            </MinimalField>
+          )}
 
-              <div className="min-h-0 xl:col-start-1 xl:row-start-2 xl:overflow-y-auto xl:pr-0.5">
-                <ExperimentFormSection step="02 · Model" title="Registered model & template" icon={Package}>
-                  <Field label="Model" required hint="Select registered model, then pick a version">
-                    <ModelVersionCascade
-                      value={form.model}
-                      onChange={(v) => setForm({ ...form, model: v })}
-                      error={errors.model}
-                    />
-                    {errors.model && <p className="text-xs text-rose-500 mt-0.5">{errors.model}</p>}
-                  </Field>
+          <MinimalField label="Model" required>
+            <ModelVersionCascade
+              value={form.model}
+              onChange={(v) => setForm({ ...form, model: v })}
+              error={errors.model}
+            />
+            {errors.model && <p className="text-xs text-rose-600 mt-0.5">{errors.model}</p>}
+          </MinimalField>
 
-                  {!isEdit && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <Field
-                        label="Model level"
-                        required
-                        hint="Pipeline training target (sub / mega)"
-                      >
-                        <div className="flex rounded-xl border border-slate-200/90 bg-slate-50 p-1 gap-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                          {(['sub', 'mega'] as const).map((lvl) => (
-                            <button
-                              key={lvl}
-                              type="button"
-                              onClick={() => setForm({ ...form, modelLevel: lvl })}
-                              className={`flex-1 h-9 rounded-lg text-xs font-bold transition-all uppercase tracking-wider
-                                ${form.modelLevel === lvl
-                                  ? 'bg-white text-[#0d9e9e] shadow-sm ring-1 ring-slate-200/90'
-                                  : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                              {lvl}
-                            </button>
-                          ))}
-                        </div>
-                        {errors.modelLevel && <p className="text-xs text-rose-500 mt-0.5">{errors.modelLevel}</p>}
-                      </Field>
-
-                      <Field
-                        label="Template"
-                        hint="Optional — align with an experiment you can access"
-                      >
-                        <ExperimentTemplateSelect
-                          value={form.templateExperimentName}
-                          onChange={(v) => setForm({ ...form, templateExperimentName: v })}
-                          options={templateOptionNames}
-                          error={errors.templateExperimentName}
-                        />
-                        {errors.templateExperimentName && (
-                          <p className="text-xs text-rose-500 mt-0.5">{errors.templateExperimentName}</p>
-                        )}
-                      </Field>
-                    </div>
-                  )}
-
-                  {isEdit && (
-                    <Field
-                      label="Template"
-                      hint="Optional — use another experiment you can access as a starting reference"
+          {!isEdit && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <MinimalField label="Model level" required>
+                <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+                  {(['sub', 'mega'] as const).map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setForm({ ...form, modelLevel: lvl })}
+                      className={`flex-1 h-8 rounded text-xs font-semibold uppercase tracking-wide transition-colors
+                        ${form.modelLevel === lvl
+                          ? 'bg-white text-[#0d9e9e] shadow-sm ring-1 ring-slate-200'
+                          : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                      <ExperimentTemplateSelect
-                        value={form.templateExperimentName}
-                        onChange={(v) => setForm({ ...form, templateExperimentName: v })}
-                        options={templateOptionNames}
-                        error={errors.templateExperimentName}
-                      />
-                      {errors.templateExperimentName && (
-                        <p className="text-xs text-rose-500 mt-0.5">{errors.templateExperimentName}</p>
-                      )}
-                    </Field>
-                  )}
-                </ExperimentFormSection>
-              </div>
-
-              <div className="min-h-0 overflow-hidden xl:col-start-2 xl:row-start-1">
-                <ExperimentFormSection step="03 · Ownership" title="Owners & business team" icon={Users}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 xl:grid-cols-1 xl:gap-3">
-                    <Field label="Owner" required>
-                      <MultiOwnerSelect
-                        value={form.owners}
-                        onChange={(v) => setForm({ ...form, owners: v })}
-                        error={errors.owners}
-                      />
-                      {errors.owners && <p className="text-xs text-rose-500 mt-0.5">{errors.owners}</p>}
-                    </Field>
-
-                    <Field label="Biz Team" required>
-                      <BizTeamSelect
-                        value={form.bizTeam}
-                        onChange={(v) => setForm({ ...form, bizTeam: v })}
-                        error={errors.bizTeam}
-                      />
-                      {errors.bizTeam && <p className="text-xs text-rose-500 mt-0.5">{errors.bizTeam}</p>}
-                    </Field>
-                  </div>
-                </ExperimentFormSection>
-              </div>
-
-              <div className="min-h-0 overflow-hidden xl:col-start-2 xl:row-start-2">
-                <ExperimentFormSection step="04 · Scope" title="Purpose & scope" icon={FileText}>
-                  <Field label="Description" required>
-                    <textarea
-                      className={`h-[4.75rem] px-3 py-2 rounded-xl border bg-white text-sm text-slate-800 placeholder-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] hover:border-[#13c2c2]/55 focus:outline-none focus:border-[#13c2c2] focus:ring-[3px] focus:ring-[#13c2c2]/12 transition-all w-full resize-none ${errors.description ? 'border-rose-400 ring-[3px] ring-rose-400/20' : 'border-slate-200/90'}`}
-                      rows={3}
-                      placeholder="Purpose and scope of this experiment…"
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    />
-                    {errors.description && <p className="text-xs text-rose-500 mt-0.5">{errors.description}</p>}
-                  </Field>
-                </ExperimentFormSection>
-              </div>
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+                {errors.modelLevel && <p className="text-xs text-rose-600 mt-0.5">{errors.modelLevel}</p>}
+              </MinimalField>
+              <MinimalField label="Template">
+                <ExperimentTemplateSelect
+                  value={form.templateExperimentName}
+                  onChange={(v) => setForm({ ...form, templateExperimentName: v })}
+                  options={templateOptionNames}
+                  error={errors.templateExperimentName}
+                />
+                {errors.templateExperimentName && (
+                  <p className="text-xs text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
+                )}
+              </MinimalField>
             </div>
+          )}
+
+          {isEdit && (
+            <MinimalField label="Template">
+              <ExperimentTemplateSelect
+                value={form.templateExperimentName}
+                onChange={(v) => setForm({ ...form, templateExperimentName: v })}
+                options={templateOptionNames}
+                error={errors.templateExperimentName}
+              />
+              {errors.templateExperimentName && (
+                <p className="text-xs text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
+              )}
+            </MinimalField>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <MinimalField label="Owner" required>
+              <MultiOwnerSelect
+                value={form.owners}
+                onChange={(v) => setForm({ ...form, owners: v })}
+                error={errors.owners}
+              />
+              {errors.owners && <p className="text-xs text-rose-600 mt-0.5">{errors.owners}</p>}
+            </MinimalField>
+            <MinimalField label="Biz team" required>
+              <BizTeamSelect
+                value={form.bizTeam}
+                onChange={(v) => setForm({ ...form, bizTeam: v })}
+                error={errors.bizTeam}
+              />
+              {errors.bizTeam && <p className="text-xs text-rose-600 mt-0.5">{errors.bizTeam}</p>}
+            </MinimalField>
           </div>
 
-          <div className="shrink-0 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 sm:px-5 border-t border-slate-200/80 bg-white/90 backdrop-blur-sm">
-            <p className="text-[11px] text-slate-400 text-center sm:text-left">
-              <span className="text-rose-500">*</span> Required fields · Changes apply on submit
-            </p>
-            <div className="flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                className="h-10 px-4 rounded-xl border border-slate-200/90 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                className="group relative h-10 overflow-hidden rounded-xl px-6 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(19,194,194,0.55)] transition-all hover:shadow-[0_12px_28px_-8px_rgba(19,194,194,0.65)]"
-              >
-                <span className="absolute inset-0 bg-gradient-to-b from-[#2dd4bf] via-[#14b8a6] to-[#0d9488]" />
-                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-white/10 to-transparent" />
-                <span className="relative">{submitLabel}</span>
-              </button>
-            </div>
-          </div>
+          <MinimalField label="Description" required>
+            <textarea
+              className={`${minimalInputCls} min-h-[4.25rem] py-2 resize-none ${errors.description ? 'border-rose-400 ring-2 ring-rose-400/20' : ''}`}
+              rows={2}
+              placeholder="Description"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+            {errors.description && <p className="text-xs text-rose-600 mt-0.5">{errors.description}</p>}
+          </MinimalField>
+        </div>
+
+        <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 px-3 rounded-md border border-slate-200 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="h-9 px-4 rounded-md bg-[#13c2c2] text-sm font-medium text-white hover:bg-[#11adad]"
+          >
+            {submitLabel}
+          </button>
         </div>
       </div>
     </Modal>
