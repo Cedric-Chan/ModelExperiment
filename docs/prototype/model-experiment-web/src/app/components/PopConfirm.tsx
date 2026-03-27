@@ -31,7 +31,8 @@ export function PopConfirm({ message, onConfirm, children, danger, confirmLabel 
   const handleOpen = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setPos({ top: rect.top + window.scrollY - 8, left: rect.left + rect.width / 2 + window.scrollX });
+      // Open below trigger so top nav / sticky headers do not clip the panel (rollback on canvas toolbar).
+      setPos({ top: rect.bottom + window.scrollY + 8, left: rect.left + rect.width / 2 + window.scrollX });
     }
     setOpen(true);
   };
@@ -39,10 +40,10 @@ export function PopConfirm({ message, onConfirm, children, danger, confirmLabel 
   const popup = open ? ReactDOM.createPortal(
     <div
       ref={popupRef}
-      style={{ position: 'absolute', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)', zIndex: 10050 }}
+      style={{ position: 'absolute', top: pos.top, left: pos.left, transform: 'translate(-50%, 0)', zIndex: 10050 }}
       className="bg-white rounded-xl border border-slate-200 shadow-2xl p-3 w-60"
     >
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-[-5px] w-2.5 h-2.5 bg-white border-r border-b border-slate-200 rotate-45" />
+      <div className="absolute left-1/2 -translate-x-1/2 top-[-5px] w-2.5 h-2.5 bg-white border-l border-t border-slate-200 rotate-45" />
       <div className="flex items-start gap-2 mb-3">
         <AlertTriangle size={14} className={`mt-0.5 shrink-0 ${danger ? 'text-rose-500' : 'text-amber-500'}`} />
         <p className="text-xs text-slate-600 leading-relaxed">{message}</p>
