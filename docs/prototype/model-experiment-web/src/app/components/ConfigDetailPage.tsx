@@ -10,7 +10,7 @@ import {
   History, Clock, RotateCcw, PlayCircle, PowerOff, Trash2,
   Power, Rewind, FastForward, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, Table2, FolderOpen, Copy, Plus, FileText, StopCircle, Zap,
-  Pencil, Flag, Inbox,
+  Pencil, Flag, Inbox, Undo2,
 } from 'lucide-react';
 import {
   TrainingTask, ALL_OWNERS, REGISTERED_MODELS, TaskInstance, InstanceStatus, PipelineEnvRow,
@@ -23,6 +23,7 @@ import { TaskStatusBadge, RegionBadge, InstanceStatusBadge } from './StatusBadge
 import { WoeBinningModal } from './WoeBinningModal';
 import { FeatureReportModal } from './FeatureReportModal';
 import { FeatureSelectionReportModal } from './FeatureSelectionReportModal';
+import { PopConfirm } from './PopConfirm';
 
 interface ConfigDetailPageProps {
   task: TrainingTask;
@@ -32,8 +33,8 @@ interface ConfigDetailPageProps {
   onSave: (task: TrainingTask) => void;
   /** When provided, the page enters read-only Run View mode */
   runInstance?: TaskInstance;
-  /** Called by the "Back to Config" button in Run View — navigates to the edit canvas */
-  onBackToConfig?: () => void;
+  /** Called by the "Back to Config" button in Run View — navigates to the edit canvas; pass task after rollback */
+  onBackToConfig?: (updatedTask?: TrainingTask) => void;
   /** Kill the current runInstance */
   onKill?: () => void;
   /** Resume pipeline after CHECKING (prototype: sets Run to RUNNING) */
@@ -280,6 +281,8 @@ interface VersionSnapshot {
   nodePatches?: Record<string, { sublabel?: string }>;
   /** per-node-type config property overrides */
   propOverrides?: Partial<Record<NodeType, { label: string; value: string }[]>>;
+  /** Frozen Pipeline ENV at run time (prototype rollback) */
+  pipelineEnv?: PipelineEnvRow[];
 }
 
 /* ─────────────── Constants ─────────────── */
@@ -359,6 +362,13 @@ const CURRENT_LAST_RUN: LastRunMap = {
   infer:              { runId: 'run-20250305-1011', status: 'SUCCESS', finishedTime: '2025-03-05 10:24:39', duration: '13m 37s', artifact: [{ label: 'Rows scored', value: '2,104,887' }, { label: 'Score range', value: '[0.001, 0.982]' }, { label: 'Score mean', value: '0.087' }, { label: 'Output table', value: 'hive://score.lgbm_v12_0305' }] },
 };
 
+const LATEST_CANVAS_SNAPSHOT_RUN_ID = 'run-20250305-0841';
+
+function mockSnapshotPipelineEnv(overrides: Partial<Record<string, string>>): PipelineEnvRow[] {
+  const base = mergePipelineEnvWithDefaults(getDefaultPipelineEnvRows().map((r) => ({ ...r })));
+  return base.map((r) => (overrides[r.name] !== undefined ? { ...r, value: overrides[r.name]! } : { ...r }));
+}
+
 /* ─────────────── Version history mock data ─────────────── */
 const VERSION_HISTORY: VersionSnapshot[] = [
   {
@@ -370,6 +380,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
       feature_selection: [{ label: 'Selection Method', value: 'IV filter only' }, { label: 'IV Threshold', value: '≥ 0.03' }, { label: 'Corr Threshold', value: '< 0.90' }, { label: 'Output', value: 'Feature list v3' }],
       tune_train: [{ label: 'HPO Trials', value: '40' }, { label: 'CV Folds', value: '5' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '3600 s' }, { label: 'Early Stop', value: '15 rounds' }],
     },
+    pipelineEnv: mockSnapshotPipelineEnv({ label_column: 'label_rollback_v3' }),
     lastRunMap: {
       data_source: { runId: 'run-20250221-0910', status: 'SUCCESS', finishedTime: '2025-02-21 09:14:08', duration: '4m 01s', artifact: [{ label: 'Rows loaded', value: '4,613,220' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v11' }] },
       woe_fit: { runId: 'run-20250221-0914', status: 'SUCCESS', finishedTime: '2025-02-21 09:19:42', duration: '5m 34s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,890' }, { label: 'Avg IV', value: '0.119' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v11.pkl' }] },
@@ -388,6 +399,7 @@ const VERSION_HISTORY: VersionSnapshot[] = [
       tune_train: [{ label: 'HPO Trials', value: '30' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '2400 s' }, { label: 'Early Stop', value: '10 rounds' }],
       data_source: [{ label: 'Source Type', value: 'Feature Store' }, { label: 'Lookback', value: '60 days' }, { label: 'Sampling', value: '80%' }, { label: 'Partition', value: 'dt=2025-01-31' }, { label: 'Label Source', value: 'Event Log · 60d' }],
     },
+    pipelineEnv: mockSnapshotPipelineEnv({ sample_use_col: 'sample_type_v2_hist' }),
     lastRunMap: {
       data_source: { runId: 'run-20250207-0600', status: 'SUCCESS', finishedTime: '2025-02-07 06:08:14', duration: '8m 14s', artifact: [{ label: 'Rows loaded', value: '8,104,992' }, { label: 'Feature cols', value: '218' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v10' }] },
       woe_fit: { runId: 'run-20250207-0608', status: 'SUCCESS', finishedTime: '2025-02-07 06:16:47', duration: '8m 33s', artifact: [{ label: 'Features in', value: '218' }, { label: 'Bins created', value: '1,832' }, { label: 'Avg IV', value: '0.108' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v10.pkl' }] },
@@ -406,6 +418,10 @@ const VERSION_HISTORY: VersionSnapshot[] = [
       tune_train: [{ label: 'HPO Trials', value: '20' }, { label: 'CV Folds', value: '3' }, { label: 'Metric', value: 'AUC (maximize)' }, { label: 'Timeout', value: '1800 s' }, { label: 'Early Stop', value: '10 rounds' }],
       woe_fit: [{ label: 'WOE Bins', value: '8 (fixed)' }, { label: 'Min Bin Rate', value: '3%' }, { label: 'Method', value: 'Optimal' }, { label: 'Output', value: 'Encoder .pkl' }],
     },
+    pipelineEnv: mockSnapshotPipelineEnv({
+      label_column: 'label_rollback_v1',
+      base_train_path: '{fp_data}/{model_name}/run_v1_hist',
+    }),
     lastRunMap: {
       data_source: { runId: 'run-20250120-1100', status: 'SUCCESS', finishedTime: '2025-01-20 11:09:31', duration: '9m 31s', artifact: [{ label: 'Rows loaded', value: '3,940,118' }, { label: 'Feature cols', value: '200' }, { label: 'Label col', value: 'is_default_30d' }, { label: 'Output path', value: 'hdfs://data/feat/v9' }] },
       woe_fit: { runId: 'run-20250120-1110', status: 'SUCCESS', finishedTime: '2025-01-20 11:21:07', duration: '11m 36s', artifact: [{ label: 'Features in', value: '200' }, { label: 'Bins created', value: '1,600' }, { label: 'Avg IV', value: '0.098' }, { label: 'Encoder path', value: 'hdfs://woe/enc/v9.pkl' }] },
@@ -416,6 +432,21 @@ const VERSION_HISTORY: VersionSnapshot[] = [
     },
   },
 ];
+
+function buildLatestVersionSnapshot(currentVersion: string): VersionSnapshot {
+  return {
+    version: currentVersion,
+    runId: LATEST_CANVAS_SNAPSHOT_RUN_ID,
+    createdAt: '2025-03-05 08:41',
+    lastRunMap: CURRENT_LAST_RUN,
+    pipelineEnv: mockSnapshotPipelineEnv({}),
+  };
+}
+
+function findSnapshotByRunId(runId: string, currentVersion: string): VersionSnapshot | undefined {
+  if (runId === LATEST_CANVAS_SNAPSHOT_RUN_ID) return buildLatestVersionSnapshot(currentVersion);
+  return VERSION_HISTORY.find((s) => s.runId === runId);
+}
 
 /* ─────────────── Default config props per node type ─────────────── */
 const DEFAULT_PROPS: Record<NodeType, { label: string; value: string }[]> = {
@@ -675,13 +706,7 @@ function RunHistoryDropdown({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // "Latest / current" entry built from CURRENT_LAST_RUN
-  const latestSnap: VersionSnapshot = {
-    version: currentVersion,
-    runId: 'run-20250305-0841',
-    createdAt: '2025-03-05 08:41',
-    lastRunMap: CURRENT_LAST_RUN,
-  };
+  const latestSnap = buildLatestVersionSnapshot(currentVersion);
 
   // Derive end time (latest finishedTime across all node runs)
   const getEndTime = (lrm: LastRunMap) =>
@@ -6259,10 +6284,34 @@ export function ConfigDetailPage({
   const [nodes, setNodes]           = useState<DagNode[]>(() => {
     return initNodes;
   });
+  const [canvasPropOverrides, setCanvasPropOverrides] = useState<
+    VersionSnapshot['propOverrides']
+  >(undefined);
   // Fresh DAG labels/structure when switching experiments (avoids stale canvas state).
   useEffect(() => {
     setNodes(buildDefaultDag().nodes);
   }, [initialTask.id]);
+  useEffect(() => {
+    setCanvasPropOverrides(undefined);
+  }, [initialTask.id]);
+  useEffect(() => {
+    const cr = initialTask.canvasRestore;
+    if (!cr) return;
+    setNodes(
+      buildDefaultDag().nodes.map((n) => {
+        const p = cr.nodePatches?.[n.id];
+        return p ? { ...n, ...p } : n;
+      }),
+    );
+    setCanvasPropOverrides(cr.propOverrides);
+    const cleared: TrainingTask = {
+      ...initialTask,
+      canvasRestore: undefined,
+      pipelineEnv: mergePipelineEnvWithDefaults(initialTask.pipelineEnv),
+    };
+    setTask(cleared);
+    onPersistDraft?.(cleared);
+  }, [initialTask.id, initialTask.canvasRestore]);
   // Reset nodes whenever DAG definition changes (handles HMR stale state)
   const validTypeSet = React.useMemo(() => new Set(Object.keys(NODE_STYLES)), []);
   React.useEffect(() => {
@@ -6322,7 +6371,7 @@ export function ConfigDetailPage({
   }, [nodes, activeRunHistorySnap]);
 
   const effectiveLastRunMap: LastRunMap = isRunHistoryView ? activeRunHistorySnap!.lastRunMap : CURRENT_LAST_RUN;
-  const effectivePropOverrides = isRunHistoryView ? activeRunHistorySnap!.propOverrides : undefined;
+  const effectivePropOverrides = isRunHistoryView ? activeRunHistorySnap!.propOverrides : canvasPropOverrides;
 
   const dragging    = useRef<{ id: string; ox: number; oy: number } | null>(null);
   const canvasRef   = useRef<HTMLDivElement>(null);
@@ -6423,6 +6472,58 @@ export function ConfigDetailPage({
     || runInstance?.status === 'CHECKING'
   );
   const canContinueRun = isRunView && runInstance?.status === 'CHECKING';
+
+  const liveRunRollbackSnap = React.useMemo(
+    () =>
+      runInstance?.canvasSnapshotRunId
+        ? findSnapshotByRunId(runInstance.canvasSnapshotRunId, currentVersion)
+        : undefined,
+    [runInstance?.canvasSnapshotRunId, currentVersion],
+  );
+
+  const applySnapshotToNodesAndCards = useCallback((snap: VersionSnapshot) => {
+    setNodes(
+      buildDefaultDag().nodes.map((n) => {
+        const patch = snap.nodePatches?.[n.id];
+        return patch ? { ...n, ...patch } : n;
+      }),
+    );
+    setCanvasPropOverrides(snap.propOverrides);
+  }, []);
+
+  const handleRollbackHistoryConfirm = useCallback(() => {
+    const snap = activeRunHistorySnap;
+    if (!snap) return;
+    applySnapshotToNodesAndCards(snap);
+    setActiveRunHistorySnap(null);
+    setSelectedId(null);
+    setTask((prev) => {
+      const pip = snap.pipelineEnv?.length
+        ? mergePipelineEnvWithDefaults(snap.pipelineEnv).map((r) => ({ ...r }))
+        : prev.pipelineEnv;
+      const next: TrainingTask = { ...prev, pipelineEnv: pip };
+      queueMicrotask(() => onPersistDraft?.(next));
+      return next;
+    });
+  }, [activeRunHistorySnap, applySnapshotToNodesAndCards, onPersistDraft]);
+
+  const handleRollbackRunConfirm = useCallback(() => {
+    const snap = liveRunRollbackSnap;
+    if (!snap) return;
+    const pip = snap.pipelineEnv?.length
+      ? mergePipelineEnvWithDefaults(snap.pipelineEnv).map((r) => ({ ...r }))
+      : task.pipelineEnv;
+    const next: TrainingTask = {
+      ...task,
+      pipelineEnv: pip,
+      canvasRestore: {
+        nodePatches: snap.nodePatches,
+        propOverrides: snap.propOverrides,
+      },
+    };
+    onPersistDraft?.(next);
+    onBackToConfig?.(next);
+  }, [liveRunRollbackSnap, task, onPersistDraft, onBackToConfig]);
 
   const handleTriggerRun = useCallback(() => {
     // Step 1: config integrity check (with spinner)
@@ -6585,7 +6686,7 @@ export function ConfigDetailPage({
         {/* Right — actions */}
         <div className="flex items-center gap-2 flex-1 justify-end">
           {isRunView ? (
-            /* Run View: Back to Config + Action(Kill only) */
+            /* Run View: Rollback (if snapshot) + Back to Config + Action */
             <>
               <ActionDropdown
                 canTriggerRun={false}
@@ -6595,15 +6696,32 @@ export function ConfigDetailPage({
                 onContinue={() => onContinueRun?.()}
                 onKill={() => onKill?.()}
               />
+              {liveRunRollbackSnap && (
+                <PopConfirm
+                  message="Replace the current experiment draft with this run's saved canvas and Pipeline ENV snapshot, then open Current Config? This cannot be undone."
+                  onConfirm={handleRollbackRunConfirm}
+                  danger
+                  confirmLabel="Rollback"
+                >
+                  <button
+                    type="button"
+                    title="Restore canvas and ENV from this run's frozen snapshot"
+                    className="h-8 px-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900 hover:bg-amber-100 flex items-center gap-1.5 transition-colors"
+                  >
+                    <Undo2 size={13} />Rollback Config
+                  </button>
+                </PopConfirm>
+              )}
               <button
-                onClick={onBackToConfig ?? onBack}
+                type="button"
+                onClick={() => (onBackToConfig ? onBackToConfig() : onBack())}
                 className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-700 hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
               >
                 <RotateCcw size={13} />Back to Config
               </button>
             </>
           ) : isRunHistoryView ? (
-            /* History Run view: Back to Config + Action(all disabled) */
+            /* History Run view: Rollback + Back to Config + Action(all disabled) */
             <>
               <ActionDropdown
                 canTriggerRun={false}
@@ -6613,7 +6731,22 @@ export function ConfigDetailPage({
                 onContinue={() => {}}
                 onKill={() => {}}
               />
+              <PopConfirm
+                message="Replace the current experiment draft with this history run's canvas and Pipeline ENV snapshot? This cannot be undone."
+                onConfirm={handleRollbackHistoryConfirm}
+                danger
+                confirmLabel="Rollback"
+              >
+                <button
+                  type="button"
+                  title="Apply this run's snapshot to editable Current Config"
+                  className="h-8 px-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900 hover:bg-amber-100 flex items-center gap-1.5 transition-colors"
+                >
+                  <Undo2 size={13} />Rollback Config
+                </button>
+              </PopConfirm>
               <button
+                type="button"
                 onClick={() => { setActiveRunHistorySnap(null); setSelectedId(null); }}
                 className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-700 hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
               >
@@ -6626,7 +6759,7 @@ export function ConfigDetailPage({
               {/* Run History dropdown */}
               <RunHistoryDropdown
                 currentVersion={currentVersion}
-                activeRunId={activeRunHistorySnap?.runId}
+                activeRunId={undefined}
                 onSelectRun={snap => { setActiveRunHistorySnap(snap); setSelectedId(null); }}
               />
 

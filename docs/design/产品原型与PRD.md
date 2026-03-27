@@ -154,6 +154,7 @@ flowchart TD
 - **创建**：列表 **Create Exp.** → 创建弹窗 → 进入画布；配置后可通过顶栏 **Action → Trigger Run** 新建实例（或通过列表侧逻辑触发，见原型挂接说明）。
 - **编辑 / 复制**：列表 **Edit** 进入画布；**Copy** 走创建弹窗并可进入新任务画布。顶栏 **Edit**（笔形）打开 **Edit Meta**；**Execute Config** 打开执行配置弹窗（与 WideTable 样式一致）。
 - **历史与只读**：**Run History** 下拉切换历史运行快照 → **History Run** 横幅 + 只读画布；从列表 **View** 进入 **Run View**（ live 实例，可 **Kill**；Run 为 **`CHECKING`** 时顶栏 **Action** 含 **Continue**）。
+- **Rollback Config（配置回滚）**：在 **History Run** 或（具备冻结快照关联的）**Run View** 顶栏，**Back to Config** 旁提供 **Rollback Config**；经 **PopConfirm** 确认后，用该次 Run 的**画布快照**覆盖当前 **Current Config** 草稿：**默认 DAG 拓扑 + `nodePatches`（如节点 sublabel）**、节点卡片 **propOverrides**、以及快照中的 **Pipeline ENV**（原型为 `VersionSnapshot.pipelineEnv` mock）。**History Run**：确认后退出历史只读、回到 **Current Config** 可编辑并回显。**Run View**：确认后更新实验草稿并进入 **Current Config**（原型用 `TrainingTask.canvasRestore` 一次性应用 DAG/卡片，再清除）。仅当 `TaskInstance.canvasSnapshotRunId` 能解析到快照时显示 Run View 侧回滚；生产环境应由 Run 元数据返回完整前端配置快照。
 
 #### 4.1.1 原型实现说明（`docs/prototype/model-experiment-web`）
 
@@ -182,7 +183,7 @@ flowchart TD
 
 **配置页（画布）**：
 - 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 384px，较早期 256px 增宽 50% 以降低信息密度）。
-- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉 + **Execute Config** + **Action**（**Trigger Run**；**Run View** 且 Run 为 **`CHECKING`** 时 **Continue** 可用；运行中实例 **Kill** 可用）。
+- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉（仅 **Current Config**）+ **ENV** / **Settings** + **Action**（**Trigger Run**）。**History Run** / **Run View**：**Rollback Config**（PopConfirm）+ **Back to Config**；**Run View** 且 Run 为 **`CHECKING`** 时 **Continue** 可用；运行中实例 **Kill** 可用。
 - **Trigger Run** 弹窗：**Use Cache**、**Run Notes**、**Run** 提交。
 - 节点链与 §4.1 一致；DAG **无 Start/End**；**Execute Config** 以 **Schedule：ONCE / Cron** 为文档表述（Cron 时填写表达式；原型 UI 若提供常用频率预设，映射为 Cron 表达式，以仓库实现为准）及 **Pipeline Input Fields**。
 

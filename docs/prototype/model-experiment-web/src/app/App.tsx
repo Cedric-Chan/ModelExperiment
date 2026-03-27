@@ -46,6 +46,13 @@ export default function App() {
   const [ownByMe, setOwnByMe] = useState(false);
   const { toasts, show: showToast } = useToast();
 
+  const persistTaskDraft = (t: TrainingTask) => {
+    setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+    setView((v) =>
+      v.type === 'config' && v.task.id === t.id ? { ...v, task: t } : v,
+    );
+  };
+
   const visibleExperiments = useMemo(
     () => filterExperimentsVisibleToOperator(tasks),
     [tasks],
@@ -217,7 +224,7 @@ export default function App() {
         key={`experiment-config-${view.task.id}`}
         task={view.task}
         onBack={() => setView({ type: 'list' })}
-        onPersistDraft={(t) => setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)))}
+        onPersistDraft={persistTaskDraft}
         onSave={(task) => {
           handleSaveConfig(task);
           setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -246,7 +253,11 @@ export default function App() {
         task={view.task}
         runInstance={view.instance}
         onBack={() => setView({ type: 'list' })}
-        onBackToConfig={() => setView({ type: 'config', task: view.task })}
+        onPersistDraft={persistTaskDraft}
+        onBackToConfig={(updated) =>
+          setView((v) =>
+            v.type === 'run' ? { type: 'config', task: updated ?? v.task } : v,
+          )}
         onSave={() => {}}
         onKill={() => handleInstanceKill(view.task.id, view.instance.id)}
         onContinueRun={() => handleInstanceContinue(view.task.id, view.instance.id)}

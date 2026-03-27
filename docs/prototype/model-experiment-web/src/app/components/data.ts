@@ -44,6 +44,14 @@ export interface TaskInstance {
   duration: string;
   rayVersion?: string;
   artifacts?: ArtifactData;
+  /** Prototype: Run History snapshot runId — enables Rollback Config from Live Run View */
+  canvasSnapshotRunId?: string;
+}
+
+/** Prototype: one-shot restore of canvas cards / node sublabels after rollback (consumed on config mount). */
+export interface CanvasRestorePayload {
+  nodePatches?: Record<string, { sublabel?: string }>;
+  propOverrides?: Partial<Record<string, { label: string; value: string }[]>>;
 }
 
 export interface HistoryVersion {
@@ -74,6 +82,8 @@ export interface TrainingTask {
   templateExperimentName?: string;
   /** Pipeline-level global variables for this experiment. */
   pipelineEnv?: PipelineEnvRow[];
+  /** Prototype: applied once when opening the config canvas after Run View rollback */
+  canvasRestore?: CanvasRestorePayload;
 }
 
 const EXCLUDE_COLUMNS_DEFAULT_JSON = JSON.stringify([
@@ -709,6 +719,7 @@ export const initialMockTasks: TrainingTask[] = [
         triggerTime: '2025-03-01 09:00', startTime: '2025-03-01 09:02',
         finishTime: '2025-03-01 10:15', duration: '1h 13m',
         rayVersion: '2.10.0',
+        canvasSnapshotRunId: 'run-20250221-1140',
         artifacts: {
           parameters: { max_depth: 5, learning_rate: 0.05, n_estimators: 200, subsample: 0.8, colsample_bytree: 0.8 },
           metrics: { auc: 0.8923, f1: 0.7654, precision: 0.789, recall: 0.7432, logloss: 0.3211 }
