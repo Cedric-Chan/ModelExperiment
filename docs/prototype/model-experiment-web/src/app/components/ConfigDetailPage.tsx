@@ -1185,7 +1185,7 @@ function FieldTooltip({ text, detach }: { text: string; detach?: boolean }) {
     ReactDOM.createPortal(
       <span
         role="tooltip"
-        className="fixed z-[280] max-w-xs min-w-[200px] bg-slate-800 text-white text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl pointer-events-none whitespace-normal text-left"
+        className="fixed z-[10050] max-w-xs min-w-[200px] bg-slate-800 text-white text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl pointer-events-none whitespace-normal text-left"
         style={{
           left: pos.left,
           top: pos.top - 8,
