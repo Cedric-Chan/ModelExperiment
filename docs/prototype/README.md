@@ -1,7 +1,9 @@
 # 前端交互原型
 
+**验收基准**：以 **`model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
+
 - **`MODEL_TRAINING.html`** — 说明页：指向 [GitHub Pages 演示](https://cedric-chan.github.io/ModelExperiment/) 与仓库地址。
-- **`model-experiment-web/`** — React + Vite 交互原型源码（自 Figma / Make 导出演进）。
+- **`model-experiment-web/`** — React + Vite 交互原型源码（自 Figma / Make 导出演进，以仓库当前行为为准）。
 
 本地运行：
 

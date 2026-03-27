@@ -119,9 +119,9 @@ const selectCls =
 
 /** Compact controls for Create/Edit experiment modal only */
 const minimalInputCls =
-  'h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20 w-full';
+  'h-10 px-3.5 rounded-md border border-slate-200 bg-white text-[15px] leading-snug text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20 w-full';
 const minimalTriggerCls =
-  'flex items-center gap-2 h-9 px-3 w-full rounded-md border border-slate-200 bg-white text-sm text-left transition-colors focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20';
+  'flex items-center gap-2 h-10 px-3.5 w-full rounded-md border border-slate-200 bg-white text-[15px] text-left transition-colors focus:outline-none focus:border-[#13c2c2] focus:ring-2 focus:ring-[#13c2c2]/20';
 
 function MinimalField({
   label,
@@ -133,8 +133,8 @@ function MinimalField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm text-slate-700">
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[15px] font-medium text-slate-700">
         {label}
         {required && <span className="text-rose-500 ml-0.5">*</span>}
       </label>
@@ -154,7 +154,7 @@ const REGION_COLOR: Record<string, string> = {
 };
 function RegionTag({ tag }: { tag: string }) {
   return (
-    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${REGION_COLOR[tag] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+    <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded border ${REGION_COLOR[tag] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
       {tag}
     </span>
   );
@@ -226,17 +226,17 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
       >
         {value ? (
           <>
-            <span className="flex-1 font-mono text-slate-800 truncate text-sm">{selModel}</span>
-            <span className="shrink-0 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[#13c2c2]/10 text-[#0e9e9e]">{selVersion}</span>
+            <span className="flex-1 font-mono text-slate-800 truncate text-[15px]">{selModel}</span>
+            <span className="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-[#13c2c2]/10 text-[#0e9e9e]">{selVersion}</span>
             {modelData && <RegionTag tag={modelData.regionTag} />}
             <button type="button" onClick={handleClear} className="shrink-0 text-slate-300 hover:text-slate-500 transition-colors ml-0.5">
-              <X size={12} />
+              <X size={14} />
             </button>
           </>
         ) : (
           <>
-            <span className="flex-1 text-slate-400">Select model @ version…</span>
-            <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+            <span className="flex-1 text-[15px] text-slate-400">Select model @ version…</span>
+            <ChevronDown size={15} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
           </>
         )}
       </button>
@@ -246,24 +246,24 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden flex"
-               style={{ minHeight: '220px', maxHeight: '280px' }}>
+               style={{ minHeight: '240px', maxHeight: 'min(320px,50vh)' }}>
 
             {/* Left pane — model list */}
             <div className="w-[54%] border-r border-slate-100 flex flex-col shrink-0">
               {/* Search */}
               <div className="px-2.5 pt-2.5 pb-1.5 border-b border-slate-50">
-                <div className="flex items-center gap-1.5 h-7 px-2 rounded-lg bg-slate-50 border border-slate-100">
-                  <Search size={11} className="text-slate-300 shrink-0" />
+                <div className="flex items-center gap-1.5 h-9 px-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <Search size={13} className="text-slate-300 shrink-0" />
                   <input
                     ref={searchRef}
-                    className="flex-1 text-xs bg-transparent outline-none text-slate-700 placeholder-slate-300"
+                    className="flex-1 text-[15px] bg-transparent outline-none text-slate-700 placeholder-slate-300"
                     placeholder="Search model…"
                     value={query}
                     onChange={e => { setQuery(e.target.value); setHoveredModel(null); }}
                   />
                   {query && (
                     <button type="button" onClick={() => setQuery('')} className="text-slate-300 hover:text-slate-500">
-                      <X size={10} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
@@ -271,22 +271,22 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
               {/* Model rows */}
               <div className="overflow-y-auto flex-1 py-1">
                 {filtered.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-6">No models found</p>
+                  <p className="text-[15px] text-slate-400 text-center py-6">No models found</p>
                 ) : filtered.map(m => {
                   const isHovered = activeHover === m.name;
                   const isSelected = selModel === m.name;
                   return (
                     <div
                       key={m.name}
-                      className={`flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors gap-1.5
+                      className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors gap-1.5
                         ${isHovered ? 'bg-[#13c2c2]/8' : 'hover:bg-slate-50'}`}
                       onMouseEnter={() => setHoveredModel(m.name)}
                     >
-                      <span className={`flex-1 text-xs font-mono truncate ${isHovered ? 'text-[#0e9e9e]' : isSelected ? 'text-[#0e9e9e]' : 'text-slate-700'}`}>
+                      <span className={`flex-1 text-[15px] font-mono truncate ${isHovered ? 'text-[#0e9e9e]' : isSelected ? 'text-[#0e9e9e]' : 'text-slate-700'}`}>
                         {m.name}
                       </span>
                       <RegionTag tag={m.regionTag} />
-                      <ChevronRight size={10} className={`shrink-0 ${isHovered ? 'text-[#13c2c2]' : 'text-slate-300'}`} />
+                      <ChevronRight size={12} className={`shrink-0 ${isHovered ? 'text-[#13c2c2]' : 'text-slate-300'}`} />
                     </div>
                   );
                 })}
@@ -296,15 +296,15 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
             {/* Right pane — version list */}
             <div className="flex-1 flex flex-col">
               <div className="px-3 pt-2.5 pb-1.5 border-b border-slate-50">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest truncate">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest truncate">
                   {activeHover ? activeHover : 'Hover a model'}
                 </p>
               </div>
               <div className="overflow-y-auto flex-1 py-1">
                 {!activeModelData ? (
                   <div className="flex flex-col items-center justify-center h-full gap-1.5 text-slate-300 py-8">
-                    <Tag size={18} className="opacity-50" />
-                    <p className="text-xs">Hover a model</p>
+                    <Tag size={20} className="opacity-50" />
+                    <p className="text-[15px]">Hover a model</p>
                   </div>
                 ) : activeModelData.versions.map((ver, idx) => {
                   const isActive = selModel === activeModelData.name && selVersion === ver;
@@ -312,20 +312,20 @@ function ModelVersionCascade({ value, onChange, error }: ModelVersionCascadeProp
                   return (
                     <div
                       key={ver}
-                      className={`flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors gap-2
+                      className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors gap-2
                         ${isActive ? 'bg-[#13c2c2]/10' : 'hover:bg-slate-50'}`}
                       onMouseDown={(e) => { e.preventDefault(); handleSelect(activeModelData.name, ver); }}
                     >
-                      <span className={`text-xs font-semibold font-mono ${isActive ? 'text-[#0e9e9e]' : 'text-slate-700'}`}>
+                      <span className={`text-[15px] font-semibold font-mono ${isActive ? 'text-[#0e9e9e]' : 'text-slate-700'}`}>
                         {ver}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isLatest && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
                             latest
                           </span>
                         )}
-                        {isActive && <Check size={11} className="text-[#13c2c2]" strokeWidth={2.5} />}
+                        {isActive && <Check size={13} className="text-[#13c2c2]" strokeWidth={2.5} />}
                       </div>
                     </div>
                   );
@@ -368,8 +368,8 @@ function ExperimentTemplateSelect({ value, onChange, options, error }: Experimen
           {value || 'Optional — select experiment…'}
         </span>
         {value
-          ? <X size={12} className="text-slate-300 hover:text-slate-500 shrink-0" onClick={(e) => { e.stopPropagation(); onChange(''); }} />
-          : <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          ? <X size={14} className="text-slate-300 hover:text-slate-500 shrink-0" onClick={(e) => { e.stopPropagation(); onChange(''); }} />
+          : <ChevronDown size={15} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         }
       </button>
       {open && (
@@ -377,12 +377,12 @@ function ExperimentTemplateSelect({ value, onChange, options, error }: Experimen
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg py-1 max-h-48 overflow-y-auto">
             {options.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-400">No experiments available</p>
+              <p className="px-3 py-2 text-[15px] text-slate-400">No experiments available</p>
             ) : (
               options.map((name) => (
                 <div
                   key={name}
-                  className={`px-3 py-2 text-sm cursor-pointer transition-colors truncate
+                  className={`px-3 py-2.5 text-[15px] cursor-pointer transition-colors truncate
                     ${value === name ? 'bg-[#13c2c2]/8 text-[#0e9e9e]' : 'text-slate-700 hover:bg-slate-50'}`}
                   onClick={() => { onChange(name); setOpen(false); }}
                 >
@@ -425,8 +425,8 @@ function BizTeamSelect({ value, onChange, error }: BizTeamSelectProps) {
           {value || 'Select biz team…'}
         </span>
         {value
-          ? <X size={12} className="text-slate-300 hover:text-slate-500 shrink-0" onClick={(e) => { e.stopPropagation(); onChange(''); }} />
-          : <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          ? <X size={14} className="text-slate-300 hover:text-slate-500 shrink-0" onClick={(e) => { e.stopPropagation(); onChange(''); }} />
+          : <ChevronDown size={15} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         }
       </button>
       {open && (
@@ -436,7 +436,7 @@ function BizTeamSelect({ value, onChange, error }: BizTeamSelectProps) {
             {BIZ_TEAMS.map((t) => (
               <div
                 key={t}
-                className={`px-3 py-2 text-sm cursor-pointer transition-colors
+                className={`px-3 py-2.5 text-[15px] cursor-pointer transition-colors
                   ${value === t ? 'bg-[#13c2c2]/8 text-[#0e9e9e] font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
                 onClick={() => { onChange(t); setOpen(false); }}
               >
@@ -478,27 +478,27 @@ function MultiOwnerSelect({ value, onChange, error }: MultiOwnerSelectProps) {
   return (
     <div ref={ref} className="relative">
       <div
-        className={`flex flex-wrap gap-1.5 min-h-9 px-2 py-1.5 rounded-md border border-slate-200 bg-white cursor-text transition-colors
+        className={`flex flex-wrap gap-2 min-h-10 px-2.5 py-2 rounded-md border border-slate-200 bg-white cursor-text transition-colors
           ${error ? 'border-rose-400 ring-2 ring-rose-400/25' : open ? 'border-[#13c2c2] ring-2 ring-[#13c2c2]/20' : 'hover:border-slate-300'}`}
         onClick={() => { setOpen(true); inputRef.current?.focus(); }}
       >
         {/* selected pills */}
         {value.map(o => (
-          <span key={o} className="flex items-center gap-1 pl-2 pr-1 h-5 bg-[#13c2c2]/10 text-[#0e9e9e] rounded text-xs font-medium">
+          <span key={o} className="flex items-center gap-1 pl-2 pr-1 h-6 bg-[#13c2c2]/10 text-[#0e9e9e] rounded text-sm font-medium">
             {o}
             <button
               type="button"
               className="hover:text-rose-500 transition-colors"
               onMouseDown={(e) => { e.stopPropagation(); remove(o); }}
             >
-              <X size={10} />
+              <X size={12} />
             </button>
           </span>
         ))}
         {/* search input */}
         <input
           ref={inputRef}
-          className="flex-1 min-w-[80px] h-5 text-sm text-slate-800 placeholder-slate-400 bg-transparent outline-none"
+          className="flex-1 min-w-[88px] h-6 text-[15px] text-slate-800 placeholder-slate-400 bg-transparent outline-none"
           placeholder={value.length === 0 ? 'Search and select owners…' : ''}
           value={query}
           onFocus={() => setOpen(true)}
@@ -513,10 +513,10 @@ function MultiOwnerSelect({ value, onChange, error }: MultiOwnerSelectProps) {
             {filtered.map(o => (
               <div
                 key={o}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-[#13c2c2]/8 hover:text-[#0e9e9e] cursor-pointer transition-colors"
+                className="flex items-center gap-2 px-3 py-2.5 text-[15px] text-slate-700 hover:bg-[#13c2c2]/8 hover:text-[#0e9e9e] cursor-pointer transition-colors"
                 onMouseDown={(e) => { e.preventDefault(); add(o); }}
               >
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#13c2c2] to-teal-600 flex items-center justify-center text-white text-[9px] font-bold">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#13c2c2] to-teal-600 flex items-center justify-center text-white text-[10px] font-bold">
                   {o[0].toUpperCase()}
                 </div>
                 {o}
@@ -618,17 +618,17 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
       title={headline}
       headerContent={(
         <div>
-          <h3 className="text-base font-semibold text-slate-900">{headline}</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{headline}</h3>
           {(isEdit || isCopy) && task && (
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500 mt-0.5">
               {isEdit ? `Editing: ${task.taskName}` : `From: ${task.taskName}`}
             </p>
           )}
         </div>
       )}
-      headerClassName="flex items-start justify-between gap-4 shrink-0 border-b border-slate-200 bg-white px-4 py-3"
+      headerClassName="flex items-start justify-between gap-4 shrink-0 border-b border-slate-200 bg-white px-4 py-3.5"
       onClose={onClose}
-      size="lg"
+      size="xl"
       panelClassName="overflow-hidden"
       bodyClassName="flex flex-1 flex-col min-h-0 overflow-hidden bg-white"
     >
@@ -642,14 +642,14 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
               value={form.expName}
               onChange={(e) => setForm({ ...form, expName: e.target.value })}
             />
-            {errors.expName && <p className="text-xs text-rose-600 mt-0.5">{errors.expName}</p>}
+            {errors.expName && <p className="text-sm text-rose-600 mt-0.5">{errors.expName}</p>}
           </MinimalField>
 
           {isEdit && (
             <MinimalField label="Model level">
               <div className={`${minimalInputCls} flex items-center bg-slate-50 text-slate-600`}>
-                <span className="font-mono text-xs uppercase">{form.modelLevel}</span>
-                <span className="text-[10px] text-slate-400 ml-auto">Read-only</span>
+                <span className="font-mono text-sm uppercase">{form.modelLevel}</span>
+                <span className="text-xs text-slate-400 ml-auto">Read-only</span>
               </div>
             </MinimalField>
           )}
@@ -660,7 +660,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
               onChange={(v) => setForm({ ...form, model: v })}
               error={errors.model}
             />
-            {errors.model && <p className="text-xs text-rose-600 mt-0.5">{errors.model}</p>}
+            {errors.model && <p className="text-sm text-rose-600 mt-0.5">{errors.model}</p>}
           </MinimalField>
 
           {!isEdit && (
@@ -672,7 +672,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                       key={lvl}
                       type="button"
                       onClick={() => setForm({ ...form, modelLevel: lvl })}
-                      className={`flex-1 h-8 rounded text-xs font-semibold uppercase tracking-wide transition-colors
+                      className={`flex-1 h-9 rounded-md text-sm font-semibold uppercase tracking-wide transition-colors
                         ${form.modelLevel === lvl
                           ? 'bg-white text-[#0d9e9e] shadow-sm ring-1 ring-slate-200'
                           : 'text-slate-400 hover:text-slate-600'}`}
@@ -681,7 +681,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                     </button>
                   ))}
                 </div>
-                {errors.modelLevel && <p className="text-xs text-rose-600 mt-0.5">{errors.modelLevel}</p>}
+                {errors.modelLevel && <p className="text-sm text-rose-600 mt-0.5">{errors.modelLevel}</p>}
               </MinimalField>
               <MinimalField label="Template">
                 <ExperimentTemplateSelect
@@ -691,7 +691,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                   error={errors.templateExperimentName}
                 />
                 {errors.templateExperimentName && (
-                  <p className="text-xs text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
+                  <p className="text-sm text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
                 )}
               </MinimalField>
             </div>
@@ -706,7 +706,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                 error={errors.templateExperimentName}
               />
               {errors.templateExperimentName && (
-                <p className="text-xs text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
+                <p className="text-sm text-rose-600 mt-0.5">{errors.templateExperimentName}</p>
               )}
             </MinimalField>
           )}
@@ -718,7 +718,7 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                 onChange={(v) => setForm({ ...form, owners: v })}
                 error={errors.owners}
               />
-              {errors.owners && <p className="text-xs text-rose-600 mt-0.5">{errors.owners}</p>}
+              {errors.owners && <p className="text-sm text-rose-600 mt-0.5">{errors.owners}</p>}
             </MinimalField>
             <MinimalField label="Biz team" required>
               <BizTeamSelect
@@ -726,34 +726,34 @@ export function CreateEditModal({ task, isCopy, visibleExperiments, onClose, onS
                 onChange={(v) => setForm({ ...form, bizTeam: v })}
                 error={errors.bizTeam}
               />
-              {errors.bizTeam && <p className="text-xs text-rose-600 mt-0.5">{errors.bizTeam}</p>}
+              {errors.bizTeam && <p className="text-sm text-rose-600 mt-0.5">{errors.bizTeam}</p>}
             </MinimalField>
           </div>
 
           <MinimalField label="Description" required>
             <textarea
-              className={`${minimalInputCls} min-h-[4.25rem] py-2 resize-none ${errors.description ? 'border-rose-400 ring-2 ring-rose-400/20' : ''}`}
+              className={`${minimalInputCls} min-h-[5.25rem] py-2.5 resize-none ${errors.description ? 'border-rose-400 ring-2 ring-rose-400/20' : ''}`}
               rows={2}
               placeholder="Description"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
-            {errors.description && <p className="text-xs text-rose-600 mt-0.5">{errors.description}</p>}
+            {errors.description && <p className="text-sm text-rose-600 mt-0.5">{errors.description}</p>}
           </MinimalField>
         </div>
 
-        <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3">
+        <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3.5">
           <button
             type="button"
             onClick={onClose}
-            className="h-9 px-3 rounded-md border border-slate-200 text-sm text-slate-700 hover:bg-slate-50"
+            className="h-10 min-w-[5.5rem] px-4 rounded-md border border-slate-200 text-[15px] text-slate-700 hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="h-9 px-4 rounded-md bg-[#13c2c2] text-sm font-medium text-white hover:bg-[#11adad]"
+            className="h-10 px-5 rounded-md bg-[#13c2c2] text-[15px] font-medium text-white hover:bg-[#11adad]"
           >
             {submitLabel}
           </button>

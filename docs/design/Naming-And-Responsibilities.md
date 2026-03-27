@@ -18,7 +18,7 @@
 | Create Task / Create Pipeline | Create Experiment / Create Exp. | 创建实验 |
 | Instance Artifacts / Run Artifacts | Run Artifacts | 运行产物（绑定 Run id） |
 
-**界面用语**（与 [Figma Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) / [`model-experiment-web`](../prototype/model-experiment-web/README.md) 对齐）：列表 **Model Experiments**、列 **Exp Id / Exp Name**、运行列 **Run ID**、展开子表 **Run Status**（含 **CHECKING**）；配置页 **Action → Trigger Run**、**Continue**、**Kill**、**Run History**、**ENV**。创建实验时 **Template** 为可选，枚举为当前操作者有权限的实验名称（用于从既有实验继承/对齐配置语义）。领域文档仍统一写 **Experiment / Run**。合作方只读节点规范：[`frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。
+**界面用语**（以 [`model-experiment-web`](../prototype/model-experiment-web/README.md) 实现为准；[Figma](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) 为设计迁移参考）：列表区标题 **Model Experiments List**、列 **Exp Id / Exp Name**、运行列 **Run ID**、展开子表 **Run Status**（**`QUEUING` 为主展示**；含 **`CHECKING`**）；配置页 **Action → Trigger Run**、**Continue**（Run 为 **`CHECKING`** 时，列表子表与画布顶栏均可）、**Kill**、**Run History**、**ENV**。创建实验时 **Template** 为可选，枚举为当前操作者有权限的实验名称（用于从既有实验继承/对齐配置语义）；列表主按钮 **Create Exp.**，弹窗标题 **Create Model Experiment**。领域文档仍统一写 **Experiment / Run**。合作方只读节点规范：[`frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。
 
 产品/模块名可后续考虑「Model Lab」；本轮仅做上述命名统一。
 
@@ -33,16 +33,16 @@
 
 ## 三、Run 相关操作场景
 
-配置页以 **Action → Trigger Run** 为主入口；**Trigger Run** 弹窗内 **Use Cache** 表达是否优先复用缓存（关即全量重跑）。设计意图包含 **从选中管道节点起执行**（原型中有 **Run 下拉**组件，当前导出未挂接；画布提示选中**管道节点**作为起点），落地以 Figma 为准。
+配置页以 **Action → Trigger Run** 为主入口；**Trigger Run** 弹窗内 **Use Cache** 表达是否优先复用缓存（关即全量重跑）。设计意图包含 **从选中管道节点起执行**（原型中有 **Run 下拉**组件，当前导出未挂接；画布提示选中**管道节点**作为起点），落地以 **`model-experiment-web` 仓库实现**为准。
 
 1. **新建 Run（默认全 DAG）**：**Trigger Run** 通过校验后打开弹窗，提交后新建 Run，默认按**全 pipeline / from start** 路径验证；执行时系统分析配置是否变更，无变更部分可走缓存。**新建 Run 主路径 = 配置页 Action → Trigger Run**；**Web 原型不实现**「存在进行中 Run 时禁止再 Trigger」的串行锁（若后端需要，由接口与产品策略单独约定）。
 2. **改配置后执行**：在画布配置页调整配置后再次执行 → **新 Run id**，按**最新 Experiment 配置**执行；无变更部分可走缓存。
-3. **CHECKING（人工卡点）**：**DAG `isCheckPoint` 节点成功完成后** Run 进入 **CHECKING**；**Continue** 继续调度（原型中为回到 **RUNNING**），**Kill** 为 **KILLED**。列表子表操作顺序 **View → Continue → Kill**（**Continue** 仅 **CHECKING** 可用）。
+3. **CHECKING（人工卡点）**：**DAG `isCheckPoint` 节点成功完成后** Run 进入 **CHECKING**；**Continue** 继续调度（原型中为回到 **RUNNING**），**Kill** 为 **KILLED**。**Continue** 在 **列表 Run 子表** 与 **画布顶栏 Action**（**Run View**）均可用（仅 **CHECKING**）。列表子表操作顺序 **View → Continue → Kill**（**Continue** 仅 **CHECKING** 可用）。
 
 ---
 
 ## 四、与其他文档的关系
 
-- 架构说明、画布配置、训练数据管道、产品 PRD 等文档中的实体名、ER、状态机、术语表均按本约定使用 **Experiment / Run** 及上述职责划分。交互层与 Figma 矛盾的追溯见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)。
+- 架构说明、画布配置、训练数据管道、产品 PRD 等文档中的实体名、ER、状态机、术语表均按本约定使用 **Experiment / Run** 及上述职责划分。交互层历史矛盾与处置见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)；**验收以 `model-experiment-web` 实现为准**。
 - **Experiment Meta** 指实验级元信息语义；**承载位置为顶栏 Edit Meta**（及 Execute Config 中的执行字段），**不再**作为画布占位节点；修改不落 Run 版（直接更新 Experiment 实体或执行侧配置）。
 - 画布节点 = **Experiment Component**（基于 **Component Template** 的实例）；完整术语表见 [系统架构说明 §11](../architecture/系统架构说明.md)。

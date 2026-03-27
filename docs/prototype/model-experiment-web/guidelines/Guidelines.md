@@ -26,7 +26,7 @@ Additionally, if you select a design system to use in the prompt box, you can re
 your design system's components, tokens, variables and components.
 For example:
 
-* Use a base font-size of 14px
+* List / modal body in this prototype targets ~15px (Tailwind `text-[15px]` / `text-base` in places); treat **`model-experiment-web` 源码** as the typography source of truth, not a fixed 14px assumption
 * Date formats should always be in the format “Jun 10”
 * The bottom toolbar should only ever have a maximum of 4 items
 * Never use the floating action button with the bottom toolbar

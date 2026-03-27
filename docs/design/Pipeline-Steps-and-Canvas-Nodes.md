@@ -209,7 +209,7 @@ s3://sg-risk-model-prod/risk/id/spl_acard/acard_model/20240315_v1/woe/encoder/ac
 
 ### 5.6 节点：CheckPoint（择优）（Best Select / Model Summary）
 
-- **节点属性**：`isCheckPoint` **可选**。**Best Select（Model Summary）**：汇总多路 TUNE+Train 分支模型结果并识别最优；多子路径（Model Tune + Model Train）执行完成后，用户择优选定后进入 Model Inference（流程语义，无独立 Continue 按钮；Run 无 CHECKING，按 QUEUING/RUNNING/SUCCESS/FAILED/KILLED 流转）。
+- **节点属性**：`isCheckPoint` **可选**。**Best Select（Model Summary）**：汇总多路 TUNE+Train 分支模型结果并识别最优；多子路径（Model Tune + Model Train）执行完成后，用户择优选定后进入 Model Inference（**DAG 流程语义**，无单独「Continue 至 Inference」控件）。Run 级人工卡点：若 **`isCheckPoint`** 使 Run 进入 **`CHECKING`**，由列表/画布 **Continue** 恢复（见 [产品原型与PRD](./产品原型与PRD.md) §2.1、§4.1）。Run 状态含 **QUEUING**（界面主展示）、**RUNNING**、**CHECKING**、终态等。
 - **配置**：无独立配置区；可选记录「择优结果」引用（如选中的子路径 ID 或 artifact 路径），供 Model Inference 节点读取。
 
 ### 5.7 节点：Model Inference

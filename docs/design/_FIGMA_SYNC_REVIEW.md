@@ -67,15 +67,15 @@
 |----|------|
 | **设计稿/原型** | Start/Experiment Meta 相关面板含 **Schedule**：`ONCE` \| `Hourly` \| `Daily` \| `Weekly` \| `Monthly`（[`ConfigDetailPage.tsx`](../prototype/model-experiment-web/src/app/components/ConfigDetailPage.tsx)）。 |
 | **旧文档** | `Naming-And-Responsibilities.md`：**暂不支持 cron**；`Training-Data-Pipeline.md` 流程图含 Cron。 |
-| **结论** | 采纳设计稿：Naming 改为「设计稿含调度频率配置；是否后端落地 Cron 以迭代为准」；Pipeline 图保留 Cron 并加注与控制台调度配置的关系。 |
+| **结论** | PRD 与产品文档以 **ONCE / Cron**（Cron 表达式）为 **Execute Config** 调度表述；原型 UI 若提供 Hourly/Daily 等预设，映射为 Cron。是否后端落地以迭代为准；Pipeline 图保留 Cron 并加注与控制台调度配置的关系。 |
 
-### ID-09 — CheckPoint 与「Continue」按钮
+### ID-09 — CheckPoint、Run `CHECKING` 与「Continue」
 
 | 项 | 内容 |
 |----|------|
-| **设计稿/原型** | 无独立 **Continue** 文案按钮；择优/分支由 DAG 与节点状态表达。 |
-| **旧文档** | PRD 写「不提供 Continue」与节点文案「Continue 至 Model Inference」并存。 |
-| **结论** | 采纳设计稿：取消「独立 Continue 按钮」的歧义；择优后进入下游节点为 **流程语义**，非单独控件。 |
+| **设计稿/原型** | Run 可处于 **`CHECKING`**（`isCheckPoint` 节点成功完成后）。**Continue** 在 **列表 Run 子表** 与 **画布顶栏 Action**（**Run View**）中可用，仅当 Run 为 **`CHECKING`**。**CheckPoint（择优）** 节点在 DAG 内「择优后进入 Model Inference」为 **流程语义**，与 Run 级 **Continue** 并存。 |
+| **旧文档** | 曾写「无 Continue / 无 CHECKING」，与实现及 §2.1 状态机冲突。 |
+| **结论** | 以 **`model-experiment-web` 实现**为准：存在 **`CHECKING` + Continue**（列表 + 画布）；DAG 择优下游仍为流程语义，非替代 Run 级 Continue。 |
 
 ### ID-10 — 列表级 Trigger 按钮
 
@@ -95,4 +95,4 @@
 
 ---
 
-**最后更新**：与 `docs/design` 本轮以 Figma/原型为准的修订同步。
+**最后更新**：与 `docs/design` 以 `model-experiment-web` 实现为验收基准、Figma 为设计迁移原本的修订同步。

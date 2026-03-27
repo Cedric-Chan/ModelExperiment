@@ -22,7 +22,7 @@
 | 竞品调研_火山引擎机器学习平台.md | 竞品调研 |
 | Canvas-DAG-技术选型与方案对比.md | Canvas DAG 技术选型与方案对比 |
 | 方案B-G-Task与Run概念及配置承载对比.md | Task/Run 与配置承载方案对比 |
-| Model Experiment.zip | Figma 导出的交互与视觉参考（React 代码包）；**页面交互与控件以 Figma / [`prototype/model-experiment-web`](prototype/model-experiment-web/) 为准**，与 [产品原型与PRD](design/产品原型与PRD.md) 同步；领域模型仍以 [系统架构说明](architecture/系统架构说明.md) 为基准，矛盾追溯见 [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)。 |
+| Model Experiment.zip | Figma 导出的交互与视觉参考（React 代码包）；**页面交互与控件以 [`prototype/model-experiment-web`](prototype/model-experiment-web/) 仓库实现为准**，Figma 为设计迁移原本；与 [产品原型与PRD](design/产品原型与PRD.md) 同步；领域模型仍以 [系统架构说明](architecture/系统架构说明.md) 为基准，矛盾追溯见 [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)。 |
 
 ---
 
@@ -61,9 +61,11 @@
 
 **路径**：`docs/prototype/`
 
+**验收基准**：以 **`model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
+
 React（Vite）可交互原型源码在 `model-experiment-web/`；公共部署见 **[GitHub Pages](https://cedric-chan.github.io/ModelExperiment/)**。`MODEL_TRAINING.html` 为说明页，引导打开线上演示与本地运行方式。
 
 | 路径 | 说明 |
 |------|------|
 | [prototype/MODEL_TRAINING.html](prototype/MODEL_TRAINING.html) | 说明页：线上演示链接与本地运行命令 |
-| [prototype/model-experiment-web/](prototype/model-experiment-web/) | React 交互原型源码（与 Figma 导出一致） |
+| [prototype/model-experiment-web/](prototype/model-experiment-web/) | React 交互原型源码（演进自 Figma / Make 导出，以仓库当前行为为准） |

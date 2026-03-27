@@ -122,7 +122,7 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 | **顶栏 Edit Meta / Execute Config** | Meta：Owner、Description 等；Execute：Resource Tier、Queue Priority、Schedule（ONCE/Cron）、Pipeline Input Fields | 与 [Feature WideTable](https://github.com/Cedric-Chan/FeatureStore) Execute Config 入口与弹窗样式对齐；非画布节点 |
 | **数据源 (DataSource)** | Type = Hive：hive_server、table_schema、table_name、custom_filter、label、sample_use_col、categorical_col。Type = S3：s3_path、label、sample_use_col、categorical_col | 画布 **首位管道节点**；需保证数据源表干净、无偏 |
 | **WOE All Feature** | 对全部特征做 **fit → transform → merge**；全局默认 WOE 参数（n_bins、min_bin_rate、min_bin_size、min_missing_bad_cnt、method 等）；再（可选）全部特征探查报告；可配置 SavePoint | WOE 部分 **Time Travel 实验 checkpoint**；节点支持独立运行并存记录 |
-| **Feature Selection** | 特征选择；对选择留下的 Feature 做探查报告；**CheckPoint 属性**（默认关闭，可开启） | 先 feature_selection，再 feature_report(选中特征)；为后续 Model Tune & Train 的 **CheckPoint**；开启时本节点完成后中间产物已写出（Run 无 CHECKING 状态） |
+| **Feature Selection** | 特征选择；对选择留下的 Feature 做探查报告；**CheckPoint 属性**（默认关闭，可开启） | 先 feature_selection，再 feature_report(选中特征)；为后续 Model Tune & Train 的 **CheckPoint**；开启 **isCheckPoint** 时本节点完成后中间产物已写出，Run 可进入 **`CHECKING`** 直至 **Continue** / **Kill**（见 [产品原型与PRD](./产品原型与PRD.md) §2.1、§4.1） |
 | **WOE Selected Feature** | woe_update(可选) → woe_transform → woe_merge，针对**选中特征**；可配置 SavePoint | 后续 Model Tune & Train 实验的存档点 |
 | **Model Tune** | 支持不同分支定义搜索策略 + 搜索参数空间 dict；各分支产出 best_hyper_path / best_model | 支持分支 DAG 并行 |
 | **Model Train** | 选择最优一路分支的 best_hyper_path，再跑一次 model_train()，得到最终要发布的模型 | 合并多路 TUNE 分支 |
@@ -174,7 +174,7 @@ Mega Model（model_bm / model_bm_v2）用于将多个子模型预测结果用 LR
 - **配置区 3 - All Feature Report**（MODEL_PIPELINE §2，可选）：feature_name、data_path、encoder_load_filepath、report_filepath、label、sample_type、pkey、dim、n_bins、sample_use_col、reports。
 
 **节点 3：Feature Selection + Fine Feature Report**（对应 Step 6 + Step 3）  
-- **在做什么**：先 feature_selection 产出 FS 报告，再 feature_report(选中特征) 产出精选报告；**CheckPoint** 为节点属性、默认关闭，开启时本节点完成后中间产物已写出（Run 无 CHECKING 状态）。  
+- **在做什么**：先 feature_selection 产出 FS 报告，再 feature_report(选中特征) 产出精选报告；**CheckPoint** 为节点属性、默认关闭，开启 **isCheckPoint** 时本节点完成后中间产物已写出，Run 可进入 **`CHECKING`** 直至 **Continue** / **Kill**（见 [产品原型与PRD](./产品原型与PRD.md) §2.1、§4.1）。  
 - **配置区 1 - Feature Selection**（MODEL_PIPELINE §5）：data_path、output_filepath、label、model_name、sample_use_col、fs_methods、exclude_cols、iv_threshold、corr_threshold、psi_threshold；v2：stability_* 等。  
 - **配置区 2 - Fine Feature Report**（MODEL_PIPELINE §2）：encoder_load_path、feature_selection_path、report_filepath、sample_type、pkey、dim、reports。
 
