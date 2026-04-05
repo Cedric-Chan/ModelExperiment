@@ -14,7 +14,9 @@ function DescTooltip({ text }: { text: string }) {
   if (!text) return <span className="text-[15px] italic text-gray-300">—</span>;
   return (
     <div className="relative max-w-full" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <p className="cursor-default truncate text-[15px] text-gray-600">{text}</p>
+      <p className="cursor-default truncate text-[15px] text-gray-600" title={text}>
+        {text}
+      </p>
       {show && (
         <div className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-72 rounded-lg bg-slate-800 px-3 py-2 text-[15px] leading-relaxed text-white shadow-xl">
           <div className="absolute -top-1.5 left-4 w-3 h-3 bg-slate-800 rotate-45 rounded-sm" />
@@ -37,9 +39,16 @@ interface ActionBtnProps {
 function ActionBtn({ label, onClick, disabled, variant = 'default', className = '' }: ActionBtnProps) {
   const isDanger = variant === 'danger';
 
+  const focusRing =
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30 focus-visible:ring-offset-1';
+
   if (disabled) {
     return (
-      <button disabled className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-slate-300 cursor-not-allowed ${className}`}>
+      <button
+        type="button"
+        disabled
+        className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-slate-300 cursor-not-allowed ${className}`}
+      >
         {label}
       </button>
     );
@@ -47,16 +56,24 @@ function ActionBtn({ label, onClick, disabled, variant = 'default', className = 
 
   if (isDanger) {
     return (
-      <button onClick={onClick} className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer ${className}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40 focus-visible:ring-offset-1 ${className}`}
+      >
         {label}
       </button>
     );
   }
 
   return (
-    <button onClick={onClick} className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-colors hover:bg-teal-50/80 hover:text-teal-700 cursor-pointer ${className}`}>
-        {label}
-      </button>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-colors hover:bg-teal-50/80 hover:text-teal-700 cursor-pointer ${focusRing} ${className}`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -98,6 +115,17 @@ function Dropdown({ trigger, items }: { trigger: React.ReactNode; items: Dropdow
     window.addEventListener('scroll', handler, true);
     return () => window.removeEventListener('scroll', handler, true);
   }, [open]);
+
+  useEffect(() => {
+    if (!open && !pendingItem) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (pendingItem) setPendingItem(null);
+      else setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, pendingItem]);
 
   const handleToggle = () => {
     if (!open && triggerRef.current) {
@@ -145,7 +173,7 @@ function Dropdown({ trigger, items }: { trigger: React.ReactNode; items: Dropdow
             key={i}
             disabled={item.disabled}
             onClick={(e) => handleItemClick(item, e)}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#13c2c2]/25
               ${item.disabled ? 'text-slate-300 cursor-not-allowed' : item.danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}
           >
             {item.icon && <span className="w-3.5 h-3.5 opacity-70">{item.icon}</span>}
@@ -170,10 +198,17 @@ function Dropdown({ trigger, items }: { trigger: React.ReactNode; items: Dropdow
           <p className="text-xs text-slate-600 leading-relaxed">{pendingItem.confirm?.message}</p>
         </div>
         <div className="flex justify-end gap-2">
-          <button onClick={() => setPendingItem(null)} className="h-6 px-2.5 rounded text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">No</button>
           <button
+            type="button"
+            onClick={() => setPendingItem(null)}
+            className="h-6 px-2.5 rounded text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
+          >
+            No
+          </button>
+          <button
+            type="button"
             onClick={() => { pendingItem.onClick?.(); setPendingItem(null); }}
-            className={`h-6 px-2.5 rounded text-xs text-white transition-colors ${pendingItem.danger ? 'bg-rose-500 hover:bg-rose-600' : 'bg-[#13c2c2] hover:bg-[#10a3a3]'}`}
+            className={`h-6 px-2.5 rounded text-xs text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${pendingItem.danger ? 'bg-rose-500 hover:bg-rose-600 focus-visible:ring-rose-400' : 'bg-[#13c2c2] hover:bg-[#10a3a3] focus-visible:ring-[#13c2c2]/50'}`}
           >
             {pendingItem.confirm?.confirmLabel ?? 'Confirm'}
           </button>
@@ -185,7 +220,9 @@ function Dropdown({ trigger, items }: { trigger: React.ReactNode; items: Dropdow
 
   return (
     <div className="relative" ref={triggerRef}>
-      <div onClick={handleToggle} className="cursor-pointer">{trigger}</div>
+      <div onClick={handleToggle} className="cursor-pointer inline-flex rounded">
+        {trigger}
+      </div>
       {menuPortal}
       {confirmPortal}
     </div>
@@ -238,8 +275,10 @@ const DEFAULT_ALERT_EVENTS: AlertEventRow[] = [
 function MiniToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!value)}
-      className={`inline-flex items-center w-11 h-6 rounded-full transition-colors duration-200 shrink-0 focus:outline-none ${value ? 'bg-[#13c2c2]' : 'bg-slate-300'}`}
+      aria-pressed={value}
+      className={`inline-flex items-center w-11 h-6 rounded-full transition-colors duration-200 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/40 focus-visible:ring-offset-2 ${value ? 'bg-[#13c2c2]' : 'bg-slate-300'}`}
     >
       <span
         className={`inline-block w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ml-0.5 ${value ? 'translate-x-[18px]' : 'translate-x-0'}`}
@@ -581,7 +620,10 @@ function InstanceRow({ instance, onView, onContinue, onKill, onArtifact }: Insta
           {/* More ▾ — Artifact + Log */}
           <Dropdown
             trigger={
-              <button className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-all hover:bg-teal-50/80">
+              <button
+                type="button"
+                className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-[15px] font-medium text-teal-600 transition-colors hover:bg-teal-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
+              >
                 More <ChevronDown size={12} />
               </button>
             }
@@ -638,8 +680,10 @@ function TaskRow({
         <td className={`py-2.5 pl-2.5 pr-2 sticky left-0 z-10 transition-colors ${stickyBg}`}>
           <button
             type="button"
+            aria-expanded={expanded}
+            aria-label={task.instances.length === 0 ? 'No runs to expand' : expanded ? 'Collapse runs' : 'Expand runs'}
             onClick={(e) => { e.stopPropagation(); if (task.instances.length > 0) setExpanded(!expanded); }}
-            className={`flex h-7 w-7 items-center justify-center rounded-md border transition-all
+            className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/35
               ${task.instances.length === 0
                 ? 'border-gray-200 text-gray-200 cursor-default'
                 : expanded
@@ -813,7 +857,7 @@ export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, 
       <div className="flex min-w-0 items-center gap-2.5">
         <div className="h-5 w-1 shrink-0 rounded-full bg-teal-500" />
         <span className="text-base text-gray-800">
-          Model Experiments List
+          Experiments list
           <span className="ml-2 text-[15px] text-gray-500">
             (Showing <strong className="font-semibold text-gray-700">{filtered}</strong> of{' '}
             <strong className="font-semibold text-gray-700">{total}</strong>)
@@ -825,7 +869,8 @@ export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, 
         <button
           type="button"
           onClick={() => onOwnByMeChange(!ownByMe)}
-          className={`flex select-none items-center gap-2 rounded-lg border px-4 py-2 text-[15px] transition-all ${
+          aria-pressed={ownByMe}
+          className={`flex select-none items-center gap-2 rounded-lg border px-4 py-2 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30 focus-visible:ring-offset-2 ${
             ownByMe
               ? 'bg-teal-50 border-teal-300 text-teal-700'
               : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
@@ -849,15 +894,16 @@ export function Toolbar({ total, filtered, onRefresh, onCreateTask, refreshing, 
           type="button"
           onClick={onRefresh}
           title="Refresh list"
-          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+          aria-busy={refreshing}
+          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
         >
-          <RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} />
+          <RefreshCw size={17} className={refreshing ? 'animate-spin motion-reduce:animate-none' : ''} />
         </button>
 
         <button
           type="button"
           onClick={onCreateTask}
-          className="flex items-center gap-2 rounded-lg bg-teal-500 px-5 py-2.5 text-[15px] font-medium text-white shadow-sm shadow-teal-200 transition-all hover:bg-teal-600"
+          className="flex items-center gap-2 rounded-lg bg-[#13c2c2] px-5 py-2.5 text-[15px] font-medium text-white shadow-sm transition-colors hover:bg-[#10a3a3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/50 focus-visible:ring-offset-2"
         >
           <Plus size={16} />
           Create Exp.
@@ -892,7 +938,7 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
           <span>Per page:</span>
           <div className="relative">
             <select
-              className="h-9 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-7 text-[15px] text-slate-800 focus:border-[#13c2c2]/50 focus:outline-none"
+              className="h-9 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-7 text-[15px] text-slate-800 focus:border-[#13c2c2] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/20"
               value={pageSize}
               onChange={(e) => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
             >
@@ -903,9 +949,10 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
         </div>
 
         <button
+          type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={page === 1}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-all hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
         >
           <ChevronRight size={16} className="rotate-180" />
         </button>
@@ -913,9 +960,11 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
         <div className="flex items-center gap-1">
           {pages.map(p => (
             <button
+              type="button"
               key={p}
               onClick={() => onPageChange(p)}
-              className={`flex h-9 w-9 items-center justify-center rounded-lg text-[15px] transition-all
+              aria-current={p === page ? 'page' : undefined}
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30
                 ${p === page ? 'bg-[#13c2c2] text-white shadow-sm' : 'border border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
             >
               {p}
@@ -924,9 +973,10 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
         </div>
 
         <button
+          type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={page === totalPages}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-all hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:border-[#13c2c2]/40 hover:text-[#13c2c2] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
         >
           <ChevronRight size={16} />
         </button>

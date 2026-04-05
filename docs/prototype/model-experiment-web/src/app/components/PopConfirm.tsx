@@ -28,6 +28,15 @@ export function PopConfirm({ message, onConfirm, children, danger, confirmLabel 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const handleOpen = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
@@ -41,7 +50,9 @@ export function PopConfirm({ message, onConfirm, children, danger, confirmLabel 
     <div
       ref={popupRef}
       style={{ position: 'absolute', top: pos.top, left: pos.left, transform: 'translate(-50%, 0)', zIndex: 10050 }}
-      className="bg-white rounded-xl border border-slate-200 shadow-2xl p-3 w-60"
+      className="bg-white rounded-xl border border-slate-200 shadow-lg p-3 w-60"
+      role="dialog"
+      aria-modal="true"
     >
       <div className="absolute left-1/2 -translate-x-1/2 top-[-5px] w-2.5 h-2.5 bg-white border-l border-t border-slate-200 rotate-45" />
       <div className="flex items-start gap-2 mb-3">
@@ -49,11 +60,17 @@ export function PopConfirm({ message, onConfirm, children, danger, confirmLabel 
         <p className="text-xs text-slate-600 leading-relaxed">{message}</p>
       </div>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={() => setOpen(false)} className="h-6 px-2.5 rounded text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">No</button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="h-6 px-2.5 rounded text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
+        >
+          No
+        </button>
         <button
           type="button"
           onClick={() => { onConfirm(); setOpen(false); }}
-          className={`h-6 px-2.5 rounded text-xs text-white transition-colors ${danger ? 'bg-rose-500 hover:bg-rose-600' : 'bg-[#13c2c2] hover:bg-[#10a3a3]'}`}
+          className={`h-6 px-2.5 rounded text-xs text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${danger ? 'bg-rose-500 hover:bg-rose-600 focus-visible:ring-rose-400' : 'bg-[#13c2c2] hover:bg-[#10a3a3] focus-visible:ring-[#13c2c2]/50'}`}
         >
           {confirmLabel}
         </button>

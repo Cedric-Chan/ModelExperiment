@@ -41,13 +41,14 @@ function SearchInput({ id, value, placeholder, onChange }: TextInputProps) {
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-8 text-[15px] text-gray-800
           placeholder:text-gray-400
-          transition-all focus:border-teal-400 focus:bg-white focus:outline-none"
+          transition-colors focus:border-[#13c2c2] focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/20"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange('')}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+          aria-label="Clear filter"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-300 hover:text-gray-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
         >
           <X size={14} />
         </button>
@@ -112,7 +113,7 @@ export function FilterBar({ filters, onChange, onReset }: FilterBarProps) {
             <button
               type="button"
               onClick={onReset}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-[15px] text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-[15px] text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25 focus-visible:ring-offset-2"
             >
               <RotateCcw size={15} />
               Reset

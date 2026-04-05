@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import {
   X, ChevronDown, Package,
   Check, Info, Copy, Clock, User,
@@ -37,6 +37,7 @@ export function Modal({
   bodyClassName = 'overflow-y-auto flex-1 min-h-0',
   headerClassName,
 }: ModalProps) {
+  const titleId = useId();
   const sizeClass = {
     sm: 'max-w-sm',
     md: 'max-w-lg',
@@ -56,23 +57,29 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div
-        className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-slate-900/40"
         onClick={onClose}
         aria-hidden
       />
       <div
-        className={`relative w-full ${sizeClass} bg-white rounded-[1.25rem] shadow-[0_25px_80px_-12px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/60 flex flex-col max-h-[92vh] ${panelClassName}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headerContent ? undefined : titleId}
+        aria-label={headerContent ? title : undefined}
+        className={`relative w-full ${sizeClass} bg-white rounded-xl shadow-lg ring-1 ring-slate-200/80 flex flex-col max-h-[92vh] ${panelClassName}`}
       >
         <div
           className={
             headerClassName
-              ?? 'flex items-start justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 via-white to-teal-50/30 shrink-0'
+              ?? 'flex items-start justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100 bg-white shrink-0'
           }
         >
           <div className="min-w-0 flex-1">
             {headerContent ?? (
               <>
-                <h3 className="text-slate-900 tracking-tight">{title}</h3>
+                <h3 id={titleId} className="text-base font-semibold text-slate-900 tracking-tight">
+                  {title}
+                </h3>
                 {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
               </>
             )}
@@ -80,7 +87,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100/80 transition-colors"
+            className="shrink-0 p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/35 focus-visible:ring-offset-2"
             aria-label="Close"
           >
             <X size={18} strokeWidth={2} />

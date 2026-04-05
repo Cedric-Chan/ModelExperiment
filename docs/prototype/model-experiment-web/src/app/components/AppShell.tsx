@@ -7,9 +7,12 @@ export type AppNavId = 'pipelines' | 'experiments' | 'models';
 export function AppShell({
   children,
   activeNav = 'pipelines',
+  onNavSelect,
 }: {
   children: React.ReactNode;
   activeNav?: AppNavId;
+  /** When set, nav items are clickable; use for routing or prototype placeholders. */
+  onNavSelect?: (id: AppNavId) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -33,6 +36,7 @@ export function AppShell({
           onClick={() => setCollapsed((c) => !c)}
           className={cn(
             'mb-4 flex h-8 w-8 items-center justify-center rounded-[6px] border border-[#e8e8e8] bg-white text-[#666] hover:text-[#13c2c2] transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/35 focus-visible:ring-offset-2',
             collapsed ? 'self-center' : 'self-end',
           )}
         >
@@ -47,23 +51,27 @@ export function AppShell({
           <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-[6px] bg-[#13c2c2]" aria-hidden />
           {!collapsed && <span className="brand-text">Aimos Model</span>}
         </div>
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1" aria-label="Product modules">
           {items.map(({ id, label, icon: Icon }) => {
             const active = activeNav === id;
             return (
-              <div
+              <button
                 key={id}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => onNavSelect?.(id)}
                 className={cn(
-                  'flex cursor-default items-center gap-3 rounded-[6px] border-l-[3px] py-3 px-4 text-[0.9rem] transition-colors',
+                  'flex w-full items-center gap-3 rounded-[6px] border-l-[3px] py-3 px-4 text-left text-[0.9rem] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/40 focus-visible:ring-offset-2',
                   active
                     ? 'border-[#13c2c2] bg-[#13c2c2] text-white'
                     : 'border-transparent text-[#666] hover:bg-black/[0.04] hover:text-[#333]',
                   collapsed && 'justify-center px-2',
                 )}
               >
-                <Icon size={18} strokeWidth={2} className="shrink-0" />
+                <Icon size={18} strokeWidth={2} className="shrink-0" aria-hidden />
                 {!collapsed && <span className="nav-label">{label}</span>}
-              </div>
+              </button>
             );
           })}
         </nav>

@@ -204,7 +204,7 @@ export default function App() {
                     instance: view.runInstance!,
                   })
             }
-            className="text-sm font-medium text-teal-400 hover:text-teal-300"
+            className="text-sm font-medium text-teal-400 hover:text-teal-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
           >
             Back
           </button>
@@ -283,9 +283,12 @@ export default function App() {
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <h1 className="text-lg font-semibold leading-tight text-gray-800 sm:text-xl">
-              Model Experiments
-            </h1>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold leading-tight text-gray-800 sm:text-xl">
+                Aimos Model
+              </h1>
+              <p className="text-[13px] text-gray-500 mt-0.5">Experiments · Pipelines</p>
+            </div>
           </div>
         </header>
 
@@ -340,7 +343,18 @@ export default function App() {
 
   return (
     <>
-      <AppShell activeNav="pipelines">{main}</AppShell>
+      <AppShell
+        activeNav="pipelines"
+        onNavSelect={(id) => {
+          if (id === 'pipelines') {
+            setView({ type: 'list' });
+            return;
+          }
+          showToast('This module is not wired in the prototype yet.', 'info');
+        }}
+      >
+        {main}
+      </AppShell>
 
       {modal?.type === 'create' && (
         <CreateEditModal
