@@ -288,8 +288,10 @@ interface VersionSnapshot {
 /* ─────────────── Constants ─────────────── */
 const NODE_W = 164;
 const NODE_H  = 62;
-/** Canvas right PropertyPanel width (legacy w-64 256px × 1.5). */
-const CONFIG_PANEL_WIDTH_PX = 384;
+/** Right property panel: clamp keeps canvas graph-first per .impeccable canvas rules. */
+const CONFIG_PANEL_WIDTH_CSS = 'clamp(300px, 26vw, 400px)';
+/** Extra world-space padding past last node for panning (matches former magic number). */
+const CANVAS_BOUNDS_PADDING = 140;
 const GX = 200;
 const MID = 240;
 const X0  = 50;
@@ -301,34 +303,46 @@ const NODE_STYLES: Record<NodeType, {
   bg: string; border: string; icon: React.ReactNode; accent: string; iconBg: string;
 }> = {
   data_source: {
-    bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
-    iconBg: 'bg-blue-100',
-    icon: <Database size={14} className="text-blue-500" />,
+    bg: 'bg-white',
+    border: 'border-[#e8e8e8]',
+    accent: 'text-[#333333]',
+    iconBg: 'bg-[rgba(19,194,194,0.1)]',
+    icon: <Database size={14} className="text-[#13c2c2]" />,
   },
   woe_fit: {
-    bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
-    iconBg: 'bg-blue-100',
-    icon: <Sliders size={14} className="text-blue-500" />,
+    bg: 'bg-white',
+    border: 'border-[#e8e8e8]',
+    accent: 'text-[#333333]',
+    iconBg: 'bg-[rgba(19,194,194,0.1)]',
+    icon: <Sliders size={14} className="text-[#13c2c2]" />,
   },
   woe_transform: {
-    bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
-    iconBg: 'bg-blue-100',
-    icon: <RotateCcw size={14} className="text-blue-500" />,
+    bg: 'bg-white',
+    border: 'border-[#e8e8e8]',
+    accent: 'text-[#333333]',
+    iconBg: 'bg-[rgba(19,194,194,0.1)]',
+    icon: <RotateCcw size={14} className="text-[#13c2c2]" />,
   },
   feature_selection: {
-    bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700',
-    iconBg: 'bg-blue-100',
-    icon: <Filter size={14} className="text-blue-500" />,
+    bg: 'bg-white',
+    border: 'border-[#e8e8e8]',
+    accent: 'text-[#333333]',
+    iconBg: 'bg-[rgba(19,194,194,0.1)]',
+    icon: <Filter size={14} className="text-[#13c2c2]" />,
   },
   tune_train: {
-    bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700',
-    iconBg: 'bg-amber-100',
-    icon: <Settings size={14} className="text-amber-500" />,
+    bg: 'bg-[rgba(19,194,194,0.07)]',
+    border: 'border-[#13c2c2]/35',
+    accent: 'text-[#08979c]',
+    iconBg: 'bg-[rgba(19,194,194,0.15)]',
+    icon: <Settings size={14} className="text-[#13c2c2]" />,
   },
   infer: {
-    bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700',
-    iconBg: 'bg-amber-100',
-    icon: <Cpu size={14} className="text-amber-500" />,
+    bg: 'bg-[rgba(19,194,194,0.07)]',
+    border: 'border-[#13c2c2]/35',
+    accent: 'text-[#08979c]',
+    iconBg: 'bg-[rgba(19,194,194,0.15)]',
+    icon: <Cpu size={14} className="text-[#13c2c2]" />,
   },
 };
 
@@ -510,7 +524,7 @@ function Arrow({ edge, nodes }: { edge: DagEdge; nodes: DagNode[] }) {
   const x1 = src.x + NODE_W, y1 = src.y + NODE_H / 2;
   const x2 = dst.x,          y2 = dst.y + NODE_H / 2;
   const mx = x1 + (x2 - x1) * 0.5;
-  return <path d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none" stroke="#94a3b8" strokeWidth={1.5} markerEnd="url(#arrow-gray)" />;
+  return <path d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none" stroke="#cbd5e1" strokeWidth={1.5} markerEnd="url(#arrow-gray)" />;
 }
 
 /* ─────────────── DAG Node Card ─────────────── */
@@ -527,18 +541,18 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
   // Border/shadow in run view mode
   const runBorderCls =
     runExecStatus === 'success' ? 'border-emerald-400 shadow-emerald-100 shadow-md'
-    : runExecStatus === 'running' ? 'border-blue-400 shadow-blue-100 shadow-md'
+    : runExecStatus === 'running' ? 'border-[#13c2c2] shadow-[#13c2c2]/15 shadow-md'
     : runExecStatus === 'failed'  ? 'border-rose-400 shadow-rose-100 shadow-md'
     : runExecStatus === 'skipped' ? 'border-amber-400 shadow-amber-50 shadow-md'
-    : 'border-slate-300'; // pending
+    : 'border-[#e8e8e8]'; // pending
 
   // Background in run view mode
   const runBgCls =
     runExecStatus === 'success' ? 'bg-emerald-50/70'
-    : runExecStatus === 'running' ? 'bg-blue-50/70'
+    : runExecStatus === 'running' ? 'bg-[rgba(19,194,194,0.1)]'
     : runExecStatus === 'failed'  ? 'bg-rose-50/70'
     : runExecStatus === 'skipped' ? 'bg-amber-50/70'
-    : 'bg-slate-100/80'; // pending
+    : 'bg-muted/80'; // pending
 
   const borderCls = isRunView
     ? runBorderCls
@@ -547,7 +561,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
       : hasError
         ? 'border-rose-400 shadow-rose-200 shadow-md'
         : isFirstPipeline
-          ? 'border-emerald-400 shadow-emerald-100 shadow-sm'
+          ? 'border-[#13c2c2]/45 shadow-[#13c2c2]/10 shadow-sm'
           : style.border;
 
   const bgCls = isRunView ? runBgCls : (hasError ? 'bg-rose-50/60' : style.bg);
@@ -565,7 +579,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
     >
       {/* Run view — pulsing ring for RUNNING node */}
       {isRunView && runExecStatus === 'running' && (
-        <div className="absolute inset-0 rounded-xl border-2 border-blue-400 animate-ping opacity-30 pointer-events-none" />
+        <div className="absolute inset-0 rounded-xl border-2 border-[#13c2c2] animate-ping opacity-25 pointer-events-none" />
       )}
       {/* Non-run-view — error pulse ring */}
       {!isRunView && hasError && (
@@ -578,14 +592,14 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
         </div>
         <div className="min-w-0 flex-1">
           <p className={`text-[11px] font-semibold truncate leading-tight ${!isRunView && hasError ? 'text-rose-600' : style.accent}`}>{node.label}</p>
-          <p className={`text-[10px] truncate mt-0.5 leading-tight ${!isRunView && hasError ? 'text-rose-400' : 'text-slate-400'}`}>{node.sublabel}</p>
+          <p className={`text-[10px] truncate mt-0.5 leading-tight ${!isRunView && hasError ? 'text-rose-400' : 'text-muted-foreground'}`}>{node.sublabel}</p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0 ml-0.5">
           {!isRunView && hasError && <XCircle size={11} className="text-rose-400" />}
           {!isRunView && !hasError && node.status === 'locked' && <Lock size={10} className="text-slate-300" />}
 
           {/* Run view small status icon */}
-          {isRunView && runExecStatus === 'running' && <Loader2 size={10} className="text-blue-500 animate-spin" />}
+          {isRunView && runExecStatus === 'running' && <Loader2 size={10} className="text-[#13c2c2] animate-spin" />}
           {isRunView && runExecStatus === 'failed'  && <XCircle size={10} className="text-rose-400" />}
           {isRunView && runExecStatus === 'skipped' && <span className="text-[8px] font-bold text-amber-500 leading-none">SKIP</span>}
           {isRunView && runExecStatus === 'pending' && <span className="text-[8px] font-bold text-slate-400 leading-none">—</span>}
@@ -594,7 +608,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
 
       {/* Corner dot — normal view */}
       {!isRunView && selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-[#13c2c2] border-2 border-white shadow" />}
-      {!isRunView && isFirstPipeline && !selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />}
+      {!isRunView && isFirstPipeline && !selected && !hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-[#13c2c2] border-2 border-white" />}
       {!isRunView && hasError && <div className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-rose-500 border-2 border-white shadow" />}
 
       {/* Corner badge — run view */}
@@ -606,7 +620,7 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
         </div>
       )}
       {isRunView && runExecStatus === 'running' && (
-        <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white shadow flex items-center justify-center">
+        <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-[#13c2c2] border-2 border-white shadow flex items-center justify-center">
           <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
         </div>
       )}
@@ -635,9 +649,9 @@ function DagNodeCard({ node, selected, hasError, errorMsg, onSelect, onDragStart
 function SectionDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <div className="h-px flex-1 bg-slate-100" />
-      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">{label}</span>
-      <div className="h-px flex-1 bg-slate-100" />
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">{label}</span>
+      <div className="h-px flex-1 bg-border" />
     </div>
   );
 }
@@ -721,24 +735,25 @@ function RunHistoryDropdown({
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen(p => !p)}
-        className={`h-8 flex items-center gap-1.5 px-3 rounded-lg border text-xs font-medium transition-all whitespace-nowrap
+        className={`h-8 flex items-center gap-1.5 px-3 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25
           ${open
-            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/60 hover:text-indigo-700'}`}
+            ? 'border-[#13c2c2]/40 bg-[rgba(19,194,194,0.1)] text-[#08979c]'
+            : 'border-border bg-card text-muted-foreground hover:border-[#13c2c2]/35 hover:bg-[rgba(19,194,194,0.06)] hover:text-[#08979c]'}`}
       >
-        <History size={13} className={open ? 'text-indigo-500' : 'text-slate-400'} />
+        <History size={13} className={open ? 'text-[#13c2c2]' : 'text-muted-foreground'} />
         Run History
-        <ChevronDown size={10} className={`transition-transform ml-0.5 ${open ? 'rotate-180 text-indigo-400' : 'text-slate-300'}`} />
+        <ChevronDown size={10} className={`transition-transform ml-0.5 ${open ? 'rotate-180 text-[#13c2c2]' : 'text-muted-foreground/70'}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-[440px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-1.5 w-[440px] bg-card rounded-xl border border-border shadow-lg z-50 overflow-hidden">
           {/* Header */}
-          <div className="px-4 py-2.5 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 flex items-center justify-between">
+          <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                <History size={12} className="text-indigo-500" />
+              <div className="w-6 h-6 rounded-lg bg-[rgba(19,194,194,0.12)] flex items-center justify-center shrink-0">
+                <History size={12} className="text-[#13c2c2]" />
               </div>
               <span className="text-xs font-semibold text-slate-700">Run History</span>
             </div>
@@ -766,14 +781,14 @@ function RunHistoryDropdown({
                   key={snap.runId}
                   onClick={() => { onSelectRun(snap); setOpen(false); }}
                   className={`w-full grid items-center px-4 py-2.5 text-left transition-colors group
-                    ${isSelected ? 'bg-indigo-50/80' : 'hover:bg-slate-50/80'}`}
+                    ${isSelected ? 'bg-[rgba(19,194,194,0.1)]' : 'hover:bg-muted/50'}`}
                   style={{ gridTemplateColumns: '1fr 80px 108px 108px' }}
                 >
                   {/* Run ID + version */}
                   <div className="flex flex-col gap-0.5 min-w-0 pr-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-mono text-[11px] text-slate-700 truncate group-hover:text-slate-900">{snap.runId}</span>
-                      {isSelected && <CheckIcon size={10} className="text-indigo-500 shrink-0" />}
+                      <span className="font-mono text-[11px] text-foreground truncate group-hover:text-foreground">{snap.runId}</span>
+                      {isSelected && <CheckIcon size={10} className="text-[#13c2c2] shrink-0" />}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className={`inline-flex items-center px-1.5 py-px rounded text-[9px] font-semibold font-mono border leading-tight
@@ -1016,7 +1031,11 @@ function SettingsModal({
     onClose();
   };
 
-  const priorityColors: Record<QueuePriority, string> = { Normal: 'text-slate-600', Important: 'text-indigo-600', Critical: 'text-rose-600' };
+  const priorityColors: Record<QueuePriority, string> = {
+    Normal: 'text-muted-foreground',
+    Important: 'text-[#08979c]',
+    Critical: 'text-rose-600',
+  };
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
@@ -5280,9 +5299,13 @@ function PropertyPanel({
   onOpenRayLog?: (payload: { logId: string; title: string }) => void;
 }) {
   if (!node) return (
-    <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 px-6">
-      <Settings size={28} />
-      <p className="text-sm text-center text-slate-400">Click a pipeline node to view<br />and configure its properties</p>
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-muted-foreground">
+      <Settings size={28} className="opacity-50" />
+      <p className="text-center text-sm text-muted-foreground">
+        Click a pipeline node to view
+        <br />
+        and configure its properties
+      </p>
     </div>
   );
   return (
@@ -5356,12 +5379,12 @@ function Minimap({
   const sc = Math.min(scaleX, scaleY, 1);
 
   const nodeTypeColor: Record<NodeType, string> = {
-    data_source:       '#93c5fd',
-    woe_fit:           '#93c5fd',
-    woe_transform:     '#93c5fd',
-    feature_selection: '#93c5fd',
-    tune_train:        '#fcd34d',
-    infer:             '#fcd34d',
+    data_source:       '#b2e8e8',
+    woe_fit:           '#b2e8e8',
+    woe_transform:     '#b2e8e8',
+    feature_selection: '#b2e8e8',
+    tune_train:        '#5ed4d4',
+    infer:             '#5ed4d4',
   };
 
   // Viewport rect in world coords
@@ -5388,8 +5411,8 @@ function Minimap({
 
   return (
     <div
-      className="rounded-xl overflow-hidden border border-slate-200 shadow-lg"
-      style={{ width: MM_W, height: MM_H, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)' }}
+      className="relative rounded-lg overflow-hidden border border-[#e8e8e8] bg-card shadow-sm"
+      style={{ width: MM_W, height: MM_H }}
     >
       <svg
         width={MM_W} height={MM_H}
@@ -5408,7 +5431,7 @@ function Minimap({
           const y1 = src.y * sc + padY + NODE_H * sc / 2;
           const x2 = dst.x * sc + padX + NODE_W * sc / 2;
           const y2 = dst.y * sc + padY + NODE_H * sc / 2;
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#cbd5e1" strokeWidth={0.8} />;
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#e8e8e8" strokeWidth={0.8} />;
         })}
 
         {/* Nodes */}
@@ -5438,7 +5461,7 @@ function Minimap({
       </svg>
 
       {/* Label */}
-      <div className="absolute top-1.5 left-2 text-[9px] font-semibold text-slate-400 uppercase tracking-wider pointer-events-none select-none">
+      <div className="absolute top-1.5 left-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider pointer-events-none select-none">
         Overview
       </div>
     </div>
@@ -5733,7 +5756,7 @@ function RunDropdown({
       mode: 'from_start',
       label: 'From Start',
       desc: 'Execute the full pipeline from DataSource',
-      icon: <Rewind size={13} className="text-indigo-500" />,
+      icon: <Rewind size={13} className="text-[#13c2c2]" />,
       available: true,
     },
   ];
@@ -5768,7 +5791,7 @@ function RunDropdown({
                   : 'hover:bg-slate-50'}`}
             >
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5
-                ${opt.mode === 'from_current' ? (selectedNodeId ? 'bg-teal-50' : 'bg-slate-100') : 'bg-indigo-50'}`}>
+                ${opt.mode === 'from_current' ? (selectedNodeId ? 'bg-[rgba(19,194,194,0.1)]' : 'bg-muted') : 'bg-[rgba(19,194,194,0.08)]'}`}>
                 {opt.icon}
               </div>
               <div className="min-w-0 flex-1">
@@ -6562,38 +6585,40 @@ export function ConfigDetailPage({
   }, [effectiveNodes, edges]);
 
   const selectedNode = effectiveNodes.find(n => n.id === selectedId) ?? null;
-  const maxX = Math.max(...effectiveNodes.map(n => n.x + NODE_W)) + 140;
-  const maxY = Math.max(...effectiveNodes.map(n => n.y + NODE_H)) + 140;
+  const maxX = Math.max(...effectiveNodes.map(n => n.x + NODE_W)) + CANVAS_BOUNDS_PADDING;
+  const maxY = Math.max(...effectiveNodes.map(n => n.y + NODE_H)) + CANVAS_BOUNDS_PADDING;
 
   return (
-    <div className="flex h-full min-h-0 max-h-full flex-col overflow-hidden bg-slate-100">
+    <div className="flex h-full min-h-0 max-h-full flex-col overflow-hidden bg-background">
       {/* ── Top bar ── */}
-      <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center shrink-0">
+      <div className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 shrink-0">
         {/* Left */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
+            type="button"
             onClick={() => {
               if (!isRunView && !isRunHistoryView) onPersistDraft?.(task);
               onBack();
             }}
-            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#13c2c2] transition-colors group shrink-0"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#13c2c2] transition-colors group shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
           >
             <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
             <span>Back</span>
           </button>
-          <div className="w-px h-4 bg-slate-200 shrink-0" />
+          <div className="w-px h-4 bg-border shrink-0" />
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <GitBranch size={14} className="text-[#13c2c2] shrink-0" />
             <span
-              className="text-slate-800 font-medium text-sm truncate"
+              className="text-foreground font-medium text-sm truncate"
               title={task.taskName}
             >{task.taskName}</span>
             <RegionBadge region={task.region} />
             {/* Edit Meta button */}
             {!isRunView && !isRunHistoryView && (
               <button
+                type="button"
                 onClick={() => setShowExpMetaEditModal(true)}
-                className="flex items-center gap-1 h-6 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-500 hover:text-[#13c2c2] hover:border-[#13c2c2]/40 transition-colors shrink-0"
+                className="flex items-center gap-1 h-6 px-2 rounded-md border border-border bg-card text-[11px] text-muted-foreground hover:text-[#13c2c2] hover:border-[#13c2c2]/40 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
               >
                 <Pencil size={10} />
                 Edit
@@ -6653,38 +6678,38 @@ export function ConfigDetailPage({
           {isRunView ? (
             /* Run View (from list): consistent with History Run style */
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
-                <PlayCircle size={12} className="text-indigo-500 shrink-0" />
-                <span className="text-xs font-semibold text-indigo-700">Run View</span>
+              <div className="flex items-center gap-1.5 rounded-lg border border-[#13c2c2]/25 bg-[rgba(19,194,194,0.08)] px-2.5 py-1">
+                <PlayCircle size={12} className="text-[#13c2c2] shrink-0" />
+                <span className="text-xs font-semibold text-[#08979c]">Run View</span>
               </div>
-              <div className="w-px h-3.5 bg-slate-200" />
-              <span className="font-mono text-[11px] text-slate-500">{runInstance!.id}</span>
-              <div className="w-px h-3.5 bg-slate-200" />
+              <div className="w-px h-3.5 bg-border" />
+              <span className="font-mono text-[11px] text-muted-foreground">{runInstance!.id}</span>
+              <div className="w-px h-3.5 bg-border" />
               <InstanceStatusBadge status={runInstance!.status} />
             </div>
           ) : isRunHistoryView ? (
             /* History Run view: badge + run ID + status (no version) */
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
-                <History size={12} className="text-indigo-500 shrink-0" />
-                <span className="text-xs font-semibold text-indigo-700">History Run</span>
+              <div className="flex items-center gap-1.5 rounded-lg border border-[#13c2c2]/25 bg-[rgba(19,194,194,0.08)] px-2.5 py-1">
+                <History size={12} className="text-[#13c2c2] shrink-0" />
+                <span className="text-xs font-semibold text-[#08979c]">History Run</span>
               </div>
-              <div className="w-px h-3.5 bg-slate-200" />
-              <span className="font-mono text-[11px] text-slate-500">{activeRunHistorySnap!.runId}</span>
-              <div className="w-px h-3.5 bg-slate-200" />
+              <div className="w-px h-3.5 bg-border" />
+              <span className="font-mono text-[11px] text-muted-foreground">{activeRunHistorySnap!.runId}</span>
+              <div className="w-px h-3.5 bg-border" />
               <RunOverallStatusBadge status={getRunOverallStatus(activeRunHistorySnap!.lastRunMap)} />
             </div>
           ) : (
             /* Normal edit mode: "Current Config" only — no version number */
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-              <GitBranch size={12} className="text-slate-400 shrink-0" />
-              <span className="text-xs text-slate-500 font-medium">Current Config</span>
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5">
+              <GitBranch size={12} className="text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground font-medium">Current Config</span>
             </div>
           )}
         </div>
 
         {/* Right — actions */}
-        <div className="flex items-center gap-2 flex-1 justify-end">
+        <div className="flex items-center gap-3 flex-1 justify-end">
           {isRunView ? (
             /* Run View: Rollback (if snapshot) + Back to Config + Action */
             <>
@@ -6715,7 +6740,7 @@ export function ConfigDetailPage({
               <button
                 type="button"
                 onClick={() => (onBackToConfig ? onBackToConfig() : onBack())}
-                className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-700 hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
+                className="h-8 px-3 rounded-lg border border-[#13c2c2]/30 bg-[rgba(19,194,194,0.08)] text-sm text-[#08979c] hover:bg-[rgba(19,194,194,0.14)] flex items-center gap-1.5 transition-colors"
               >
                 <RotateCcw size={13} />Back to Config
               </button>
@@ -6748,7 +6773,7 @@ export function ConfigDetailPage({
               <button
                 type="button"
                 onClick={() => { setActiveRunHistorySnap(null); setSelectedId(null); }}
-                className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-700 hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
+                className="h-8 px-3 rounded-lg border border-[#13c2c2]/30 bg-[rgba(19,194,194,0.08)] text-sm text-[#08979c] hover:bg-[rgba(19,194,194,0.14)] flex items-center gap-1.5 transition-colors"
               >
                 <RotateCcw size={13} />Back to Config
               </button>
@@ -6773,7 +6798,7 @@ export function ConfigDetailPage({
                   );
                   setShowEnvModal(true);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 border border-slate-200 bg-white rounded-lg hover:border-[#13c2c2]/60 hover:text-[#0d9e9e] transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-foreground border border-border bg-card rounded-lg hover:border-[#13c2c2]/60 hover:text-[#08979c] transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
               >
                 ENV
               </button>
@@ -6783,7 +6808,7 @@ export function ConfigDetailPage({
                 title="Settings"
                 aria-label="Settings"
                 onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-teal-800 border-2 border-teal-400/80 bg-teal-50/70 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#08979c] border border-[#13c2c2]/45 bg-[rgba(19,194,194,0.1)] rounded-lg hover:border-[#13c2c2] hover:bg-[rgba(19,194,194,0.14)] transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/30"
               >
                 Settings
               </button>
@@ -6804,10 +6829,10 @@ export function ConfigDetailPage({
 
       {/* Run History banner */}
       {isRunHistoryView && !isRunView && (
-        <div className="bg-indigo-50 border-b border-indigo-200 px-5 py-2 flex items-center gap-4 shrink-0">
+        <div className="border-b border-[#13c2c2]/20 bg-[rgba(19,194,194,0.06)] px-6 py-2.5 flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2 shrink-0">
-            <History size={13} className="text-indigo-500 shrink-0" />
-            <span className="text-xs text-indigo-700">
+            <History size={13} className="text-[#13c2c2] shrink-0" />
+            <span className="text-xs text-[#08979c]">
               Viewing history run <span className="font-semibold font-mono">{activeRunHistorySnap!.runId}</span>
               {' '}· Triggered {activeRunHistorySnap!.createdAt}
             </span>
@@ -6816,27 +6841,27 @@ export function ConfigDetailPage({
           <div className="ml-auto flex items-center gap-3 shrink-0">
             {[
               { color: 'bg-emerald-400', label: 'Success'      },
-              { color: 'bg-blue-400',    label: 'Running'      },
+              { color: 'bg-[#5ed4d4]',    label: 'Running'      },
               { color: 'bg-rose-400',    label: 'Failed'       },
               { color: 'bg-amber-400',   label: 'Cache Skipped'},
               { color: 'bg-slate-300',   label: 'Pending'      },
             ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-1 text-[10px] text-slate-500">
+              <div key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <div className={`w-2 h-2 rounded-full ${color}`} />
                 {label}
               </div>
             ))}
-            <span className="text-[10px] bg-indigo-100 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded font-semibold ml-1">READ-ONLY</span>
+            <span className="text-[10px] rounded border border-[#13c2c2]/30 bg-[rgba(19,194,194,0.12)] px-2 py-0.5 font-semibold text-[#08979c] ml-1">READ-ONLY</span>
           </div>
         </div>
       )}
 
-      {/* Run View banner — indigo style, consistent with History Run */}
+      {/* Run View banner — teal-neutral, consistent with History Run */}
       {isRunView && (
-        <div className="bg-indigo-50 border-b border-indigo-200 px-5 py-2 flex items-center gap-4 shrink-0">
+        <div className="border-b border-[#13c2c2]/20 bg-[rgba(19,194,194,0.06)] px-6 py-2.5 flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2 shrink-0">
-            <PlayCircle size={13} className="text-indigo-500 shrink-0" />
-            <span className="text-xs text-indigo-700">
+            <PlayCircle size={13} className="text-[#13c2c2] shrink-0" />
+            <span className="text-xs text-[#08979c]">
               Run <span className="font-semibold font-mono">{runInstance!.id}</span>
               {' '}· Trigger: {runInstance!.triggerTime}
               {' '}· Start: {runInstance!.startTime}
@@ -6847,35 +6872,35 @@ export function ConfigDetailPage({
           <div className="ml-auto flex items-center gap-3 shrink-0">
             {[
               { color: 'bg-emerald-400', label: 'Success'      },
-              { color: 'bg-blue-400',    label: 'Running'      },
+              { color: 'bg-[#5ed4d4]',    label: 'Running'      },
               { color: 'bg-rose-400',    label: 'Failed'       },
               { color: 'bg-amber-400',   label: 'Cache Skipped'},
               { color: 'bg-slate-300',   label: 'Pending'      },
             ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-1 text-[10px] text-slate-500">
+              <div key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <div className={`w-2 h-2 rounded-full ${color}`} />
                 {label}
               </div>
             ))}
-            <span className="text-[10px] bg-indigo-100 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded font-semibold ml-1">READ-ONLY</span>
+            <span className="text-[10px] rounded border border-[#13c2c2]/30 bg-[rgba(19,194,194,0.12)] px-2 py-0.5 font-semibold text-[#08979c] ml-1">READ-ONLY</span>
           </div>
         </div>
       )}
 
       {/* Canvas + panel */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden gap-0">
         {/* DAG canvas */}
         <div ref={canvasRef} className="flex-1 min-h-0 relative overflow-hidden cursor-default"
           onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onMouseDown={handleCanvasMouseDown} onContextMenu={e => e.preventDefault()}>
 
-          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: `${24*zoom}px ${24*zoom}px`, backgroundPosition: `${pan.x%(24*zoom)}px ${pan.y%(24*zoom)}px` }} />
+          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, #d9d9d9 1px, transparent 1px)', backgroundSize: `${24*zoom}px ${24*zoom}px`, backgroundPosition: `${pan.x%(24*zoom)}px ${pan.y%(24*zoom)}px` }} />
 
           <div className="absolute" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
             <svg className="absolute top-0 left-0 pointer-events-none overflow-visible" style={{ width: maxX, height: maxY }}>
               <defs>
                 <marker id="arrow-gray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                  <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
+                  <polygon points="0 0, 8 3, 0 6" fill="#cbd5e1" />
                 </marker>
               </defs>
               {edges.map((e, i) => <Arrow key={i} edge={e} nodes={effectiveNodes} />)}
@@ -6904,24 +6929,27 @@ export function ConfigDetailPage({
           {showCheckPanel && checkResult && <CheckResultPanel result={checkResult} onClose={() => setShowCheckPanel(false)} />}
 
           {/* Zoom + Minimap — bottom left stack */}
-          <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-1.5 items-start">
+          <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2 items-start">
             {/* Zoom controls */}
-            <div className="flex items-center gap-1 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg px-1.5 py-1 shadow-sm">
+            <div className="flex items-center gap-1 rounded-lg border border-[#e8e8e8] bg-card px-1.5 py-1 shadow-sm">
               <button
+                type="button"
                 onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(1)))}
-                className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all"
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
                 title="Zoom out"
               ><ZoomOut size={12} /></button>
-              <span className="text-[11px] text-slate-500 w-8 text-center tabular-nums select-none">{Math.round(zoom * 100)}%</span>
+              <span className="text-[11px] text-muted-foreground w-8 text-center tabular-nums select-none">{Math.round(zoom * 100)}%</span>
               <button
+                type="button"
                 onClick={() => setZoom(z => Math.min(2, +(z + 0.1).toFixed(1)))}
-                className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all"
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
                 title="Zoom in"
               ><ZoomIn size={12} /></button>
-              <div className="w-px h-3.5 bg-slate-200 mx-0.5" />
+              <div className="w-px h-3.5 bg-border mx-0.5" />
               <button
+                type="button"
                 onClick={() => { setZoom(0.72); setPan({ x: 32, y: 80 }); }}
-                className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all"
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#13c2c2]/25"
                 title="Fit to screen"
               ><Maximize2 size={11} /></button>
             </div>
@@ -6941,7 +6969,7 @@ export function ConfigDetailPage({
           </div>
 
           {/* Hint — bottom right */}
-          <div className="absolute bottom-4 right-4 text-[10px] text-slate-400 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-100 pointer-events-none">
+          <div className="absolute bottom-4 right-4 pointer-events-none rounded-lg border border-[#e8e8e8] bg-card px-3 py-2 text-[10px] text-muted-foreground shadow-sm">
             {(isRunView || isRunHistoryView)
               ? 'Right-drag to pan · Scroll to zoom · Click node to inspect'
               : 'Right-drag to pan · Scroll to zoom · Click a pipeline node to set run start'}
@@ -6968,8 +6996,8 @@ export function ConfigDetailPage({
 
         {/* Right panel */}
         <div
-          className="min-h-0 h-full overflow-hidden bg-white border-l border-slate-200 flex flex-col shrink-0"
-          style={{ width: CONFIG_PANEL_WIDTH_PX }}
+          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card"
+          style={{ width: CONFIG_PANEL_WIDTH_CSS }}
         >
           <PropertyPanel
             node={selectedNode}
