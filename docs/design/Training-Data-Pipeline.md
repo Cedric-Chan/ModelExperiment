@@ -47,17 +47,21 @@ flowchart LR
     S3Artifact --> StatusUpdate
 ```
 
+
+
 **与 Figma / 控制台交互**：**Manual** 对应用户在 **Model Experiments** 配置页的 **Action → Trigger Run**（及设计意图中的列表 Trigger）；**Cron** 与顶栏 **Execute Config · Schedule**（ONCE / Cron 表达式）对应，是否已由后端调度器落地以迭代为准。详见 [_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)。
 
 ### 2.2 Phase 责任划分
 
-| 逻辑阶段 | 环境映射 | 职责描述 |
-|-------|----------|------|
-| 数据获取 | Ray Data | Python 脚本包含获取设定范围内数据的指令。**当前实现（risk_model_on_ray）**：由 Ray 任务从 **S3 路径**（Parquet）读取，使用 Ray Dataset；若数据源为 Hive，需由上游或单独流程导出至 S3。 |
-| 特征选择与 WOE | Ray 环境 | 根据配置中的 `feature_selection_methods` 和 `woe_enabled` 决定是否处理并生成特征。实现对齐：`feature_selection` / `feature_selection_v2`（含 by_stability）、WOE v2.4（ray_woe_fit_v2_4 / ray_woe_transform_v2_4）、woe_merge_v2。 |
-| 数据切分 | Ray Data | Train / Validation 数据按指定条件打上标识位或者分别切分加载 |
-| 搜索与模型训练 | Ray Tune | Python 脚本包裹空间参数（`search_space`, `n_trials`），由下层 Ray 集群多节点并发跑试验搜出最优超参 |
-| 产物最终归档 | Backend | Ray 执行结束会由包裹壳把最终结果（最佳 metrics 和打包出的模型以及 preprocessor 元数据）传输到 S3 并告知后台成功 |
+
+| 逻辑阶段      | 环境映射     | 职责描述                                                                                                                                                                                               |
+| --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 数据获取      | Ray Data | Python 脚本包含获取设定范围内数据的指令。**当前实现（risk_model_on_ray）**：由 Ray 任务从 **S3 路径**（Parquet）读取，使用 Ray Dataset；若数据源为 Hive，需由上游或单独流程导出至 S3。                                                                      |
+| 特征选择与 WOE | Ray 环境   | 根据配置中的 `feature_selection_methods` 和 `woe_enabled` 决定是否处理并生成特征。实现对齐：`feature_selection` / `feature_selection_v2`（含 by_stability）、WOE v2.4（ray_woe_fit_v2_4 / ray_woe_transform_v2_4）、woe_merge_v2。 |
+| 数据切分      | Ray Data | Train / Validation 数据按指定条件打上标识位或者分别切分加载                                                                                                                                                            |
+| 搜索与模型训练   | Ray Tune | Python 脚本包裹空间参数（`search_space`, `n_trials`），由下层 Ray 集群多节点并发跑试验搜出最优超参                                                                                                                               |
+| 产物最终归档    | Backend  | Ray 执行结束会由包裹壳把最终结果（最佳 metrics 和打包出的模型以及 preprocessor 元数据）传输到 S3 并告知后台成功                                                                                                                            |
+
 
 ### 2.3 `RayUtil` 生成设计概念
 
@@ -77,7 +81,7 @@ flowchart LR
 
 画布中节点可配置 **CheckPoint**（布尔 `isCheckPoint`，**默认关闭**）与 **SavePoint**（布尔 `isSavePoint`）。平台支持 CheckPoint 与 SavePoint；画布**每个节点支持独立运行并存记录**。
 
-**Run 状态**：以 [产品原型与PRD §2.1](./产品原型与PRD.md) 为准；**`QUEUING` 为界面主展示**的排队态；运行级含 **`RUNNING`**、可选 **`CHECKING`**（人工卡点，Continue/Kill）、终态 **`SUCCESS` / `FAILED` / `KILLED`** 等；数据模型可含 **`WAITING`** 与 **`QUEUING`** 同位兼容。状态流转见 [系统架构说明 §4.2.2](../architecture/系统架构说明.md)。仅 SUCCESS 可注册为 Build。
+**Run 状态**：以 [产品原型与PRD §2.1](./产品原型与PRD.md) 为准；`**QUEUING` 为界面主展示**的排队态；运行级含 `**RUNNING`**、可选 `**CHECKING**`（人工卡点，Continue/Kill）、终态 `**SUCCESS` / `FAILED` / `KILLED**` 等；数据模型可含 `**WAITING**` 与 `**QUEUING**` 同位兼容。状态流转见 [系统架构说明 §4.2.2](../architecture/系统架构说明.md)。仅 SUCCESS 可注册为 Build。
 
 - **改配置后执行**：用户在画布配置页调整配置后执行 → **新 Run id**，按**最新 Experiment 配置**执行；执行时分析配置是否变更，无变更部分可走缓存。**Trigger Run** 弹窗 **Use Cache** 表达缓存策略。设计意图中的「从某节点执行」见 [产品原型与PRD §4.1](./产品原型与PRD.md)。不提供「自动从最近 SavePoint 重跑」。
 
@@ -89,50 +93,88 @@ flowchart LR
 
 ### 3.1 Phase 1: 数据获取
 
-**实现说明**：risk_model_on_ray 下数据来自 **S3 路径**（BaseConfig 等）；若数据源配置为 Hive，平台或上游需负责将数据落到 S3 或提供可被 Ray 读取的路径。以下为表单与平台抽象的配置项（设计上支持 Hive 源表）。
+#### Data Ingestion 策略
+
+MVP 阶段 **不引入 Spark**。数据获取有两条路径：
+
+
+| 数据源类型              | 路径                                                                 | 责任方                                   |
+| ------------------ | ------------------------------------------------------------------ | ------------------------------------- |
+| **S3 Parquet**（推荐） | Ray Dataset 直接读取 S3 路径                                             | 上游将 Hive 表导出为 Parquet；或用户手动指定已有 S3 路径 |
+| **Hive 表**         | 平台 Data Ingestion Service 将 Hive 表导出到 S3 Parquet，再由 Ray Dataset 读取 | 平台提供导出工具（Phase 2 可引入 Spark on-demand） |
+
+
+**设计约束**：Ray Job 内部**不直接访问 Hive**；所有训练数据通过 S3 路径 + Ray Dataset 读取。
 
 #### 输入
 
-来自 Run 配置快照的 DataSourceConfig（如 `RunConfig.DataSourceConfig`）（画布数据源节点；Type=Hive 时）：
+来自 Run 配置快照的 DataSourceConfig（如 `RunConfig.DataSourceConfig`）：
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| hive_server | enum | Yes | 数据服务标识（如 reg_sg_hive / reg_us_hive） |
-| table_schema | string | Yes | Hive Schema 名称 |
-| table_name | string | Yes | Hive 表名 |
-| partition_filter | string | No | 分区过滤条件（如 `dt >= '2025-01-01' AND dt < '2025-07-01'`） |
-| custom_filter | string | No | 自定义 WHERE 条件（如 `country = 'ID' AND status = 1`） |
-| label | string | Yes | 目标列/标签列名 |
-| sample_use_col | string | No | 样本划分列，默认 'sample_use' |
-| categorical_col | list[string] 或 逗号分隔 | No | 不经 WOE 的类别变量，供后续 WOE/FS 使用 |
+**Type=Hive 时**（平台负责 Hive → S3 导出）：
 
-Type=S3 时：sample_path、label、sample_use_col、categorical_col（同上语义）。
+
+| 参数               | 类型                  | 必填  | 说明                                                   |
+| ---------------- | ------------------- | --- | ---------------------------------------------------- |
+| hive_server      | enum                | Yes | 数据服务标识（如 reg_sg_hive / reg_us_hive）                  |
+| table_schema     | string              | Yes | Hive Schema 名称                                       |
+| table_name       | string              | Yes | Hive 表名                                              |
+| partition_filter | string              | No  | 分区过滤条件（如 `dt >= '2025-01-01' AND dt < '2025-07-01'`） |
+| custom_filter    | string              | No  | 自定义 WHERE 条件（如 `country = 'ID' AND status = 1`）      |
+| label            | string              | Yes | 目标列/标签列名                                             |
+| sample_use_col   | string              | No  | 样本划分列，默认 'sample_use'                                |
+| categorical_col  | list[string] 或 逗号分隔 | No  | 不经 WOE 的类别变量，供后续 WOE/FS 使用                           |
+
+
+**Type=S3 时**（直接读取，与 risk_model_on_ray 一致）：
+
+
+| 参数              | 类型                  | 必填  | 说明                    |
+| --------------- | ------------------- | --- | --------------------- |
+| sample_path     | string              | Yes | S3 Parquet 路径         |
+| label           | string              | Yes | 目标列/标签列名              |
+| sample_use_col  | string              | No  | 样本划分列，默认 'sample_use' |
+| categorical_col | list[string] 或 逗号分隔 | No  | 不经 WOE 的类别变量          |
+
 
 #### 执行逻辑
 
 ```
-1. 构造 SparkSQL 查询：
+Type=Hive 时（在 Ray Job 外部执行）：
+1. Platform BE 调用 Data Ingestion Service
+2. 构造导出 SQL：
    SELECT * FROM {table_schema}.{table_name}
    [WHERE {partition_filter}]
    [AND {custom_filter}]
+3. 导出为 Parquet 至 S3 staging 路径：
+   s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/staging/raw_data/
+4. 将 staging 路径作为 sample_path 注入 Ray Job Config
 
-2. 通过 HiveContext / SparkSQL 执行查询
-3. 应用 partition_filter 和 custom_filter 作为 pushdown predicate（优化读取性能）
-4. 记录数据基础统计信息（行数、列数、分区数）到日志
+Type=S3 时：
+1. 直接使用 sample_path
+
+所有路径统一后（Ray Job 内部）：
+1. ray.data.read_parquet(sample_path)
+2. 校验 label 列存在、feature columns 存在
+3. 记录数据基础统计信息（行数、列数）到日志
 ```
 
 #### 输出
 
-- `raw_df`：Spark DataFrame（原始数据集）
+- `raw_ds`：Ray Dataset（原始数据集）
+- `staging_s3_path`：数据的 S3 路径（供后续节点引用）
 
 #### 异常处理
 
-| 异常场景 | 处理方式 |
-|----------|----------|
-| 表不存在 | Instance 状态 → FAILED；error_message = "Table {schema}.{table} not found" |
-| 无权限 | Instance 状态 → FAILED；error_message = "Access denied to table {schema}.{table}" |
-| 数据为空（0 行） | Instance 状态 → FAILED；error_message = "No data returned from table {schema}.{table} with given filters" |
-| Spark 连接超时 | 重试 2 次（指数退避），仍失败则 FAILED |
+
+| 异常场景                | 处理方式                                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| Hive 表不存在           | Run 状态 → FAILED；error_message = "Table {schema}.{table} not found"        |
+| 无权限                 | Run 状态 → FAILED；error_message = "Access denied to table {schema}.{table}" |
+| 数据为空（0 行）           | Run 状态 → FAILED；error_message = "No data returned with given filters"     |
+| Hive 导出超时           | 重试 2 次（指数退避），仍失败则 FAILED                                                  |
+| S3 路径不存在            | Run 状态 → FAILED；error_message = "S3 path not found: {sample_path}"        |
+| Parquet schema 校验失败 | Run 状态 → FAILED；列出缺失列名                                                    |
+
 
 ---
 
@@ -156,23 +198,27 @@ Type=S3 时：sample_path、label、sample_use_col、categorical_col（同上语
 
 与 RAY 手册 Step 2（feature_selection / feature_selection_v2）对齐。
 
-| 配置项 | 类型 | 说明 |
-|--------|------|------|
-| feature_selection_methods | list | 方法列表：`by_iv` / `by_corr` / `by_gini` / `by_psi` / `by_stability` |
-| fp_fs_iv_threshold | float | IV 筛选阈值（默认 0.02），低于该值的特征剔除 |
-| fp_fs_corr_threshold | float | 相关性阈值（默认 0.7），高于该值视为冗余 |
-| fp_fs_psi_threshold | float | PSI 阈值（默认 0.1），高于该值视为不稳定 |
-| exclude | list | 剔除列（如 ID、label）；与 RAY BaseConfig.exclude 一致 |
+
+| 配置项                       | 类型    | 说明                                                               |
+| ------------------------- | ----- | ---------------------------------------------------------------- |
+| feature_selection_methods | list  | 方法列表：`by_iv` / `by_corr` / `by_gini` / `by_psi` / `by_stability` |
+| fp_fs_iv_threshold        | float | IV 筛选阈值（默认 0.02），低于该值的特征剔除                                       |
+| fp_fs_corr_threshold      | float | 相关性阈值（默认 0.7），高于该值视为冗余                                           |
+| fp_fs_psi_threshold       | float | PSI 阈值（默认 0.1），高于该值视为不稳定                                         |
+| exclude                   | list  | 剔除列（如 ID、label）；与 RAY BaseConfig.exclude 一致                      |
+
 
 **by_stability 专用参数**：
 
-| 配置项 | 类型 | 说明 |
-|--------|------|------|
-| fp_fs_lambda_grid | list | L1 正则化系数网格（如 np.logspace(-3, -1, 10)） |
-| fp_fs_stability_threshold | float | 稳定性阈值（默认 0.1） |
-| fp_fs_stability_n_resampling | int | 重采样次数（默认 50） |
-| fp_fs_stability_sample_fraction | float | 每次重采样样本比例（0.0–1.0） |
-| fp_fs_random_state | int | 随机种子 |
+
+| 配置项                             | 类型    | 说明                                    |
+| ------------------------------- | ----- | ------------------------------------- |
+| fp_fs_lambda_grid               | list  | L1 正则化系数网格（如 np.logspace(-3, -1, 10)） |
+| fp_fs_stability_threshold       | float | 稳定性阈值（默认 0.1）                         |
+| fp_fs_stability_n_resampling    | int   | 重采样次数（默认 50）                          |
+| fp_fs_stability_sample_fraction | float | 每次重采样样本比例（0.0–1.0）                    |
+| fp_fs_random_state              | int   | 随机种子                                  |
+
 
 **输出**：筛选后特征列表；`selection_report_{model_name}.csv` 或等价物路径，供后续 WOE/训练使用。
 
@@ -203,107 +249,129 @@ Type=S3 时：sample_path、label、sample_use_col、categorical_col（同上语
 
 #### 异常处理
 
-| 异常场景 | 处理方式 |
-|----------|----------|
-| label_column 不存在 | FAILED；error_message = "Label column '{col}' not found" |
-| feature_columns 中有列不存在 | FAILED；列出缺失列名 |
-| 特征选择后无剩余特征 | FAILED；建议放宽阈值或检查数据 |
-| WOE fit 失败（如分箱样本不足） | FAILED；error_message 含具体原因 |
-| selection_report 写出失败 | FAILED；检查 S3/HDFS 权限与路径 |
+
+| 异常场景                   | 处理方式                                                    |
+| ---------------------- | ------------------------------------------------------- |
+| label_column 不存在       | FAILED；error_message = "Label column '{col}' not found" |
+| feature_columns 中有列不存在 | FAILED；列出缺失列名                                           |
+| 特征选择后无剩余特征             | FAILED；建议放宽阈值或检查数据                                      |
+| WOE fit 失败（如分箱样本不足）    | FAILED；error_message 含具体原因                              |
+| selection_report 写出失败  | FAILED；检查 S3/HDFS 权限与路径                                 |
+
 
 ---
 
-### 3.3 Phase 3: Train/Validation 切分（Spark）
+### 3.3 Phase 3: Train/Validation 切分（Ray Data）
 
 #### 输入
 
-- `preprocessed_df`：Phase 2 输出
+- `preprocessed_ds`：Phase 2 输出（Ray Dataset 或 S3 Parquet 路径）
 - Run 配置 SplitConfig：切分配置
 
 #### 切分策略
 
 ##### 策略 1: random_ratio（随机比例切分）
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| train_ratio | float | Yes | 0.8 | 训练集比例 |
-| seed | int | No | 42 | 随机种子（可复现） |
 
-```
-train_df, val_df = preprocessed_df.randomSplit([train_ratio, 1 - train_ratio], seed=seed)
+| 参数          | 类型    | 必填  | 默认值 | 说明        |
+| ----------- | ----- | --- | --- | --------- |
+| train_ratio | float | Yes | 0.8 | 训练集比例     |
+| seed        | int   | No  | 42  | 随机种子（可复现） |
+
+
+```python
+train_ds, val_ds = preprocessed_ds.train_test_split(
+    test_size=1 - train_ratio, seed=seed
+)
 ```
 
 ##### 策略 2: time_based（时间切分）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| time_column | string | Yes | 时间列名 |
+
+| 参数          | 类型     | 必填  | 说明                    |
+| ----------- | ------ | --- | --------------------- |
+| time_column | string | Yes | 时间列名                  |
 | split_point | string | Yes | 切分时间点（如 `2025-06-01`） |
 
-```
-train_df = preprocessed_df.filter(col(time_column) < split_point)
-val_df = preprocessed_df.filter(col(time_column) >= split_point)
+
+```python
+train_ds = preprocessed_ds.filter(
+    lambda row: row[time_column] < split_point
+)
+val_ds = preprocessed_ds.filter(
+    lambda row: row[time_column] >= split_point
+)
 ```
 
 ##### 策略 3: column_based（列标记切分）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| split_column | string | Yes | 标记列名 |
-| train_value | string | Yes | 训练集标记值（如 `train`） |
-| val_value | string | Yes | 验证集标记值（如 `val`） |
 
-```
-train_df = preprocessed_df.filter(col(split_column) == train_value)
-val_df = preprocessed_df.filter(col(split_column) == val_value)
-```
+| 参数           | 类型     | 必填  | 说明                     |
+| ------------ | ------ | --- | ---------------------- |
+| split_column | string | Yes | 标记列名（如 sample_use_col） |
+| train_value  | string | Yes | 训练集标记值（如 `train`）      |
+| val_value    | string | Yes | 验证集标记值（如 `val`）        |
 
-切分完成后从两个 DataFrame 中 drop 掉 `split_column`（不参与训练）。
+
+```python
+train_ds = preprocessed_ds.filter(
+    lambda row: row[split_column] == train_value
+).drop_columns([split_column])
+val_ds = preprocessed_ds.filter(
+    lambda row: row[split_column] == val_value
+).drop_columns([split_column])
+```
 
 ##### 策略 4: separate_table（独立验证表）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| val_hive_server | enum | Yes | 验证集数据服务 |
-| val_table_schema | string | Yes | 验证集 Schema |
-| val_table_name | string | Yes | 验证集表名 |
-| val_partition_filter | string | No | 验证集分区过滤 |
-| val_custom_filter | string | No | 验证集自定义过滤 |
 
-```
-train_df = preprocessed_df  (来自 Phase 2 的主表)
-val_df = spark.sql("SELECT ... FROM {val_schema}.{val_table} WHERE ...")
-         → 对 val_df 应用与 Phase 2 相同的预处理流程（复用 preprocessor_metadata）
+| 参数                   | 类型     | 必填  | 说明                            |
+| -------------------- | ------ | --- | ----------------------------- |
+| val_sample_path      | string | Yes | 验证集 S3 Parquet 路径（Hive 表需先导出） |
+| val_partition_filter | string | No  | 验证集分区过滤（Hive 导出时使用）           |
+| val_custom_filter    | string | No  | 验证集自定义过滤（Hive 导出时使用）          |
+
+
+```python
+train_ds = preprocessed_ds
+val_ds = ray.data.read_parquet(val_sample_path)
+# 对 val_ds 应用与 Phase 2 相同的预处理（复用 preprocessor_metadata）
 ```
 
 注意：验证集需要经过与训练集相同的预处理（使用 Phase 2 产出的 `preprocessor_metadata` 中的参数，而非重新拟合）。
 
 ##### 策略 5: separate_partition（同表不同分区）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| val_partition_filter | string | Yes | 验证集的分区过滤条件 |
 
-```
-train_df = preprocessed_df  (Phase 1 的 partition_filter 决定训练集范围)
-val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter}")
-         → 对 val_df 应用与 Phase 2 相同的预处理
+| 参数                   | 类型     | 必填  | 说明                     |
+| -------------------- | ------ | --- | ---------------------- |
+| val_partition_filter | string | Yes | 验证集的分区过滤条件（Hive 导出时使用） |
+
+
+```python
+# 验证集分区在 Phase 1 时已由 Data Ingestion Service 导出为独立 Parquet
+train_ds = preprocessed_ds
+val_ds = ray.data.read_parquet(val_staging_path)
+# 对 val_ds 应用与 Phase 2 相同的预处理
 ```
 
 #### 输出
 
-- `train_df`：训练集 Spark DataFrame
-- `val_df`：验证集 Spark DataFrame
+- `train_ds`：训练集 Ray Dataset
+- `val_ds`：验证集 Ray Dataset
 - 切分统计信息：train 行数 / val 行数 / 比例，写入日志
+- 落盘 Parquet（可选）：供后续 model_tune / model_train 引用的 S3 路径
 
 #### 异常处理
 
-| 异常场景 | 处理方式 |
-|----------|----------|
-| 切分后 train_df 为空 | FAILED；error_message = "Training set is empty after split" |
-| 切分后 val_df 为空 | FAILED；error_message = "Validation set is empty after split" |
-| time_column 不存在或非时间类型 | FAILED；列出错误详情 |
-| separate_table 的验证表不存在/无权限 | FAILED；与 Phase 1 相同的异常处理 |
+
+| 异常场景                         | 处理方式                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| 切分后 train_ds 为空              | FAILED；error_message = "Training set is empty after split"   |
+| 切分后 val_ds 为空                | FAILED；error_message = "Validation set is empty after split" |
+| time_column 不存在或非时间类型        | FAILED；列出错误详情                                                |
+| separate_table 的验证集 S3 路径不存在 | FAILED；与 Phase 1 相同的异常处理                                     |
+
 
 ---
 
@@ -321,20 +389,24 @@ val_df = spark.sql("SELECT ... FROM {schema}.{table} WHERE {val_partition_filter
 
 由于采用的是基于 Ray 的 MVP，执行层已经统一抽象并转移为 Ray 物理环境的负荷：
 
-| Framework | 训练引擎实现 | 
-|-----------|----------|
-| xgboost | backend 生成脚本中指定 Ray Tune 调用 XGBoost Trainer 引擎参数 | 
-| lightgbm | backend 生成脚本中指定 Ray Tune 调用 LightGBM Trainer 引擎 |
+
+| Framework | 训练引擎实现                                           |
+| --------- | ------------------------------------------------ |
+| xgboost   | backend 生成脚本中指定 Ray Tune 调用 XGBoost Trainer 引擎参数 |
+| lightgbm  | backend 生成脚本中指定 Ray Tune 调用 LightGBM Trainer 引擎  |
+
 
 #### 超参搜索
 
 当 Run 配置 `hyperparam_search != none` 时启用超参搜索：
 
-| 搜索方式 | 实现 | 说明 |
-|----------|------|------|
-| grid_search | 全量网格组合 | 适合搜索空间小的场景 |
-| random_search | 随机采样 N 组 | 需配置 `n_trials` |
-| bayesian | Optuna TPE / GP | 自动优化搜索方向，需配置 `n_trials` |
+
+| 搜索方式          | 实现              | 说明                      |
+| ------------- | --------------- | ----------------------- |
+| grid_search   | 全量网格组合          | 适合搜索空间小的场景              |
+| random_search | 随机采样 N 组        | 需配置 `n_trials`          |
+| bayesian      | Optuna TPE / GP | 自动优化搜索方向，需配置 `n_trials` |
+
 
 **搜索空间定义**（Run 配置 search_space）：
 
@@ -362,17 +434,22 @@ flowchart TD
     FinalTrain --> Output[输出最终模型]
 ```
 
+
+
 **停止条件**：
+
 - 达到 `n_trials` 上限
 - Early Stopping：连续 `patience` 轮未改善超过 `min_delta`
 
 #### Early Stopping（训练内部）
 
-| 参数 | 说明 |
-|------|------|
-| early_stopping | 是否启用（bool） |
-| patience | 连续多少轮/epoch 无改善则停止 |
-| min_delta | 最小改善阈值 |
+
+| 参数             | 说明                 |
+| -------------- | ------------------ |
+| early_stopping | 是否启用（bool）         |
+| patience       | 连续多少轮/epoch 无改善则停止 |
+| min_delta      | 最小改善阈值             |
+
 
 - 树模型（XGBoost/LightGBM）：基于 eval_metric 的 early_stopping_rounds。
 - 深度学习（PyTorch/TensorFlow）：基于 validation loss 的 EarlyStopping callback。
@@ -397,12 +474,14 @@ flowchart TD
 
 #### 异常处理
 
-| 异常场景 | 处理方式 |
-|----------|----------|
-| 训练过程 OOM | FAILED；error_message 含内存使用详情，建议降低 resource_level 或数据量 |
-| 模型不收敛（loss 发散） | 训练到 max_epochs 后正常完成，但 metrics 会体现效果差 |
-| GPU 不可用（深度学习） | FAILED；error_message = "No GPU resources available" |
-| 用户 Kill | 向计算引擎发送 cancel 信号；清理临时数据；Instance → KILLED |
+
+| 异常场景           | 处理方式                                                  |
+| -------------- | ----------------------------------------------------- |
+| 训练过程 OOM       | FAILED；error_message 含内存使用详情，建议降低 resource_level 或数据量 |
+| 模型不收敛（loss 发散） | 训练到 max_epochs 后正常完成，但 metrics 会体现效果差                 |
+| GPU 不可用（深度学习）  | FAILED；error_message = "No GPU resources available"   |
+| 用户 Kill        | 向计算引擎发送 cancel 信号；清理临时数据；Instance → KILLED            |
+
 
 ---
 
@@ -420,36 +499,43 @@ flowchart TD
 
 ##### Classification（分类任务）
 
-| 指标 | 说明 | 数据格式 |
-|------|------|----------|
-| AUC | ROC 曲线下面积 | float |
-| Precision | 精确率 | float |
-| Recall | 召回率 | float |
-| F1 | F1 分数 | float |
-| Accuracy | 准确率 | float |
-| Confusion Matrix | 混淆矩阵 | 2D array |
-| ROC Curve | FPR/TPR 序列 | array of [fpr, tpr] |
-| PR Curve | Precision/Recall 序列 | array of [precision, recall] |
+
+| 指标               | 说明                  | 数据格式                         |
+| ---------------- | ------------------- | ---------------------------- |
+| AUC              | ROC 曲线下面积           | float                        |
+| Precision        | 精确率                 | float                        |
+| Recall           | 召回率                 | float                        |
+| F1               | F1 分数               | float                        |
+| Accuracy         | 准确率                 | float                        |
+| Confusion Matrix | 混淆矩阵                | 2D array                     |
+| ROC Curve        | FPR/TPR 序列          | array of [fpr, tpr]          |
+| PR Curve         | Precision/Recall 序列 | array of [precision, recall] |
+
 
 ##### Regression（回归任务）
 
-| 指标 | 说明 | 数据格式 |
-|------|------|----------|
-| RMSE | 均方根误差 | float |
-| MAE | 平均绝对误差 | float |
-| MSE | 均方误差 | float |
-| R² | 决定系数 | float |
+
+| 指标   | 说明        | 数据格式  |
+| ---- | --------- | ----- |
+| RMSE | 均方根误差     | float |
+| MAE  | 平均绝对误差    | float |
+| MSE  | 均方误差      | float |
+| R²   | 决定系数      | float |
 | MAPE | 平均绝对百分比误差 | float |
+
 
 ##### 通用指标
 
-| 指标 | 说明 | 数据格式 |
-|------|------|----------|
-| Training Loss Curve | 训练过程 loss 变化 | array of [epoch/round, loss] |
-| Validation Loss Curve | 验证 loss 变化 | array of [epoch/round, loss] |
-| Feature Importance | 特征重要性排序 | array of { feature, importance } |
+
+| 指标                    | 说明           | 数据格式                             |
+| --------------------- | ------------ | -------------------------------- |
+| Training Loss Curve   | 训练过程 loss 变化 | array of [epoch/round, loss]     |
+| Validation Loss Curve | 验证 loss 变化   | array of [epoch/round, loss]     |
+| Feature Importance    | 特征重要性排序      | array of { feature, importance } |
+
 
 Feature Importance 实现方式根据框架决定：
+
 - 树模型：impurity-based importance（gain / split count）
 - 深度学习 / 通用：SHAP values（若计算资源允许；否则降级为 permutation importance）
 
@@ -504,25 +590,32 @@ Feature Importance 实现方式根据框架决定：
 所有产物统一存储在 S3，路径规范如下：
 
 ```
-s3://{bucket}/model-training/{task_id}/{instance_id}/
-├── model.*                    # 模型文件（框架原生格式）
+s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
+├── nodes/{node_id}/artifacts/ # 各节点产出
+├── nodes/{node_id}/logs/      # 各节点日志
+├── model.*                    # 最终模型文件（框架原生格式）
 ├── preprocessor.json          # 预处理元数据
 ├── metrics.json               # 训练指标（Phase 5 输出）
-├── config_snapshot.json       # 训练时的完整 Run 配置快照 快照
+├── config_snapshot.json       # 训练时的完整 Run 配置快照
+├── manifest.json              # 各节点产物路径索引
 ├── train.log                  # 训练过程日志
 └── hyperparams_search.json    # 超参搜索历史（可选，仅超参搜索时）
 ```
 
+> 路径规范与 [系统架构说明 §4.2.3](../architecture/系统架构说明.md) 保持一致。
+
 #### 各产物详情
 
-| 产物 | 文件名 | 格式 | 说明 |
-|------|--------|------|------|
-| 模型文件 | `model.*` | 框架原生格式 | `.pkl`（sklearn/xgb/lgb/catboost）/ `.pt`（PyTorch）/ `.h5` 或 `SavedModel/`（TensorFlow） |
-| 预处理元数据 | `preprocessor.json` | JSON | Phase 2 产出的特征列表、WOE 编码器路径、selection_report 等；缺失值/编码/归一化仅兜底时产出，上游已清洗时可选；供 Serving 复用 |
-| 训练指标 | `metrics.json` | JSON | Phase 5 产出的结构化指标（含曲线数据点） |
-| 任务配置快照 | `config_snapshot.json` | JSON | 训练时的完整 Run 配置快照，含所有 6 个配置区块 |
-| 训练日志 | `train.log` | 文本 | Pipeline 执行全过程的 stdout/stderr |
-| 超参搜索历史 | `hyperparams_search.json` | JSON | 每组试验的超参 + 指标（仅超参搜索时生成） |
+
+| 产物     | 文件名                       | 格式     | 说明                                                                                  |
+| ------ | ------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| 模型文件   | `model.*`                 | 框架原生格式 | `.pkl`（sklearn/xgb/lgb/catboost）/ `.pt`（PyTorch）/ `.h5` 或 `SavedModel/`（TensorFlow） |
+| 预处理元数据 | `preprocessor.json`       | JSON   | Phase 2 产出的特征列表、WOE 编码器路径、selection_report 等；缺失值/编码/归一化仅兜底时产出，上游已清洗时可选；供 Serving 复用 |
+| 训练指标   | `metrics.json`            | JSON   | Phase 5 产出的结构化指标（含曲线数据点）                                                            |
+| 任务配置快照 | `config_snapshot.json`    | JSON   | 训练时的完整 Run 配置快照，含所有 6 个配置区块                                                         |
+| 训练日志   | `train.log`               | 文本     | Pipeline 执行全过程的 stdout/stderr                                                       |
+| 超参搜索历史 | `hyperparams_search.json` | JSON   | 每组试验的超参 + 指标（仅超参搜索时生成）                                                              |
+
 
 #### 归档完成后的回调
 
@@ -537,28 +630,34 @@ flowchart TD
     CheckQueue -->|无| Done[完成]
 ```
 
+
+
 1. **上传产物**：将上述所有文件上传至 S3 指定路径。
 2. **更新 MetaDB**：
-   - Instance.status → SUCCESS
-   - Instance.artifact_s3_path → `s3://{bucket}/model-training/{task_id}/{instance_id}/model.*`
-   - Instance.metrics_s3_path → `s3://{bucket}/model-training/{task_id}/{instance_id}/metrics.json`
-   - Instance.log_s3_path → `s3://{bucket}/model-training/{task_id}/{instance_id}/train.log`
-   - Instance.config_snapshot_s3_path → `s3://{bucket}/model-training/{task_id}/{instance_id}/config_snapshot.json`
-   - Instance.finished_at → 当前时间
-3. **清理临时数据**：删除 HDFS/S3 staging 中的临时 Parquet 文件。
-4. **释放串行锁**：允许同一 Task 的下一个 WAITING 实例获取锁并执行。
+  - Run.status → SUCCESS
+  - Run.artifact_s3_path → `s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/model.`*
+  - Run.metrics_s3_path → `s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/metrics.json`
+  - Run.log_s3_path → `s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/train.log`
+  - Run.config_snapshot_s3_path → `s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/config_snapshot.json`
+  - Run.manifest_s3_path → `s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/manifest.json`
+  - Run.finished_at → 当前时间
+3. **MLflow 登记**：同步将节点产物登记至 MLflow（见 [mlflow-integration.md](../architecture/mlflow-integration.md)）。
+4. **清理临时数据**：删除 S3 staging 中的临时 Parquet 文件。
+5. **释放串行锁**：允许同一 Experiment 的下一个 QUEUING Run 获取锁并执行。
 
 #### FAILED 场景的归档
 
 即使训练失败，也需要归档已有产物以便排查：
 
-| 失败发生在 | 归档内容 |
-|------------|----------|
-| Phase 1（数据获取） | config_snapshot.json + train.log |
-| Phase 2（预处理） | config_snapshot.json + train.log |
-| Phase 3（切分） | config_snapshot.json + preprocessor.json + train.log |
-| Phase 4（训练） | config_snapshot.json + preprocessor.json + train.log |
-| Phase 5（评估） | config_snapshot.json + preprocessor.json + 部分 metrics + train.log |
+
+| 失败发生在         | 归档内容                                                              |
+| ------------- | ----------------------------------------------------------------- |
+| Phase 1（数据获取） | config_snapshot.json + train.log                                  |
+| Phase 2（预处理）  | config_snapshot.json + train.log                                  |
+| Phase 3（切分）   | config_snapshot.json + preprocessor.json + train.log              |
+| Phase 4（训练）   | config_snapshot.json + preprocessor.json + train.log              |
+| Phase 5（评估）   | config_snapshot.json + preprocessor.json + 部分 metrics + train.log |
+
 
 ---
 
@@ -566,21 +665,25 @@ flowchart TD
 
 用户在任务配置中选择 `resource_level`（low / medium / high），平台将其映射为具体的计算资源参数。映射关系由运维配置，以下为参考值：
 
-### 4.1 Spark 集群（传统 ML）
+### 4.1 Ray 集群（MVP — 传统 ML）
 
-| Resource Level | Executor 数量 | Executor 内存 | Executor Cores | Driver 内存 |
-|----------------|---------------|---------------|----------------|-------------|
-| low | 4 | 4G | 2 | 2G |
-| medium | 8 | 8G | 4 | 4G |
-| high | 16 | 16G | 4 | 8G |
 
-### 4.2 GPU 集群（深度学习）
+| Resource Level | Worker 数量 | Worker 内存 | Worker CPU Cores | Head 内存 |
+| -------------- | --------- | --------- | ---------------- | ------- |
+| low            | 2         | 8G        | 4                | 4G      |
+| medium         | 4         | 16G       | 8                | 8G      |
+| high           | 8         | 32G       | 8                | 16G     |
 
-| Resource Level | GPU 数量 | GPU 类型 | 内存 | CPU Cores |
-|----------------|----------|----------|------|-----------|
-| low | 1 | T4 | 16G | 4 |
-| medium | 2 | V100 | 32G | 8 |
-| high | 4 | A100 | 80G | 16 |
+
+### 4.2 GPU 集群（后续 — 深度学习）
+
+
+| Resource Level | GPU 数量 | GPU 类型 | 内存  | CPU Cores |
+| -------------- | ------ | ------ | --- | --------- |
+| low            | 1      | T4     | 16G | 4         |
+| medium         | 2      | V100   | 32G | 8         |
+| high           | 4      | A100   | 80G | 16        |
+
 
 实际映射值可在平台运维配置中调整，不硬编码在代码中。
 
@@ -596,19 +699,23 @@ flowchart TD
 
 ### 5.2 组件级别重试
 
-| 组件 | 重试策略 | 说明 |
-|------|----------|------|
-| Hive 连接 | 最多 3 次，指数退避（1s, 2s, 4s） | 瞬时网络问题 |
-| S3 上传 | 最多 3 次，指数退避 | 网络抖动 |
-| 训练引擎启动 | 不重试 | 资源不足应反映为 FAILED |
+
+| 组件      | 重试策略                    | 说明              |
+| ------- | ----------------------- | --------------- |
+| Hive 连接 | 最多 3 次，指数退避（1s, 2s, 4s） | 瞬时网络问题          |
+| S3 上传   | 最多 3 次，指数退避             | 网络抖动            |
+| 训练引擎启动  | 不重试                     | 资源不足应反映为 FAILED |
+
 
 ### 5.3 Kill 处理
 
-| Instance 状态 | Kill 行为 |
-|---------------|-----------|
-| WAITING | 从优先级队列移除，Instance → KILLED |
-| RUNNING（Spark 阶段） | 调用 SparkContext.cancelJobGroup()，清理临时数据，Instance → KILLED |
-| RUNNING（训练引擎阶段） | 向引擎进程发送 SIGTERM/SIGKILL，清理临时数据，Instance → KILLED |
+
+| Run 状态   | Kill 行为                                      |
+| -------- | -------------------------------------------- |
+| QUEUING  | 从优先级队列移除，Run → KILLED                        |
+| RUNNING  | 调用 RayHub Job cancel API，清理临时数据，Run → KILLED |
+| CHECKING | Run → KILLED，释放锁                             |
+
 
 ---
 
@@ -637,13 +744,102 @@ flowchart TD
 
 ---
 
-## 7. 文档索引
+## 7. Cache Policy（Use Cache 策略）
 
-| 文档 | 用途 |
-|------|------|
-| [系统架构说明.md](../architecture/系统架构说明.md) | 系统架构、领域模型、模块职责、状态机、上下游边界 |
-| 本文档（Training-Data-Pipeline.md） | Training Data Pipeline 全 6 Phase 详细设计 |
-| 产品原型图.md（待输出） | 模型管理页、模型训练页、任务配置详情页的交互规格 |
+Trigger Run 弹窗提供 **Use Cache** 开关，控制是否复用前序 Run 的节点产出。本节定义缓存的判定规则、粒度和过期策略。
+
+### 7.1 缓存判定规则
+
+缓存以**节点级**为粒度。每个画布节点是否命中缓存由以下条件联合决定：
+
+```
+
+cache_hit(node) = Use Cache 开关为 ON
+                  AND 存在同 Experiment 的前序 SUCCESS Run
+                  AND 该节点的 config_hash 与前序 Run 对应节点一致
+                  AND 该节点的 input_data_hash 与前序 Run 对应节点一致
+                  AND 该节点的所有上游节点均命中缓存或产出一致
+
+```
+
+#### Config Hash 计算
+
+对节点配置（RunConfig 中该节点对应的配置区块）做 **canonical JSON 序列化 → SHA-256**：
+
+```python
+import hashlib, json
+
+def compute_config_hash(node_config: dict) -> str:
+    canonical = json.dumps(node_config, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+```
+
+#### Input Data Hash 计算
+
+- **Data Source 节点**：`SHA-256(hive_server + table_schema + table_name + partition_filter + custom_filter)` 或 `SHA-256(sample_path)`
+- **下游节点**：继承上游节点的 output_path hash；若上游命中缓存，则 input hash 与前序 Run 一致
+
+### 7.2 缓存粒度
+
+
+| 粒度        | 说明                                    |
+| --------- | ------------------------------------- |
+| **节点级**   | 每个画布节点独立判定缓存命中                        |
+| **Run 级** | 不存在整个 Run 的缓存；逐节点判定后，从第一个未命中缓存的节点开始执行 |
+
+
+**执行流程**（Use Cache = ON）：
+
+```
+Node 1 (DataSource)  → cache hit? → Yes: skip, use previous output
+                                   → No: execute
+Node 2 (WOE Fit)     → cache hit? → Yes: skip, use previous output
+                                   → No: execute (all subsequent nodes must re-execute)
+Node 3 (WOE Transform) → ...
+...
+```
+
+一旦某节点未命中缓存，**该节点及其所有下游节点**必须重新执行（因输入已变化）。
+
+### 7.3 过期策略
+
+
+| 策略                  | 说明                                                  |
+| ------------------- | --------------------------------------------------- |
+| **无自动过期**           | 缓存不按时间自动失效                                          |
+| **Use Cache = OFF** | 强制所有节点重新执行（Force Restart）                           |
+| **数据源变更**           | 若 Hive 表分区或 S3 路径内容变更（通过 input_data_hash 检测），缓存自动失效 |
+| **配置变更**            | 节点配置变更（config_hash 不同），该节点及下游缓存失效                   |
+
+
+### 7.4 缓存存储
+
+- 缓存候选集 = **SavePoint 产出**：每个节点完成后持久化的 S3 路径
+- 缓存元数据存储在 Run 的 `savepoint_snapshots` 中：`{ node_id, s3_path, config_hash, input_data_hash, completed_at }`
+- 新 Run 创建时，Platform BE 对比前序 Run 的 savepoint_snapshots 与当前配置，逐节点判定缓存命中
+
+### 7.5 用户可见性
+
+
+| 场景                            | 用户看到什么                                                           |
+| ----------------------------- | ---------------------------------------------------------------- |
+| Trigger Run (Use Cache = ON)  | 弹窗显示各节点缓存命中预览（如 "Nodes 1-3: cached, Nodes 4-6: will re-execute"） |
+| Trigger Run (Use Cache = OFF) | 提示 "All nodes will re-execute from scratch"                      |
+| Run 执行中                       | 画布 DAG 中，缓存命中的节点标记为 "Cached" + 跳过耗时显示                            |
+| Run 详情                        | 各节点标注 "cached" 或 "executed"，含 cache_hit 布尔值                      |
+
+
+---
+
+## 8. 文档索引
+
+
+| 文档                                     | 用途                                    |
+| -------------------------------------- | ------------------------------------- |
+| [系统架构说明.md](../architecture/系统架构说明.md) | 系统架构、领域模型、模块职责、状态机、上下游边界              |
+| 本文档（Training-Data-Pipeline.md）         | Training Data Pipeline 全 6 Phase 详细设计 |
+| 产品原型图.md（待输出）                          | 模型管理页、模型训练页、任务配置详情页的交互规格              |
+
 
 ---
 

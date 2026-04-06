@@ -1,0 +1,1176 @@
+openapi: 3.1.0
+info:
+  title: Offline Model Training Platform API
+  description: |
+    离线模型训练平台 REST API 规范。
+    覆盖 Model / ModelVersion / Build / Experiment / Run 全生命周期，
+    以及 Hive schema fetch、Metrics 读取等辅助接口。
+
+    术语定义见 [GLOSSARY.md](../GLOSSARY.md)。
+  version: 1.0.0-draft
+  contact:
+    name: Model Training Platform Team
+
+servers:
+  - url: /api/v1
+    description: Platform API v1
+
+tags:
+  - name: Model
+    description: 模型注册与管理
+  - name: ModelVersion
+    description: 模型版本管理
+  - name: Build
+    description: 构建产物管理
+  - name: Experiment
+    description: 模型实验管理
+  - name: Run
+    description: 实验执行管理
+  - name: Hive
+    description: Hive 元数据查询
+  - name: Metrics
+    description: 指标与日志读取
+
+components:
+  schemas:
+    # ---------- Pagination ----------
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 142
+
+    # ---------- Error ----------
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "INVALID_PARAMETER"
+        message:
+          type: string
+          example: "Field 'name' is required"
+        details:
+          type: object
+
+    # ---------- Model ----------
+    Model:
+      type: object
+      required: [model_id, name, model_type, framework, owner, biz_team, status]
+      properties:
+        model_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        model_type:
+          type: string
+          enum: [classification, regression]
+        framework:
+          type: string
+          enum: [xgboost, lightgbm, catboost, sklearn, pytorch, tensorflow]
+        owner:
+          type: string
+        biz_team:
+          type: string
+        region:
+          type: string
+        status:
+          type: string
+          enum: [active, deprecated]
+        create_time:
+          type: string
+          format: date-time
+        update_time:
+          type: string
+          format: date-time
+
+    ModelCreate:
+      type: object
+      required: [name, model_type, framework, biz_team]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        model_type:
+          type: string
+          enum: [classification, regression]
+        framework:
+          type: string
+          enum: [xgboost, lightgbm, catboost, sklearn, pytorch, tensorflow]
+        biz_team:
+          type: string
+        region:
+          type: string
+
+    ModelUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, deprecated]
+
+    # ---------- ModelVersion ----------
+    ModelVersion:
+      type: object
+      required: [version_id, model_id, version_tag, status]
+      properties:
+        version_id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+          format: uuid
+        version_tag:
+          type: string
+          example: "v1"
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, deprecated]
+        create_time:
+          type: string
+          format: date-time
+
+    ModelVersionCreate:
+      type: object
+      required: [version_tag]
+      properties:
+        version_tag:
+          type: string
+        description:
+          type: string
+
+    # ---------- Build ----------
+    Build:
+      type: object
+      required: [build_id, version_id, run_id, status]
+      properties:
+        build_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        artifact_s3_path:
+          type: string
+        metrics_snapshot:
+          type: object
+        config_snapshot:
+          type: object
+        status:
+          type: string
+          enum: [registered, archived]
+        registered_by:
+          type: string
+        register_time:
+          type: string
+          format: date-time
+
+    BuildRegister:
+      type: object
+      required: [run_id, version_id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: SUCCESS 状态的 Run ID
+        version_id:
+          type: string
+          format: uuid
+          description: 目标 ModelVersion ID
+
+    # ---------- Experiment ----------
+    Experiment:
+      type: object
+      required: [exp_id, model_id, name, framework, status, owner]
+      properties:
+        exp_id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        region:
+          type: string
+        framework:
+          type: string
+          enum: [LightGBM, XGBoost, Benchmark]
+        status:
+          type: string
+          enum: [DRAFT, ENABLED, DISABLED]
+        owner:
+          type: string
+        priority:
+          type: string
+          enum: [normal, important, critical]
+        resource_level:
+          type: string
+          enum: [low, medium, high]
+        config_snapshot_s3_path:
+          type: string
+          nullable: true
+        create_time:
+          type: string
+          format: date-time
+        update_time:
+          type: string
+          format: date-time
+
+    ExperimentCreate:
+      type: object
+      required: [model_id, name, framework]
+      properties:
+        model_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        framework:
+          type: string
+          enum: [LightGBM, XGBoost, Benchmark]
+        priority:
+          type: string
+          enum: [normal, important, critical]
+          default: normal
+        resource_level:
+          type: string
+          enum: [low, medium, high]
+          default: medium
+
+    ExperimentUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [normal, important, critical]
+        resource_level:
+          type: string
+          enum: [low, medium, high]
+
+    # ---------- Run ----------
+    Run:
+      type: object
+      required: [run_id, exp_id, status]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        exp_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [QUEUING, RUNNING, CHECKING, SUCCESS, FAILED, KILLED]
+        trigger_type:
+          type: string
+          enum: [manual, cron]
+        use_cache:
+          type: boolean
+        queued_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        artifact_s3_path:
+          type: string
+          nullable: true
+        metrics_s3_path:
+          type: string
+          nullable: true
+        log_s3_path:
+          type: string
+          nullable: true
+        config_snapshot_s3_path:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    RunTrigger:
+      type: object
+      properties:
+        use_cache:
+          type: boolean
+          default: true
+          description: 配置无变更部分是否走缓存
+        idempotency_key:
+          type: string
+          format: uuid
+          description: 幂等键，防止重复触发
+
+    # ---------- Hive ----------
+    HiveFetchRequest:
+      type: object
+      required: [hive_server, table_schema, table_name]
+      properties:
+        hive_server:
+          type: string
+          description: Hive 数据服务标识（如 reg_sg_hive）
+        table_schema:
+          type: string
+        table_name:
+          type: string
+
+    HiveColumn:
+      type: object
+      properties:
+        column_name:
+          type: string
+        data_type:
+          type: string
+        comment:
+          type: string
+          nullable: true
+
+    HiveFetchResponse:
+      type: object
+      properties:
+        table_name:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/HiveColumn'
+        has_permission:
+          type: boolean
+        partition_columns:
+          type: array
+          items:
+            type: string
+
+    # ---------- Metrics ----------
+    RunMetrics:
+      type: object
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        metrics:
+          type: object
+          description: Key-value pairs of metric name to value
+          additionalProperties:
+            type: number
+        feature_importance:
+          type: object
+          additionalProperties:
+            type: number
+        confusion_matrix:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+
+    RunLog:
+      type: object
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        node_id:
+          type: string
+          nullable: true
+        content:
+          type: string
+        truncated:
+          type: boolean
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ========== Model ==========
+  /models:
+    get:
+      tags: [Model]
+      summary: 模型列表
+      operationId: listModels
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: framework
+          in: query
+          schema:
+            type: string
+        - name: model_type
+          in: query
+          schema:
+            type: string
+        - name: owner
+          in: query
+          schema:
+            type: string
+        - name: biz_team
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, deprecated]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Model'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [Model]
+      summary: 创建模型
+      operationId: createModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models/{model_id}:
+    get:
+      tags: [Model]
+      summary: 模型详情
+      operationId: getModel
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Model]
+      summary: 更新模型
+      operationId: updateModel
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+
+  # ========== ModelVersion ==========
+  /models/{model_id}/versions:
+    get:
+      tags: [ModelVersion]
+      summary: 模型版本列表
+      operationId: listModelVersions
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelVersion'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [ModelVersion]
+      summary: 创建模型版本
+      operationId: createModelVersion
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelVersionCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersion'
+
+  # ========== Build ==========
+  /builds:
+    get:
+      tags: [Build]
+      summary: Build 列表（可按 model_id / version_id 过滤）
+      operationId: listBuilds
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: model_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: version_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [registered, archived]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Build'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [Build]
+      summary: 注册 Build（从 SUCCESS 的 Run 产物注册）
+      operationId: registerBuild
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRegister'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+        '400':
+          description: Run 非 SUCCESS 状态或已注册
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /builds/{build_id}:
+    get:
+      tags: [Build]
+      summary: Build 详情
+      operationId: getBuild
+      parameters:
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+    patch:
+      tags: [Build]
+      summary: 更新 Build 状态（归档）
+      operationId: updateBuild
+      parameters:
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [archived]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+
+  # ========== Experiment ==========
+  /experiments:
+    get:
+      tags: [Experiment]
+      summary: Experiment 列表
+      operationId: listExperiments
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: model_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: owner
+          in: query
+          schema:
+            type: string
+        - name: biz_team
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, ENABLED, DISABLED]
+        - name: framework
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Experiment'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [Experiment]
+      summary: 创建 Experiment
+      operationId: createExperiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+
+  /experiments/{exp_id}:
+    get:
+      tags: [Experiment]
+      summary: Experiment 详情
+      operationId: getExperiment
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+    patch:
+      tags: [Experiment]
+      summary: 更新 Experiment
+      operationId: updateExperiment
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+    delete:
+      tags: [Experiment]
+      summary: 删除 Experiment（软删除）
+      operationId: deleteExperiment
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: No Content
+        '409':
+          description: 存在 RUNNING/QUEUING 的 Run，无法删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /experiments/{exp_id}/enable:
+    post:
+      tags: [Experiment]
+      summary: 启用 Experiment（DRAFT/DISABLED → ENABLED）
+      operationId: enableExperiment
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+
+  /experiments/{exp_id}/disable:
+    post:
+      tags: [Experiment]
+      summary: 禁用 Experiment（ENABLED → DISABLED）
+      operationId: disableExperiment
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+
+  # ========== Run ==========
+  /experiments/{exp_id}/runs:
+    get:
+      tags: [Run]
+      summary: Run 列表（嵌套在 Experiment 下）
+      operationId: listRuns
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [QUEUING, RUNNING, CHECKING, SUCCESS, FAILED, KILLED]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [Run]
+      summary: 触发新 Run（Trigger）
+      operationId: triggerRun
+      parameters:
+        - name: exp_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunTrigger'
+      responses:
+        '201':
+          description: Created（Run 进入 QUEUING）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '409':
+          description: Experiment 未 ENABLED 或队列已满
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 超出 max_queue_depth 限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}:
+    get:
+      tags: [Run]
+      summary: Run 详情
+      operationId: getRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /runs/{run_id}/kill:
+    post:
+      tags: [Run]
+      summary: Kill Run（QUEUING/RUNNING/CHECKING → KILLED）
+      operationId: killRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '409':
+          description: Run 不在可 Kill 的状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}/continue:
+    post:
+      tags: [Run]
+      summary: Continue Run（CHECKING → RUNNING）
+      operationId: continueRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '409':
+          description: Run 不在 CHECKING 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /runs/{run_id}/metrics:
+    get:
+      tags: [Metrics]
+      summary: 读取 Run 指标
+      operationId: getRunMetrics
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunMetrics'
+        '404':
+          description: Run 未完成或指标不存在
+
+  /runs/{run_id}/logs:
+    get:
+      tags: [Metrics]
+      summary: 读取 Run 日志
+      operationId: getRunLogs
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: node_id
+          in: query
+          schema:
+            type: string
+          description: 指定节点 ID 的日志；不传则返回 Run 级汇总
+        - name: tail
+          in: query
+          schema:
+            type: integer
+            default: 500
+          description: 返回最后 N 行
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunLog'
+
+  /runs/{run_id}/artifacts:
+    get:
+      tags: [Metrics]
+      summary: 列出 Run 产物
+      operationId: listRunArtifacts
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: node_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        node_id:
+                          type: string
+                        s3_path:
+                          type: string
+                        file_name:
+                          type: string
+                        size_bytes:
+                          type: integer
+
+  # ========== Hive ==========
+  /hive/fetch-schema:
+    post:
+      tags: [Hive]
+      summary: Fetch Hive 表 schema（字段列表 + 权限校验）
+      operationId: fetchHiveSchema
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HiveFetchRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HiveFetchResponse'
+        '403':
+          description: 无权限访问该 Hive 表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Hive 表不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== Health ==========
+  /health:
+    get:
+      tags: [Metrics]
+      summary: 健康检查
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  version:
+                    type: string
+                  uptime_seconds:
+                    type: integer

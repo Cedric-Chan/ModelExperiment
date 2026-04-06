@@ -1,6 +1,14 @@
 # docs 目录索引
 
-本目录按用途分为四类，便于区分「调研材料 / 设计文档 / 交互原型 / 内部参考」。
+本目录按用途分为五类，便于区分「术语表 / 调研材料 / 设计文档 / 交互原型 / 内部参考」。
+
+---
+
+## 0. 术语表 — Single Source of Truth
+
+| 文件 | 权威范围 | 说明 |
+|------|----------|------|
+| [GLOSSARY.md](GLOSSARY.md) | 实体命名、状态机、Action 矩阵、Deprecated Aliases | **所有文档引用此表**，不再各自定义 |
 
 ---
 
@@ -45,15 +53,17 @@
 
 产品需求、画布配置、数据管道、系统架构等设计文档。
 
-| 文件 | 说明 |
-|------|------|
-| [architecture/系统架构说明.md](architecture/系统架构说明.md) | 系统架构、领域模型、模块职责、状态机等 |
-| [design/产品原型与PRD.md](design/产品原型与PRD.md) | 产品原型与 PRD |
-| [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md) | Figma/原型 与历史文档矛盾清单与处置结论 |
-| [design/Naming-And-Responsibilities.md](design/Naming-And-Responsibilities.md) | 命名与职责 |
-| [design/Pipeline-Steps-and-Canvas-Nodes.md](design/Pipeline-Steps-and-Canvas-Nodes.md) | Pipeline 步骤与画布节点 |
-| [design/Task-Canvas-Config.md](design/Task-Canvas-Config.md) | Task 与画布配置 |
-| [design/Training-Data-Pipeline.md](design/Training-Data-Pipeline.md) | 训练数据管道设计 |
+| 文件 | 权威范围 | 说明 |
+|------|----------|------|
+| [api/openapi.yaml](api/openapi.yaml) | REST API endpoint / request / response 定义 | OpenAPI 3.1 规范 |
+| [architecture/系统架构说明.md](architecture/系统架构说明.md) | 系统架构、ER 图、模块职责、上下游边界、RBAC、Observability | 后端实现的核心参考 |
+| [architecture/mlflow-integration.md](architecture/mlflow-integration.md) | MLflow 集成架构、实体映射、artifact 策略 | MLflow 对接设计 |
+| [design/产品原型与PRD.md](design/产品原型与PRD.md) | 产品功能范围、IA、UX 交互 | 产品原型与 PRD |
+| [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md) | Figma 矛盾处置记录 | Figma/原型 与历史文档矛盾清单与处置结论 |
+| [design/Naming-And-Responsibilities.md](design/Naming-And-Responsibilities.md) | 命名映射（已合并至 GLOSSARY） | 命名与职责 |
+| [design/Pipeline-Steps-and-Canvas-Nodes.md](design/Pipeline-Steps-and-Canvas-Nodes.md) | 画布节点与 SOP 对齐 | Pipeline 步骤与画布节点 |
+| [design/Task-Canvas-Config.md](design/Task-Canvas-Config.md) | Python 步骤 → 画布节点映射 | Experiment 画布配置 |
+| [design/Training-Data-Pipeline.md](design/Training-Data-Pipeline.md) | 配置 → Ray 执行的详细设计 | 训练数据管道设计 |
 
 ---
 

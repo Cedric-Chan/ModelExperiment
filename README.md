@@ -16,8 +16,8 @@ End-to-end offline model training management platform — covering training task
                                        │
                         ┌──────────────▼──────────────┐
                         │       后端服务层 (Backend)     │
-                        │  Model Service │ Task Service  │
-                        │  Instance Service │ Scheduler  │
+                        │  Model Service │ Exp Service   │
+                        │  Run Service │ Scheduler       │
                         └──────────────┬──────────────┘
                                        │
               ┌────────────────────────┼────────────────────────┐
@@ -43,44 +43,48 @@ End-to-end offline model training management platform — covering training task
 平台基于纯表单收集配置，自动为您生成调用 `RayUtil` 的 Python 脚本，并后台包裹投递到内部 Ray 集群执行。
 
 
-| 核心链路                         | 说明                                                               |
-| ---------------------------- | ---------------------------------------------------------------- |
-| **表单配置与 AI 辅助**              | 用户通过表单独立配置或通过 AI Prompt (Experiment) 智能生成多组训练参数，无需手写 YAML 或操作画布。 |
-| **Python 脚本生成**              | 平台将表单配置转化为 `RayUtil` Python 脚本（特征预处理 WOE/切分/参数配置）。               |
-| **Ray 分布式执行 (TaskInstance)** | 封装后的脚本自动投递至 Ray 集群执行。借助内部强大的 Ray Tune 承担 `n_trials` 的底层超参搜索。     |
-| **Metrics 与日志收集**            | 训练日志实时在 Web UI 回显，指标计算与最优模型产物最终回传至 S3 并同步注册。                     |
+| 核心链路                      | 说明                                                               |
+| ------------------------- | ---------------------------------------------------------------- |
+| **画布配置与 AI 辅助**           | 用户通过 Experiment 画布配置，或通过 AI Prompt (ExplorationSession, Phase 2) 智能生成多组训练参数。 |
+| **Python 脚本生成**           | 平台将 Experiment 配置转化为 `RayUtil` Python 脚本（特征预处理 WOE/切分/参数配置）。       |
+| **Ray 分布式执行 (Run)**       | 封装后的脚本自动投递至 Ray 集群执行。借助内部 Ray Tune 承担 `n_trials` 的底层超参搜索。         |
+| **Metrics 与日志收集**         | 训练日志实时在 Web UI 回显，指标计算与最优模型产物最终回传至 S3 并同步注册。                     |
 
 
 ---
 
 ## Domain Model / 领域模型
 
+> 完整术语定义见 [GLOSSARY.md](docs/GLOSSARY.md)（唯一来源），以下仅为简明概览。
+
 ```
 Model (逻辑模型实体)
 ├── ModelVersion v1 (重大迭代)
-│   ├── Build #1  ←  TaskInstance #101 (SUCCESS)
-│   └── Build #2  ←  TaskInstance #205 (SUCCESS)
+│   ├── Build #1  ←  Run #101 (SUCCESS)
+│   └── Build #2  ←  Run #205 (SUCCESS)
 └── ModelVersion v2
-    └── Build #1  ←  TaskInstance #310 (SUCCESS)
+    └── Build #1  ←  Run #310 (SUCCESS)
 
-Experiment (本期 MVP 重点：多配置探索与全局最优)
-│  说明：用户通过 AI Prompt 输入意图，平台自动推导解析出不同的搜索空间与框架，生成填充好的多张 TrainingTask 表单供用户 Review
-└── TrainingTask 1 (如 XGBoost 任务)
-│       └── TaskInstance 1..N (由底层 Ray Tune 调度完成 N 次 Trial 搜索最优)
-└── TrainingTask 2 (如 LightGBM 任务)
-        └── TaskInstance 1..N
+Experiment (画布驱动的训练编排单元，绑定 Model)
+├── Run #101 (SUCCESS) → ModelArtifact @ S3 → 注册为 Build
+├── Run #102 (FAILED)  → 仅有日志 @ S3
+└── Run #205 (SUCCESS) → ModelArtifact @ S3 → 注册为 Build
 
-TrainingTask (表单驱动的可复用训练实体，直接生成执行 Python)
-├── TaskInstance #101 (SUCCESS) → Artifact @ S3 → 注册为 Build
-├── TaskInstance #102 (FAILED)  → 仅有日志 @ S3
-└── TaskInstance #205 (SUCCESS) → Artifact @ S3 → 注册为 Build
+ExplorationSession (Phase 2：AI Prompt 多配置对比)
+│  用户通过 AI Prompt 输入意图，平台自动推导解析出不同的搜索空间与框架
+└── Experiment 1 (如 XGBoost 配置)
+│       └── Run 1..N (由底层 Ray Tune 调度完成 N 次 Trial 搜索最优)
+└── Experiment 2 (如 LightGBM 配置)
+        └── Run 1..N
 ```
 
 ### State Machines / 状态机
 
-**Training Task**: `DRAFT` → `ONLINE` → `OFFLINE` → `DELETED`
+> 唯一权威定义见 [GLOSSARY.md](docs/GLOSSARY.md)，以下为简版。
 
-**Task Instance**: `QUEUING` → `RUNNING` → `SUCCESS` / `FAILED` / `KILLED`
+**Experiment**: `DRAFT` → `ENABLED` → `DISABLED`
+
+**Run**: `QUEUING` → `RUNNING` → `CHECKING` (CheckPoint 人工 Review) → `SUCCESS` / `FAILED` / `KILLED`
 
 ---
 
@@ -130,13 +134,14 @@ Model Training Pipeline/
 
 | Document                                                        | Scope                                                                        | Audience                       |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------ |
+| [术语表 / GLOSSARY](docs/GLOSSARY.md)                              | **唯一术语定义来源**：实体命名、状态机、Action 矩阵、Deprecated Aliases                           | 全员                             |
 | [系统架构说明](docs/architecture/系统架构说明.md)                           | 系统架构、领域模型、模块职责、状态机、产品交付示意图、上下游边界、预研清单 (§1–§17)                               | PM / Backend / Frontend / Arch |
-| [Training Data Pipeline](docs/design/Training-Data-Pipeline.md) | 表单转化为 Python 脚本投递给 Ray 的详细设计与规范及日志采集过程 (§1–§7)                               | Backend / ML Engineer          |
+| [Training Data Pipeline](docs/design/Training-Data-Pipeline.md) | Experiment 配置转化为 Python 脚本投递给 Ray 的详细设计与规范及日志采集过程 (§1–§7)                    | Backend / ML Engineer          |
 | [产品原型与 PRD](docs/design/产品原型与PRD.md)                            | 产品原型、IA、核心功能、MVP Scope；**§5 用户操作说明与平台价值对比**（Python 流程图、Before/After、多模型三种模式） | PM / Frontend                  |
 | [docs/README.md](docs/README.md)                                | docs 目录索引：调研 / 设计 / 原型 / 参考材料分类                                              | 全员                             |
 
 
-**建议阅读顺序**：先读「系统架构说明」建立完整概念 → 再读「Training Data Pipeline」了解执行层细节；产品价值与操作对比见「产品原型与 PRD」§5。
+**建议阅读顺序**：先读「GLOSSARY」统一术语 → 再读「系统架构说明」建立完整概念 → 再读「Training Data Pipeline」了解执行层细节；产品价值与操作对比见「产品原型与 PRD」§5。
 
 ---
 
@@ -162,7 +167,7 @@ Model Training Pipeline/
 | Layer                                                 | Ownership  | Note           |
 | ----------------------------------------------------- | ---------- | -------------- |
 | Hive 表数据准备（WideTable / 其他管道）                          | 上游 (非本平台)  | 本平台只读消费        |
-| Training Task 配置 → 调度 → Pipeline → 评估 → 归档 → Build 注册 | **本平台**    | 核心职责           |
+| Experiment 配置 → 调度 → Run 执行 → 评估 → 归档 → Build 注册      | **本平台**    | 核心职责           |
 | 模型部署 & 线上 Serving                                     | 下游 (本期不详设) | 仅设计 Build 注册出口 |
 | 用户权限 (RBAC)                                           | 共用         | 统一权限，与特征平台一致   |
 | 调度引擎 / 计算资源                                           | 共用         | 复用内部基础设施       |
@@ -176,7 +181,7 @@ Model Training Pipeline/
 | Layer                     | Technology                                              |
 | ------------------------- | ------------------------------------------------------- |
 | Frontend                  | Ant Design Pro (React) / 主色 `#13c2c2`                   |
-| Backend                   | RESTful API (Task / Instance / Model Service)           |
+| Backend                   | RESTful API (Experiment / Run / Model Service)          |
 | Data Processing & Engines | Ray (Ray Data / Ray Train / XGBoost / LightGBM)         |
 | Hyperparameter Search     | Ray Tune (下沉于执行侧)                                       |
 | Storage                   | Hive (training data), S3 (artifacts), MetaDB (metadata) |
@@ -188,17 +193,18 @@ Model Training Pipeline/
 
 ## Key Concepts / 核心概念速查
 
+> 完整定义与 deprecated alias 映射见 [GLOSSARY.md](docs/GLOSSARY.md)。
 
 | Concept            | Definition                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
-| **Experiment**     | （本期 MVP）高于 Task 的归属与对比容器，采用 AI Prompt 对话自动生成、解析搜索空间并填充多 Task 表单。在给定数据集与预测目标下对比选优，支撑寻找更大的全局最优化。 |
-| **Model**          | 逻辑模型实体（如「欺诈检测模型」），含元信息                                                                         |
+| **Model**          | 逻辑模型实体（如「欺诈检测模型」），含元信息，不绑定训练产物                                                                |
 | **ModelVersion**   | Model 的一次重大迭代（如架构变更），以 v1/v2 标签区分                                                              |
-| **Build**          | 训练实例产出的、经 Review 注册的模型产物（模型文件 + 指标 + 配置快照）                                                     |
-| **TrainingTask**   | 基于纯表单填写的可复用训练配置实体（底层会自动生成并使用 RayUtil 包裹 Python 执行）                                             |
-| **TaskInstance**   | Task 的一次实际执行记录，依托底层 Ray Tune 跑完整个搜索到产出最佳结果的全流程                                                 |
-| **Priority Queue** | 跨 Task 全局排队：critical > important > normal，同优先级 FIFO                                            |
-| **Serial Lock**    | per-Task 并发控制，同一 Task 最多一个 RUNNING 实例                                                          |
+| **Build**          | Run SUCCESS 后经 Review 注册的模型快照（模型文件 + 指标 + 配置快照），冻结归档                                           |
+| **Experiment**     | 绑定 Model 的训练编排单元，保留画布配置；每次执行为一个 Run                                                            |
+| **Run**            | Experiment 的一次实际执行，携带配置快照（RunConfig），中间产物与日志绑定 Run id                                           |
+| **ExplorationSession** | （Phase 2）AI Prompt 多配置对比容器，1:N 生成多个 Experiment 供比较                                           |
+| **Priority Queue** | 跨 Experiment 全局 Run 排队：critical > important > normal，同优先级 FIFO                                 |
+| **Serial Lock**    | per-Experiment 并发控制，同一 Experiment 最多一个 RUNNING 的 Run                                            |
 
 
 ---
@@ -209,12 +215,13 @@ Model Training Pipeline/
 | Feature                       | Priority  | Note                                                    |
 | ----------------------------- | --------- | ------------------------------------------------------- |
 | 自动 Feature Selection（Phase 2） | **P0 本期** | variance_threshold / correlation_filter，见 Pipeline §3.2 |
-| **Experiment（多配置对比与选优）**      | **P0 本期** | 支撑全局最优化；通过 AI Prompt 解析并自动填充表单。                         |
+| **Experiment 画布配置与 Run 执行**   | **P0 本期** | 支撑全局最优化；画布编排 + Trigger Run + Build 注册                   |
+| **ExplorationSession（AI Prompt 多配置对比）** | P1 (Phase 2) | 通过 AI Prompt 解析并自动生成多 Experiment 供比较          |
 | 数据采样 (大表 N% 快速实验)             | P2        | —                                                       |
-| 跨实例/跨模型实验对比                   | P2        | 多 Instance Metrics 并排对比                                 |
+| 跨 Run / 跨 Experiment 对比       | P2        | 多 Run Metrics 并排对比                                      |
 | 模型部署与 Serving                 | P1 (后续)   | 本期仅粗略设计 Build 出口                                        |
 
 
 ---
 
-*Project Version: MVP | Last Updated: 2026-02-26*
+*Project Version: MVP | Last Updated: 2026-04-06*

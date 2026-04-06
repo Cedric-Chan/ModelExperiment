@@ -1,6 +1,17 @@
 # Experiment 画布配置 — Python Step 与画布节点对照
 
+> **术语唯一来源**：[GLOSSARY.md](../GLOSSARY.md)
+
 本文档基于 [MODEL_PIPELINE.md](../MODEL_PIPELINE.md)、[分布式训练使用手册_v1.3.md](../risk_model_on_ray/com/seamoney/risk/spl_acard/分布式训练使用手册_v1.3.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)，以 **LightGBM（LGBM）** 为例，说明：① 原始 Python Sample 的完整 Step 与主要 Function；② 当前 **Experiment 画布**的节点划分、配置要点及与 Python Step 的映射关系。单域、不涉及多域。画布配置入口在 **Experiment 层级**；Experiment 保留当前/最新画布配置，每次 Run 携带配置快照，中间产物与配置均绑定 **Run id**。见 [Naming-And-Responsibilities.md](./Naming-And-Responsibilities.md)。
+
+## 里程碑版本对照
+
+| 版本 | 画布节点数 | 状态 | 说明 |
+|------|-----------|------|------|
+| **Current (MVP)** | **6 nodes** | **实现中** | 线性管道：data source → WOE fit → WOE Transform → Feature selection → Tune & Train → inference |
+| Future (SOP) | 10 nodes (含 Pipeline Meta) | Deferred | 合并 WOE All/Selected、独立 Tune/Train、CheckPoint（择优）、Calibrate |
+
+本文 §一 为 Python Step 完整参考（适用所有版本）；§二「合并节点 / 九节点 SOP」描述 Future 版本设计，**当前实现以 `Pipeline-Steps-and-Canvas-Nodes.md` Part I (6-node MVP) 为准**。
 
 **Partner v2.0 与当前原型**：合作方节点说明见 [`docs/architecture/frontend_node_config_spec_latest.md`](../architecture/frontend_node_config_spec_latest.md)。[`model-experiment-web`](../prototype/model-experiment-web/) 画布现为 **6 节点线性 DAG**（data source → WOE fit → WOE Transform → Feature selection → Tune & Train → inference）及顶栏 **ENV**、**Settings**。**Settings** 维护 **`default_cpu` / `default_memory` / `default_image`**（带占位默认值与 hover 说明）；此三项**不出现在** Pipeline **ENV** 表格，但仍随实验配置持久化。画布级联 **Input/Output path** 上 Encoder、best model 等产物的**类型角标**为 **model**（物理文件仍可为 `.pkl`）。各管道节点的 **sample_use_col** 为下拉多选 **train / test / val**，支持 **Select all**（不单独存 `all` 枚举；遗留 JSON 中的 `all` 在 UI 层展开为三者）；ENV 键仍为 `woe_fit_sample_scope`、`woe_transform_sample_scope` 等 JSON。**Data source** 侧全局列名配置 ENV 键为 **`sample_use_col`**。**WOE Transform** 仅当 **feature_report** 开启时展示 **stability_dim** 与 **report_tab**。**Model Prediction** 无 **output_columns** 配置项。**Last Run** 下提供可折叠 **Ray Log**（多条 Mock 链接跳转原型日志页）。**Run History / Run View** 只读态顶栏提供 **Rollback Config**（PopConfirm）：将所选运行快照写回 **Current Config**（DAG 节点展示 + 卡片 `propOverrides` + 可选 `pipelineEnv` 片段；详见 [产品原型与PRD.md](./产品原型与PRD.md) §4.1）。原型中 **Live Run View** 通过 `TaskInstance.canvasSnapshotRunId` 关联 `VersionSnapshot.runId`；**TrainingTask.canvasRestore** 用于从 Run View 返回配置页时一次性回显画布。下文「合并节点 / 九节点 SOP」仍描述 Python 全量 Step 与历史产品设计，实现映射时以 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 *Partner spec v2.0* 与 *Superseded / deferred* 为准。
 

@@ -4,7 +4,7 @@
 **基于模板**: Product Manager Toolkit - Standard PRD Template
 **作者**: AI Product Manager
 
-**交互说明来源**：页面流转、控件文案与状态展示以 [`docs/prototype/model-experiment-web`](../prototype/model-experiment-web/README.md) **仓库实现**为验收基准；[Figma：Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) 为初次设计迁移原本与风格参考。下文 **Experiment / Run** 为领域实体；界面可见 **Exp Id / Exp Name / Model Experiments List** 等与 [`Naming-And-Responsibilities.md`](./Naming-And-Responsibilities.md) 中的「界面 ↔ 领域」映射一致。矛盾追溯见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md)。
+**交互说明来源**：页面流转、控件文案与状态展示以 `[docs/prototype/model-experiment-web](../prototype/model-experiment-web/README.md)` **仓库实现**为验收基准；[Figma：Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) 为初次设计迁移原本与风格参考。下文 **Experiment / Run** 为领域实体；界面可见 **Exp Id / Exp Name / Model Experiments List** 等与 `[Naming-And-Responsibilities.md](./Naming-And-Responsibilities.md)` 中的「界面 ↔ 领域」映射一致。矛盾追溯见 `[_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)`。
 
 ---
 
@@ -27,15 +27,17 @@
 
 ### 2.1 概念定义表
 
-| 概念 | 英文 | 定义 | 与其他概念的关系 |
-|------|------|------|------------------|
-| **模型** | Model | 逻辑模型实体，代表一个业务场景下的预测/分类任务（如「欺诈检测模型」「信用评分模型」），包含元信息：名称、任务类型（classification / regression）、框架偏好、Owner、所属业务团队。**Model 不绑定具体训练产物，仅作顶层逻辑归类与注册入口。** | 1 Model → N ModelVersion。Model 是模型注册与版本管理的顶层入口。 |
-| **模型版本** | ModelVersion | Model 的一次**重大迭代**（如架构变更、特征集重构、数据源切换），以 `v1 / v2` 标签区分。同一 Model 下可并行存在多个 Version，便于 A/B 或灰度评估。Version Tag 通常作为 Model 名称后缀（如 `fraud_detection_model_v2`）。 | 1 ModelVersion → N Build。归属于一个 Model。 |
-| **构建产物** | Build | 一次 SUCCESS 的 Run 产出的模型快照，经**用户主动 Review 后注册**。Build 不复制文件，而是**引用** ModelArtifact 的 S3 路径，并冻结指标快照与配置快照。注册后不可修改。 | 1 Build ← 1 Run（产出方）；注册到 1 ModelVersion 下。 |
-| **实验** | Experiment (EXP) | **（P0 本期 MVP 核心）** 绑定已注册 Model 的训练编排单元；默认继承 Model 的 name 与 region（Experiment 与 Run 不覆盖 Model 元信息）。**设计稿中任务级状态为 `DRAFT` / `ENABLED` / `DISABLED`**（实现层映射同一 Experiment 实体），用于控制是否可调度、是否允许编辑等；**另保留画布配置版本历史 `history[]`** 与 **Run History** 交互。保留**当前/最新画布配置**；列表主表展示 **Exp Id、Exp Name**，展开行为 **Run** 子表。子表每行 **View** 进入 **Run View**（DAG + 节点执行态 + 只读配置）。新建执行实例的主路径为配置页 **Action → Trigger Run**（见 §4.1）。 | 1 Model → N Experiment；1 Experiment → N Run。 |
-| **运行** | Run | Experiment 的一次实际执行，以 **Run id** 标识（与 **TaskInstance.id** 同源）；创建时携带**配置快照（Config Snapshot）**，**中间产物与画布配置均绑定 Run id**；实例可展示 **bindTask**（绑定的配置版本标签）。在配置详情页调整配置后再次执行 = 新 Run id + 按最新配置从头执行（是否 Kill 在途实例由策略决定）。**界面状态机**：`QUEUING`（**界面与文档以 `QUEUING` 为主展示**排队；数据模型可含 `WAITING` 与 `QUEUING` 同位兼容）→ `RUNNING` → 若画布上 **`isCheckPoint` 节点成功执行完毕** → **`CHECKING`**（人工 Review，可 **Continue** 回到 `RUNNING` 继续下游，或 **Kill** → `KILLED`）→ 终态 `SUCCESS` / `FAILED` / `KILLED`。**Web 原型不实现**「进行中 Run 禁止再 **Trigger Run**」的串行锁；新建 Run 主路径为配置页 **Action → Trigger Run**。列表 Run 子表二级操作：**View**、**Continue**（仅 `CHECKING`）、**Kill**（`QUEUING` / `RUNNING` / `WAITING` / `CHECKING` 等进行中态）；画布 **Run View** 的 **Action** 含 **Continue** 与 **Kill**。**区分**：Pipeline ENV **`*_checkpoint_after_node`** 为执行器侧「节点后暂停/技术 checkpoint」语义；Run 级 **`CHECKING`** 绑定 **DAG `isCheckPoint`** 的人工卡点，二者勿混读。S3 路径：`s3://{bucket}/model-training/{exp_id}/{run_id}/`。 | 1 Run ← 1 Experiment；SUCCESS 时 1:1 产出 ModelArtifact；可被 0..1 个 Build 引用。 |
-| **训练数据管道** | Training Data Pipeline | 从 Hive 读数据到模型产物归档至 S3 的端到端执行流水线；由平台根据 Run 配置画布自动生成的 Python `RayUtil` 脚本在 Ray 集群上执行。**每次 Run 默认全量路径执行**；执行时分析配置是否变更，无变更部分可直接使用缓存。**Trigger Run** 弹窗通过 **Use Cache** 开关表达是否优先复用缓存（关即全量重跑）。**当前 Web 原型**（对齐合作方 [frontend_node_config_spec_latest.md](../architecture/frontend_node_config_spec_latest.md)）为 **6 节点线性画布**；扩展版 SOP（**WOE All Feature**、**WOE Selected**、**CheckPoint（择优）** 等）见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 deferred 说明。**实现参考** risk_model_on_ray；配置与脚本映射见 Task-Canvas-Config 与 [Training-Data-Pipeline.md](./Training-Data-Pipeline.md)。 | 每次 Run 执行一次完整流水线；产出 ModelArtifact。 |
-| **模型产物** | ModelArtifact | Run 执行 SUCCESS 后统一归档至 S3 的全部文件集合。 | 1 Artifact ↔ 1 Run；Build 注册时引用 Artifact 的 S3 路径。 |
+
+| 概念         | 英文                     | 定义                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 与其他概念的关系                                                                |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **模型**     | Model                  | 逻辑模型实体，代表一个业务场景下的预测/分类任务（如「欺诈检测模型」「信用评分模型」），包含元信息：名称、任务类型（classification / regression）、框架偏好、Owner、所属业务团队。**Model 不绑定具体训练产物，仅作顶层逻辑归类与注册入口。**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 1 Model → N ModelVersion。Model 是模型注册与版本管理的顶层入口。                         |
+| **模型版本**   | ModelVersion           | Model 的一次**重大迭代**（如架构变更、特征集重构、数据源切换），以 `v1 / v2` 标签区分。同一 Model 下可并行存在多个 Version，便于 A/B 或灰度评估。Version Tag 通常作为 Model 名称后缀（如 `fraud_detection_model_v2`）。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 1 ModelVersion → N Build。归属于一个 Model。                                   |
+| **构建产物**   | Build                  | 一次 SUCCESS 的 Run 产出的模型快照，经**用户主动 Review 后注册**。Build 不复制文件，而是**引用** ModelArtifact 的 S3 路径，并冻结指标快照与配置快照。注册后不可修改。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 1 Build ← 1 Run（产出方）；注册到 1 ModelVersion 下。                              |
+| **实验**     | Experiment (EXP)       | **（P0 本期 MVP 核心）** 绑定已注册 Model 的训练编排单元；默认继承 Model 的 name 与 region（Experiment 与 Run 不覆盖 Model 元信息）。**设计稿中任务级状态为 `DRAFT` / `ENABLED` / `DISABLED`**（实现层映射同一 Experiment 实体），用于控制是否可调度、是否允许编辑等；**另保留画布配置版本历史 `history[]`** 与 **Run History** 交互。保留**当前/最新画布配置**；列表主表展示 **Exp Id、Exp Name**，展开行为 **Run** 子表。子表每行 **View** 进入 **Run View**（DAG + 节点执行态 + 只读配置）。新建执行实例的主路径为配置页 **Action → Trigger Run**（见 §4.1）。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 1 Model → N Experiment；1 Experiment → N Run。                            |
+| **运行**     | Run                    | Experiment 的一次实际执行，以 **Run id** 标识（与 **TaskInstance.id** 同源）；创建时携带**配置快照（Config Snapshot）**，**中间产物与画布配置均绑定 Run id**；实例可展示 **bindTask**（绑定的配置版本标签）。在配置详情页调整配置后再次执行 = 新 Run id + 按最新配置从头执行（是否 Kill 在途实例由策略决定）。**界面状态机**：`QUEUING`（**界面与文档以 `QUEUING` 为主展示**排队；数据模型可含 `WAITING` 与 `QUEUING` 同位兼容）→ `RUNNING` → 若画布上 `**isCheckPoint` 节点成功执行完毕** → `**CHECKING`**（人工 Review，可 **Continue** 回到 `RUNNING` 继续下游，或 **Kill** → `KILLED`）→ 终态 `SUCCESS` / `FAILED` / `KILLED`。**Web 原型不实现**「进行中 Run 禁止再 **Trigger Run**」的串行锁；新建 Run 主路径为配置页 **Action → Trigger Run**。列表 Run 子表二级操作：**View**、**Continue**（仅 `CHECKING`）、**Kill**（`QUEUING` / `RUNNING` / `WAITING` / `CHECKING` 等进行中态）；画布 **Run View** 的 **Action** 含 **Continue** 与 **Kill**。**区分**：Pipeline ENV `***_checkpoint_after_node`** 为执行器侧「节点后暂停/技术 checkpoint」语义；Run 级 `**CHECKING**` 绑定 **DAG `isCheckPoint`** 的人工卡点，二者勿混读。S3 路径：`s3://{bucket}/model-training/{exp_id}/{run_id}/`。 | 1 Run ← 1 Experiment；SUCCESS 时 1:1 产出 ModelArtifact；可被 0..1 个 Build 引用。 |
+| **训练数据管道** | Training Data Pipeline | 从 Hive 读数据到模型产物归档至 S3 的端到端执行流水线；由平台根据 Run 配置画布自动生成的 Python `RayUtil` 脚本在 Ray 集群上执行。**每次 Run 默认全量路径执行**；执行时分析配置是否变更，无变更部分可直接使用缓存。**Trigger Run** 弹窗通过 **Use Cache** 开关表达是否优先复用缓存（关即全量重跑）。**当前 Web 原型**（对齐合作方 [frontend_node_config_spec_latest.md](../architecture/frontend_node_config_spec_latest.md)）为 **6 节点线性画布**；扩展版 SOP（**WOE All Feature**、**WOE Selected**、**CheckPoint（择优）** 等）见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md) 的 deferred 说明。**实现参考** risk_model_on_ray；配置与脚本映射见 Task-Canvas-Config 与 [Training-Data-Pipeline.md](./Training-Data-Pipeline.md)。                                                                                                                                                                                                                                                                              | 每次 Run 执行一次完整流水线；产出 ModelArtifact。                                      |
+| **模型产物**   | ModelArtifact          | Run 执行 SUCCESS 后统一归档至 S3 的全部文件集合。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1 Artifact ↔ 1 Run；Build 注册时引用 Artifact 的 S3 路径。                        |
+
 
 > **Trial 辨析**：文中涉及的"Trial"指 Ray Tune 在一次 Run 执行内部自动发起的超参搜索迭代（由 `n_trials` 控制），属于底层引擎行为，不对应平台的独立实体。用户通过 Experiment 画布配置设置 `n_trials` 值即可，无需关心单次 Trial 细节。
 
@@ -51,6 +53,8 @@ erDiagram
     Experiment ||--o{ Run : "1:N 触发执行"
     Run ||--|| ModelArtifact : "1:1 产出归档"
 ```
+
+
 
 ### 2.3 概念层级关系
 
@@ -73,15 +77,17 @@ Model → Experiment（绑定已注册 Model，继承 name / region）
 
 ### 2.4 关键辨析
 
-| 易混淆点 | 辨析说明 |
-|----------|----------|
-| **Build vs ModelArtifact** | ModelArtifact 是 Run 的原始产出（SUCCESS 后自动归档到 S3）；Build 是用户主动 Review 后将 Artifact **注册** 到 ModelVersion 下的动作结果。并非所有 Artifact 都会成为 Build——只有用户认为满意的才值得注册。 |
-| **Experiment vs Run** | Experiment 是绑定 Model 的训练编排单元，保留当前/最新画布配置；Run 是一次执行（Run id 标识），配置快照与中间产物均绑定 Run id。画布入口在 Experiment 层级；新建 Run 的主交互为配置页 **Action → Trigger Run**。 |
-| **Run vs Trial** | Run 是平台层面的一次**完整执行**（端到端）；Trial 是 Ray Tune 引擎层面的一次**超参组合尝试**。一个 Run 内部可包含 `n_trials` 次 Trial，Trial 对用户透明、不持久化为独立实体。 |
-| **Model vs ModelVersion** | Model 是抽象的逻辑归类（如"欺诈检测"这件事），不随训练变化；ModelVersion 是对同一逻辑模型的一次**重大迭代升级**。日常迭代通常在同一 Version 下产生新 Build，仅当架构或特征集发生根本变更时才新建 Version。 |
-| **Experiment 与 Run 状态** | **任务级**：`DRAFT` / `ENABLED` / `DISABLED`（设计稿 TrainingTask.status）。**运行级**：`QUEUING` / `WAITING` / `RUNNING` / **`CHECKING`** / `SUCCESS` / `FAILED` / `KILLED`。**CHECKING**：**`isCheckPoint` 节点成功完成后**进入，需 **Continue** 或 **Kill**（见 Run 行状态机）。 |
-| **与 Figma 设计稿（Model Experiment）的对应** | **TrainingTask** ↔ **Experiment**，**TaskInstance** ↔ **Run**；列表列 **Exp Id / Exp Name**；配置顶栏 **Current Config**、**Run History** 下拉、**History Run** / **Run View** 只读模式；**Version History** 弹窗查看 `history[]`。**Manage（Enable / Disable / Delete）** 与 **Action（Trigger Run / Continue / Kill）** 为设计约定组件（详见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md) 与原型挂接情况）。 |
+
+| 易混淆点                                        | 辨析说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Build vs ModelArtifact**                  | ModelArtifact 是 Run 的原始产出（SUCCESS 后自动归档到 S3）；Build 是用户主动 Review 后将 Artifact **注册** 到 ModelVersion 下的动作结果。并非所有 Artifact 都会成为 Build——只有用户认为满意的才值得注册。                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Experiment vs Run**                       | Experiment 是绑定 Model 的训练编排单元，保留当前/最新画布配置；Run 是一次执行（Run id 标识），配置快照与中间产物均绑定 Run id。画布入口在 Experiment 层级；新建 Run 的主交互为配置页 **Action → Trigger Run**。                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Run vs Trial**                            | Run 是平台层面的一次**完整执行**（端到端）；Trial 是 Ray Tune 引擎层面的一次**超参组合尝试**。一个 Run 内部可包含 `n_trials` 次 Trial，Trial 对用户透明、不持久化为独立实体。                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Model vs ModelVersion**                   | Model 是抽象的逻辑归类（如"欺诈检测"这件事），不随训练变化；ModelVersion 是对同一逻辑模型的一次**重大迭代升级**。日常迭代通常在同一 Version 下产生新 Build，仅当架构或特征集发生根本变更时才新建 Version。                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Experiment 与 Run 状态**                     | **任务级**：`DRAFT` / `ENABLED` / `DISABLED`（设计稿 TrainingTask.status）。**运行级**：`QUEUING` / `WAITING` / `RUNNING` / `**CHECKING`** / `SUCCESS` / `FAILED` / `KILLED`。**CHECKING**：`**isCheckPoint` 节点成功完成后**进入，需 **Continue** 或 **Kill**（见 Run 行状态机）。                                                                                                                                                                                                                                                                                                                                       |
+| **与 Figma 设计稿（Model Experiment）的对应**        | **TrainingTask** ↔ **Experiment**，**TaskInstance** ↔ **Run**；列表列 **Exp Id / Exp Name**；配置顶栏 **Current Config**、**Run History** 下拉、**History Run** / **Run View** 只读模式；**Version History** 弹窗查看 `history[]`。**Manage（Enable / Disable / Delete）** 与 **Action（Trigger Run / Continue / Kill）** 为设计约定组件（详见 `[_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)` 与原型挂接情况）。                                                                                                                                                                                                                  |
 | **Framework：LightGBM/XGBoost vs benchmark** | **LightGBM / XGBoost** 对应训练画布：原型为 **6 管道节点**（data source → WOE fit → WOE Transform → Feature selection → Tune & Train → inference），**无 Start/End 占位节点**；实验级配置在顶栏 **Edit Meta**、**Settings**（`default_cpu` / `default_memory` / `default_image`、队列、调度）、**ENV**（Pipeline 变量表，**不含**上述三项默认资源键），与 [Feature WideTable](https://github.com/Cedric-Chan/FeatureStore) 对齐思路一致。节点 **Last Run** 可展开 **Ray Log**（原型 Mock）。扩展 9 节点叙事见 Pipeline-Steps 文档。**benchmark** 画布为 S3 数据源、model_bm、校准等；元信息仍在顶栏。创建 Experiment 时 **Template** 为可选，下拉为当前用户可见的实验名称（Copy 时预填源实验名）；**Framework** 仍由 Model 等字段约束。 |
+
 
 ---
 
@@ -118,13 +124,15 @@ flowchart TD
     RunDetail -->|手动 Register Build| ModelDetail
 ```
 
+
+
 ### 交互设计原则（全局，须遵守）
 
-以下适用于 **Model Experiment** 相关 Web 与同源 [Figma：Model-Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment)；**实现（含 [`model-experiment-web`](../prototype/model-experiment-web/README.md) 与后续生产前端）须一致落实**。
+以下适用于 **Model Experiment** 相关 Web 与同源 [Figma：Model-Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment)；**实现（含 `[model-experiment-web](../prototype/model-experiment-web/README.md)` 与后续生产前端）须一致落实**。
 
-1. **弹窗与 Esc 键**  
-   **所有**面向用户的**模态弹窗**（居中/侧栏对话框、全屏遮罩表单、二次确认、配置编辑浮层等）在打开且处于可关闭语义下时，**必须**支持通过键盘 **Esc** 关闭，效果与点击遮罩或「Cancel / 关闭」一致（是否丢弃未保存内容遵循该弹窗自身的产品定义）。  
-   - **例外**：仅当产品明确要求「不可一键退出」的阻断型弹窗（如强制阅读、合规确认）可不响应 Esc，且须在交互稿与本 PRD 中**单独标注**。
+1. **弹窗与 Esc 键**
+  **所有**面向用户的**模态弹窗**（居中/侧栏对话框、全屏遮罩表单、二次确认、配置编辑浮层等）在打开且处于可关闭语义下时，**必须**支持通过键盘 **Esc** 关闭，效果与点击遮罩或「Cancel / 关闭」一致（是否丢弃未保存内容遵循该弹窗自身的产品定义）。  
+  - **例外**：仅当产品明确要求「不可一键退出」的阻断型弹窗（如强制阅读、合规确认）可不响应 Esc，且须在交互稿与本 PRD 中**单独标注**。
 
 ---
 
@@ -132,11 +140,11 @@ flowchart TD
 
 ### 4.1 核心页面：Experiment 画布配置页
 
-**页面定位**：**画布配置入口在 Experiment（列表项 Edit）层级**。创建流：列表主按钮 **Create Exp.**（弹窗标题为 **Create Model Experiment**，编辑/复制等为对应变体）→ 表单字段：**Experiment name**、**Model @ Version**（级联选择）、**Model level**（sub / mega；编辑态只读）、**Template**（可选）、**Owner**（多选）、**Biz team**、**Description**；**Framework** 在原型创建流中固定为 **LightGBM**（编辑/复制沿用原任务框架）。**Region** 不作为单独表单项，由所选 Model 元数据继承并在列表/详情展示。提交后主路径进入画布。画布为 **左侧 DAG + 右侧固定配置面板**（非抽屉）；节点面板 **Tag：Config / Last Run**，Last Run 展示对应 **Run ID** 与节点级上次执行信息。**新建 Run（TaskInstance）**：顶栏 **Action → Trigger Run** → 先做 **DAG 与配置校验**，通过后打开 **Trigger Run** 弹窗：**Use Cache**（开=优先复用未变更节点缓存，关=全量重跑）、**Run Notes**（可选）、**Run** 提交；新建实例状态以 **`QUEUING` 为主展示**（见 §4.1.1 与数据模型中的 `WAITING` 兼容说明）。源码中另有 **Run 下拉（From Current Step / From Start）** 组件，**当前导出未挂接**；画布底部提示选中**管道节点**作为起点，体现**从选中节点起执行**的设计意图，落地以仓库实现/后续迭代为准。
+**页面定位**：**画布配置入口在 Experiment（列表项 Edit）层级**。创建流：列表主按钮 **Create Exp.**（弹窗标题为 **Create Model Experiment**，编辑/复制等为对应变体）→ 表单字段：**Experiment name**、**Model @ Version**（级联选择）、**Model level**（sub / mega；编辑态只读）、**Template**（可选）、**Owner**（多选）、**Biz team**、**Description**；**Framework** 在原型创建流中固定为 **LightGBM**（编辑/复制沿用原任务框架）。**Region** 不作为单独表单项，由所选 Model 元数据继承并在列表/详情展示。提交后主路径进入画布。画布为 **左侧 DAG + 右侧固定配置面板**（非抽屉）；节点面板 **Tag：Config / Last Run**，Last Run 展示对应 **Run ID** 与节点级上次执行信息。**新建 Run（TaskInstance）**：顶栏 **Action → Trigger Run** → 先做 **DAG 与配置校验**，通过后打开 **Trigger Run** 弹窗：**Use Cache**（开=优先复用未变更节点缓存，关=全量重跑）、**Run Notes**（可选）、**Run** 提交；新建实例状态以 `**QUEUING` 为主展示**（见 §4.1.1 与数据模型中的 `WAITING` 兼容说明）。源码中另有 **Run 下拉（From Current Step / From Start）** 组件，**当前导出未挂接**；画布底部提示选中**管道节点**作为起点，体现**从选中节点起执行**的设计意图，落地以仓库实现/后续迭代为准。
 
 **顶栏（与 Feature WideTable 画布对齐）**：**Edit Meta**（笔形）：Experiment / Model 只读、Owner、Description。**ENV**：实验级全局变量表（Parameters / Description / Value，行级增删）。**Execute Config**：Resource Tier、Queue Priority、Schedule（**ONCE / Cron**）、Pipeline Input Fields；入口样式与弹窗布局与 [Feature WideTable · Execute Config](https://github.com/Cedric-Chan/FeatureStore) 一致。
 
-**画布节点粒度（仅管道节点，无 Start/End）**：首位管道节点为 **数据源**，随后为 **WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，**再进入 Model Inference** 为 DAG **流程语义**）、**Model Inference**、**Calibrate**（本期 Pending）。当 DAG 上 **`isCheckPoint` 节点成功完成**且 Run 进入 **`CHECKING`** 时，用户可在 **列表 Run 子表** 与 **画布顶栏 Action** 中使用 **Continue**（仅 `CHECKING` 可用）或 **Kill**。这与 **CheckPoint（择优）** 节点在 DAG 内「择优后进入下游」的流程语义并存：**Run 级 Continue** 用于人工卡点后的恢复调度。**界面排队态以 `QUEUING` 为主展示**；终态与运行态还包含 **RUNNING / SUCCESS / FAILED / KILLED** 等（见 §2.1）。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
+**画布节点粒度（仅管道节点，无 Start/End）**：首位管道节点为 **数据源**，随后为 **WOE All Feature**（对全部特征 woe_fit → woe_transform → woe_merge，再可选 All Feature Report；Time Travel 实验 checkpoint（WOE 部分），可配置 SavePoint）、**Feature Selection + Fine Feature Report**（特征选择 + 对选中特征的 Fine Feature Report；CheckPoint 属性可开启）、**WOE Selected Feature**（对选中特征可选 woe_update → woe_transform → woe_merge；可配置 SavePoint）、**Model Tune**、**Model Train**、**CheckPoint（择优）**（**Best Select / Model Summary**：汇总多路 TUNE+Train 分支结果并识别最优，**再进入 Model Inference** 为 DAG **流程语义**）、**Model Inference**、**Calibrate**（本期 Pending）。当 DAG 上 `**isCheckPoint` 节点成功完成**且 Run 进入 `**CHECKING`** 时，用户可在 **列表 Run 子表** 与 **画布顶栏 Action** 中使用 **Continue**（仅 `CHECKING` 可用）或 **Kill**。这与 **CheckPoint（择优）** 节点在 DAG 内「择优后进入下游」的流程语义并存：**Run 级 Continue** 用于人工卡点后的恢复调度。**界面排队态以 `QUEUING` 为主展示**；终态与运行态还包含 **RUNNING / SUCCESS / FAILED / KILLED** 等（见 §2.1）。画布节点类型与配置规范见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) 与 [Pipeline-Steps-and-Canvas-Nodes.md](./Pipeline-Steps-and-Canvas-Nodes.md)。
 
 - **LightGBM / XGBoost**：画布含数据源（Hive）、**WOE All Feature**、Feature Selection + Fine Feature Report、**WOE Selected Feature**、Model Tune、Model Train、**CheckPoint（择优）（Best Select / Model Summary）**、Model Inference、Calibrate（默认关闭，本期 Pending）；实验级配置见顶栏。
 - **benchmark**：画布含 S3 数据源、model_bm、校准节点；实验级配置见顶栏。
@@ -146,19 +154,20 @@ flowchart TD
 
 **Edit Meta / Execute Config**：顶栏 **Edit Meta** 中对 Owner / Description 的修改直接更新 Experiment 实体；**Execute Config** 中 Resource / Queue / Schedule / Input Fields 为实验级或执行侧配置（不落 Run 版策略以后端为准）。Experiment 保留**当前/最新画布配置**，便于历史 Run 溯源与复现。Experiment 与 Run 不覆盖 Model 元信息；仅继承 Model 的 name 与 region。
 
-**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；**CheckPoint** 为节点属性、默认关闭。开启 **isCheckPoint** 的节点在成功完成后可使 Run 进入 **`CHECKING`**，直至用户在列表或画布执行 **Continue** 或 **Kill**（见 §2.1 与上文「画布节点粒度」）。改配置后再次执行 = 新 Run id，按**最新 Experiment 配置**执行。**SavePoint 适用节点**：WOE All Feature、WOE Selected Feature；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report、CheckPoint（择优）（可选）。
+**CheckPoint / SavePoint**：平台支持 SavePoint（节点产出持久化）；**CheckPoint** 为节点属性、默认关闭。开启 **isCheckPoint** 的节点在成功完成后可使 Run 进入 `**CHECKING`**，直至用户在列表或画布执行 **Continue** 或 **Kill**（见 §2.1 与上文「画布节点粒度」）。改配置后再次执行 = 新 Run id，按**最新 Experiment 配置**执行。**SavePoint 适用节点**：WOE All Feature、WOE Selected Feature；**CheckPoint 适用节点**：Feature Selection + Fine Feature Report、CheckPoint（择优）（可选）。
 
 **Check（校验）**：**Trigger Run** 前执行 **runFrontendCheck**（必填、DAG 连通性等）；失败时在画布区展示 **Validation failed** 浮层。
 
 **交互说明（User Flow）**：
+
 - **创建**：列表 **Create Exp.** → 创建弹窗 → 进入画布；配置后可通过顶栏 **Action → Trigger Run** 新建实例（或通过列表侧逻辑触发，见原型挂接说明）。
 - **编辑 / 复制**：列表 **Edit** 进入画布；**Copy** 走创建弹窗并可进入新任务画布。顶栏 **Edit**（笔形）打开 **Edit Meta**；**Execute Config** 打开执行配置弹窗（与 WideTable 样式一致）。
-- **历史与只读**：**Run History** 下拉切换历史运行快照 → **History Run** 横幅 + 只读画布；从列表 **View** 进入 **Run View**（ live 实例，可 **Kill**；Run 为 **`CHECKING`** 时顶栏 **Action** 含 **Continue**）。
+- **历史与只读**：**Run History** 下拉切换历史运行快照 → **History Run** 横幅 + 只读画布；从列表 **View** 进入 **Run View**（ live 实例，可 **Kill**；Run 为 `**CHECKING`** 时顶栏 **Action** 含 **Continue**）。
 - **Rollback Config（配置回滚）**：在 **History Run** 或（具备冻结快照关联的）**Run View** 顶栏，**Back to Config** 旁提供 **Rollback Config**；经 **PopConfirm** 确认后，用该次 Run 的**画布快照**覆盖当前 **Current Config** 草稿：**默认 DAG 拓扑 + `nodePatches`（如节点 sublabel）**、节点卡片 **propOverrides**、以及快照中的 **Pipeline ENV**（原型为 `VersionSnapshot.pipelineEnv` mock）。**History Run**：确认后退出历史只读、回到 **Current Config** 可编辑并回显。**Run View**：确认后更新实验草稿并进入 **Current Config**（原型用 `TrainingTask.canvasRestore` 一次性应用 DAG/卡片，再清除）。仅当 `TaskInstance.canvasSnapshotRunId` 能解析到快照时显示 Run View 侧回滚；生产环境应由 Run 元数据返回完整前端配置快照。
 
 #### 4.1.1 原型实现说明（`docs/prototype/model-experiment-web`）
 
-**验收基准**：以 **`model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
+**验收基准**：以 `**model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
 
 以下为 **React + Vite** 原型交互约定； legacy **MODEL_TRAINING.html** 若与本文冲突，以本仓库 **model-experiment-web** 为准。
 
@@ -170,26 +179,29 @@ flowchart TD
 
 **领域映射（设计稿 ↔ 产品）**：
 
-| 界面 / 设计稿（Model Experiment） | 领域实体（本 PRD / 架构） |
-|----------------------------------|---------------------------|
-| TrainingTask、Exp Id / Exp Name | Experiment |
-| TaskInstance、Run ID | Run |
-| Task status：DRAFT / ENABLED / DISABLED | Experiment 任务级生命周期 |
-| Instance status：QUEUING …（界面以 QUEUING 为主展示；可含 CHECKING、WAITING 等） | Run 排队与执行态 |
-| history[]、Version History、Run History | 配置版本与运行快照溯源 |
-| bindTask | Run 与配置版本标签的绑定展示 |
-| Trigger Run / 列表 Trigger（意图） | 创建新 Run |
-| Use Cache 开关 | 是否优先复用未变更节点缓存（关=全量） |
+
+| 界面 / 设计稿（Model Experiment）                                        | 领域实体（本 PRD / 架构）    |
+| ----------------------------------------------------------------- | ------------------- |
+| TrainingTask、Exp Id / Exp Name                                    | Experiment          |
+| TaskInstance、Run ID                                               | Run                 |
+| Task status：DRAFT / ENABLED / DISABLED                            | Experiment 任务级生命周期  |
+| Instance status：QUEUING …（界面以 QUEUING 为主展示；可含 CHECKING、WAITING 等） | Run 排队与执行态          |
+| history[]、Version History、Run History                             | 配置版本与运行快照溯源         |
+| bindTask                                                          | Run 与配置版本标签的绑定展示    |
+| Trigger Run / 列表 Trigger（意图）                                      | 创建新 Run             |
+| Use Cache 开关                                                      | 是否优先复用未变更节点缓存（关=全量） |
+
 
 **配置页（画布）**：
+
 - 布局：左侧 **点阵 DAG**（缩放、小地图、右键拖平移），右侧 **固定配置面板**（宽度约 384px，较早期 256px 增宽 50% 以降低信息密度）。
-- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉（仅 **Current Config**）+ **ENV** / **Settings** + **Action**（**Trigger Run**）。**History Run** / **Run View**：**Rollback Config**（PopConfirm）+ **Back to Config**；**Run View** 且 Run 为 **`CHECKING`** 时 **Continue** 可用；运行中实例 **Kill** 可用。
+- 顶栏：Back、任务名、Region、**Current Config** / **Run View** / **History Run** 徽章；右侧 **Run History** 下拉（仅 **Current Config**）+ **ENV** / **Settings** + **Action**（**Trigger Run**）。**History Run** / **Run View**：**Rollback Config**（PopConfirm）+ **Back to Config**；**Run View** 且 Run 为 `**CHECKING`** 时 **Continue** 可用；运行中实例 **Kill** 可用。
 - **Trigger Run** 弹窗：**Use Cache**、**Run Notes**、**Run** 提交。
 - 节点链与 §4.1 一致；DAG **无 Start/End**；**Execute Config** 以 **Schedule：ONCE / Cron** 为文档表述（Cron 时填写表达式；原型 UI 若提供常用频率预设，映射为 Cron 表达式，以仓库实现为准）及 **Pipeline Input Fields**。
 
 **弹窗**：**Artifact**（Mock 指标/参数）、**Version History**（左侧版本列表 + 右侧 JSON）、创建/编辑/复制实验表单。
 
-**实现差异脚注**：列表行内 **Trigger**、`Manage` 下拉、独立 **Check** 按钮等若在源码中未挂接，以 **`model-experiment-web` 仓库实现**为验收准绳；详见 [`_FIGMA_SYNC_REVIEW.md`](./_FIGMA_SYNC_REVIEW.md)。
+**实现差异脚注**：列表行内 **Trigger**、`Manage` 下拉、独立 **Check** 按钮等若在源码中未挂接，以 `**model-experiment-web` 仓库实现**为验收准绳；详见 `[_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)`。
 
 ### 4.2 核心创新：Experiment (AI Prompt 向导页)
 
@@ -197,6 +209,7 @@ flowchart TD
 **UI/UX 布局 (分为左右分屏布局)**：
 
 #### 左侧面板：AI Prompt 构建区
+
 - **标题**：“创建一个探索实验”
 - **输入域 1 (基础必选项)**：选择基础的数据集 (Hive 表) 和 最终的目标列 (Target Label)。*(限制大模型胡乱猜测范围)*
 - **输入域 2 (Prompt 对话框)**：
@@ -204,6 +217,7 @@ flowchart TD
   - **组件**：多行文本框 + 「Generate Tasks (✨)」按钮。
 
 #### 右侧面板：AI 推荐的任务清单评审区 (Review Area)
+
 - 当用户点击生成后，右侧会以卡片列表形式 (Card List) 展现 AI 推导出的 1 到 N 个 `Training Task` 草稿配置。
 - **卡片内容说明**：
   - 每个卡片代表一个独立的、填好参数的 Training Task（包含自动选择的框架如 XGB、指定的 search space）。
@@ -216,6 +230,7 @@ flowchart TD
 
 **页面定位**：实验运行后的 Metrics 横向对比。
 **页面组件**：
+
 - **平行坐标图 (Parallel Coordinates Plot)**：用于一览不同 Trial 轮数下（例如 3 个 task x 30 trials = 90 条折线）不同超参到最终 AUC 目标的分布情况。
 - **实验任务数据表格**：
   - 级联列表：Task 级别折叠，展开后为该任务下的 `Trial` 列表跑测详情（由 Ray 提供数据回来）。
@@ -227,30 +242,34 @@ flowchart TD
 
 #### 实体定义
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| experiment_id | string (PK) | 实验唯一标识 |
-| name | string | 实验名称（用户自定义或由 AI 根据 Prompt 自动推荐） |
-| description | text | 实验目的描述（可选，用户手动补充） |
-| prompt_text | text | 用户输入的原始 AI Prompt 文本，完整留存用于溯源与复现 |
-| hive_table | string | 锁定的数据源 Hive 表名（创建时指定，旗下所有 Task 共享） |
-| partition_filter | string (nullable) | 锁定的分区条件（可选） |
-| target_column | string | 锁定的目标列（创建时指定，旗下所有 Task 共享） |
-| owner | string | 创建人 |
-| create_time | datetime | 创建时间 |
-| update_time | datetime | 更新时间 |
+
+| 字段               | 类型                | 说明                                 |
+| ---------------- | ----------------- | ---------------------------------- |
+| experiment_id    | string (PK)       | 实验唯一标识                             |
+| name             | string            | 实验名称（用户自定义或由 AI 根据 Prompt 自动推荐）    |
+| description      | text              | 实验目的描述（可选，用户手动补充）                  |
+| prompt_text      | text              | 用户输入的原始 AI Prompt 文本，完整留存用于溯源与复现   |
+| hive_table       | string            | 锁定的数据源 Hive 表名（创建时指定，旗下所有 Task 共享） |
+| partition_filter | string (nullable) | 锁定的分区条件（可选）                        |
+| target_column    | string            | 锁定的目标列（创建时指定，旗下所有 Task 共享）         |
+| owner            | string            | 创建人                                |
+| create_time      | datetime          | 创建时间                               |
+| update_time      | datetime          | 更新时间                               |
+
 
 **关联外键**：TrainingTask 表新增可空字段 `experiment_id`（FK → Experiment）。独立创建的 Task 该字段为 `null`；由 Experiment 生成的 Task 该字段指向所属 Experiment。
 
 #### 数据约束与业务规则
 
-| 约束项 | 说明 |
-|--------|------|
-| **数据基线锁定** | Experiment 创建时锁定 `hive_table` + `partition_filter` + `target_column`，旗下所有 Task 共享同一数据基线，确保对比公平性。Task 表单中对应字段显示为**只读（Disabled）**。 |
-| **Task 差异化维度** | 各 Task 之间允许差异的维度包括：引擎框架（XGBoost / LightGBM）、超参搜索空间（`search_space`）、特征选择算法组合、WOE 开关、`n_trials`、评价指标（`metric`）。 |
-| **Experiment 内 Task 绑定** | 由 Experiment 生成的 Task 与该 Experiment 绑定，生命周期跟随 Experiment。不支持将 Experiment 内的 Task 拆出独立使用，也不支持将已有独立 Task 挂载到 Experiment 下。 |
-| **Submit All 原子性** | 「Submit All」操作要求一次性将所有卡片对应的 TrainingTask 持久化并触发执行。不支持部分提交。 |
-| **Build 注册入口** | Experiment 详情页的对比大盘中，用户可针对任意 SUCCESS 的 TaskInstance 直接发起 Register Build 操作，流程与独立 Task 的 Build 注册一致。 |
+
+| 约束项                      | 说明                                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| **数据基线锁定**               | Experiment 创建时锁定 `hive_table` + `partition_filter` + `target_column`，旗下所有 Task 共享同一数据基线，确保对比公平性。Task 表单中对应字段显示为**只读（Disabled）**。 |
+| **Task 差异化维度**           | 各 Task 之间允许差异的维度包括：引擎框架（XGBoost / LightGBM）、超参搜索空间（`search_space`）、特征选择算法组合、WOE 开关、`n_trials`、评价指标（`metric`）。                    |
+| **Experiment 内 Task 绑定** | 由 Experiment 生成的 Task 与该 Experiment 绑定，生命周期跟随 Experiment。不支持将 Experiment 内的 Task 拆出独立使用，也不支持将已有独立 Task 挂载到 Experiment 下。         |
+| **Submit All 原子性**       | 「Submit All」操作要求一次性将所有卡片对应的 TrainingTask 持久化并触发执行。不支持部分提交。                                                                       |
+| **Build 注册入口**           | Experiment 详情页的对比大盘中，用户可针对任意 SUCCESS 的 TaskInstance 直接发起 Register Build 操作，流程与独立 Task 的 Build 注册一致。                              |
+
 
 #### 完整生命周期（时序图）
 
@@ -301,6 +320,8 @@ sequenceDiagram
     BE-->>Web: Build 注册成功
     end
 ```
+
+
 
 ---
 
@@ -364,23 +385,27 @@ flowchart LR
     Train --> Predict
 ```
 
+
+
 **模块与 ray_util 对应关系**：
 
-| 模块 | ray_util 方法 | 关键参数（需手写/配置） |
-|------|----------------|-------------------------|
-| Step 0 | 无（Config + RayUtil 构造） | fp_base, label, sample_use_col, 凭证 |
+
+| 模块     | ray_util 方法            | 关键参数（需手写/配置）                                                                    |
+| ------ | ---------------------- | ------------------------------------------------------------------------------- |
+| Step 0 | 无（Config + RayUtil 构造） | fp_base, label, sample_use_col, 凭证                                              |
 | Step 1 | woe_fit, woe_transform | 每域: data_path, encoder_save_path, n_bins, method, categorical_features, exclude |
-| Step 2 | woe_merge_v2 | model_name, data_path_dict, on, how, data_save_path |
-| Step 3 | feature_selection_v2 | fp_fs_input_path, fp_fs_methods, 各阈值, by_stability 参数 |
-| Step 4 | model_tune | sample_path, feature_selection_path, n_trails, init_hypers, 各输出路径 |
-| Step 5 | model_train | best_hyper_path, best_model_path, num_workers 等 |
-| Step 6 | model_predict | sample_path, best_model_path, predict_result_path, auxilary_cols |
+| Step 2 | woe_merge_v2           | model_name, data_path_dict, on, how, data_save_path                             |
+| Step 3 | feature_selection_v2   | fp_fs_input_path, fp_fs_methods, 各阈值, by_stability 参数                           |
+| Step 4 | model_tune             | sample_path, feature_selection_path, n_trails, init_hypers, 各输出路径               |
+| Step 5 | model_train            | best_hyper_path, best_model_path, num_workers 等                                 |
+| Step 6 | model_predict          | sample_path, best_model_path, predict_result_path, auxilary_cols                |
+
 
 纯 Python 方式下约 **480 行代码**、**60+ 个需手动填写的参数**，且需自行规划 S3 路径与串行等待。画布节点与 Python Step 的对应关系（含合并节点：WOE All Feature = fit+transform+merge 全部特征，WOE Selected Feature = 选中特征 update+transform+merge）见 [Task-Canvas-Config.md](./Task-Canvas-Config.md) §2.1、§2.2。
 
 ### 6.2 Before (Python) vs After (平台表单) 上下映射对比
 
-下图将「纯 Python 手工编排」与「平台表单配置」逐模块上下对齐，展示平台如何用**硬表单（用户必填）**、**软表单（可改默认）**和**自动填充**减少操作量。画布共 10 节点，与本节 Before/After 映射的对应关系见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。
+下图将「纯 Python 手工编排」与「平台表单配置」逐模块上下对齐，展示平台如何用**硬表单（用户必填）**、**软表单（可改默认）和自动填充**减少操作量。画布共 10 节点，与本节 Before/After 映射的对应关系见 [Task-Canvas-Config.md](./Task-Canvas-Config.md)。
 
 ```mermaid
 flowchart TB
@@ -407,19 +432,23 @@ flowchart TB
     Before -.->|"映射"| After
 ```
 
+
+
 **上下映射与表单类型**：
 
-| Python 侧（Before） | 平台侧（After） | 表单类型说明 |
-|---------------------|-----------------|--------------|
-| Config 凭证、fp_base、label、sample_use_col | 数据源区块：Hive 表名、分区条件、**目标列**（必选） | **硬表单**：用户必填 |
-| 各域 data_path、encoder 路径、PATHS 字典 | 平台按「任务 ID + 实例 ID」自动生成 S3 路径 | **自动**：无需填写 |
-| woe_fit 的 n_bins、method、categorical_features、exclude | 特征与预处理：**特征选择算法**多选、**开启 WOE**、剔除列 | **硬表单** + **软表单默认**（如 5 bin、best_ks、IV 0.02） |
-| feature_selection 的阈值、lambda_grid、n_resampling | 同上区块，FS 阈值与 by_stability 参数 | **软表单默认**（可改） |
-| model_tune 的 init_hypers、n_trails、各输出路径 | 训练与寻参：**框架**、**n_trials**、**Search Space**、评价指标 | **硬表单** + **软表单默认**（如 metric=auc） |
-| num_workers、cpu_per_worker、memory_per_worker | 调度与集群：资源档位 Low/Medium/High、优先级 | **软表单默认** |
-| 串行执行 7 步、本地等待、手动查日志 | 提交后 QUEUING → RUNNING，Web 查看日志与 Metrics | **平台自动** |
 
-**对比结论**：Python 约 **2–4 小时**（编写 + 调参 + 路径管理 + 串行等待）；平台 **&lt; 5 分钟** 填硬表单、确认软表单默认值、一键提交即可。
+| Python 侧（Before）                                     | 平台侧（After）                                      | 表单类型说明                                       |
+| ---------------------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
+| Config 凭证、fp_base、label、sample_use_col               | 数据源区块：Hive 表名、分区条件、**目标列**（必选）                  | **硬表单**：用户必填                                 |
+| 各域 data_path、encoder 路径、PATHS 字典                     | 平台按「任务 ID + 实例 ID」自动生成 S3 路径                    | **自动**：无需填写                                  |
+| woe_fit 的 n_bins、method、categorical_features、exclude | 特征与预处理：**特征选择算法**多选、**开启 WOE**、剔除列              | **硬表单** + **软表单默认**（如 5 bin、best_ks、IV 0.02） |
+| feature_selection 的阈值、lambda_grid、n_resampling       | 同上区块，FS 阈值与 by_stability 参数                     | **软表单默认**（可改）                                |
+| model_tune 的 init_hypers、n_trails、各输出路径              | 训练与寻参：**框架**、**n_trials**、**Search Space**、评价指标 | **硬表单** + **软表单默认**（如 metric=auc）            |
+| num_workers、cpu_per_worker、memory_per_worker         | 调度与集群：资源档位 Low/Medium/High、优先级                  | **软表单默认**                                    |
+| 串行执行 7 步、本地等待、手动查日志                                  | 提交后 QUEUING → RUNNING，Web 查看日志与 Metrics         | **平台自动**                                     |
+
+
+**对比结论**：Python 约 **2–4 小时**（编写 + 调参 + 路径管理 + 串行等待）；平台 **< 5 分钟** 填硬表单、确认软表单默认值、一键提交即可。
 
 ### 6.3 多模型多参数对比探索：三种模式流程图
 
@@ -452,6 +481,8 @@ flowchart TB
     end
 ```
 
+
+
 *约 12+ 步，4 份独立脚本，路径/参数易不一致，对比靠人工整理。*
 
 ---
@@ -479,6 +510,8 @@ flowchart TB
     end
 ```
 
+
+
 *约 8 步，4 次重复填表，路径与预处理自动；对比仍依赖人工。*
 
 ---
@@ -504,7 +537,9 @@ flowchart TB
     end
 ```
 
-*约 4 步操作，一次输入、AI 填 4 张表单，统一对比面板，全流程 &lt; 10 分钟。*
+
+
+*约 4 步操作，一次输入、AI 填 4 张表单，统一对比面板，全流程 < 10 分钟。*
 
 ---
 

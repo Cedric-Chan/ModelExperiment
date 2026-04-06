@@ -5,6 +5,8 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+# Machine-local symlink to global Cursor skill (~/.cursor/skills/product-manager-platform)
+.cursor/skills/product-manager-platform
 *.swp
 *.swo
 *~
