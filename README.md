@@ -1,12 +1,10 @@
-# Offline Model Training Platform / 离线模型训练平台
-
-End-to-end offline model training management platform — covering training task configuration, scheduling & execution, data pipeline processing, model evaluation, artifact archival, and model registry.
+# 离线模型训练平台
 
 面向算法 / DS / 策略团队的离线模型训练管理平台，覆盖训练任务配置、调度执行、数据管道处理、模型评估、产物归档与模型注册全链路。
 
 ---
 
-## Architecture Overview / 架构概览
+## 架构概览
 
 ```
                         ┌─────────────────────────────┐
@@ -29,16 +27,16 @@ End-to-end offline model training management platform — covering training task
    └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
-### Core Modules / 核心模块
+### 核心模块
 
 
-| Module                        | Description                                  |
+| 模块                        | 说明                                  |
 | ----------------------------- | -------------------------------------------- |
-| **Model Training** (本期重点)     | 训练任务全生命周期管理：任务配置 → 调度执行 → Pipeline → 评估 → 归档 |
-| **Model Management** (本期粗略设计) | 模型注册与版本管理：Model → ModelVersion → Build       |
+| **模型训练** (本期重点)     | 训练任务全生命周期管理：任务配置 → 调度执行 → Pipeline → 评估 → 归档 |
+| **模型管理** (本期粗略设计) | 模型注册与版本管理：Model → ModelVersion → Build       |
 
 
-### Ray Execution Pipeline
+### Ray 执行管道
 
 平台基于纯表单收集配置，自动为您生成调用 `RayUtil` 的 Python 脚本，并后台包裹投递到内部 Ray 集群执行。
 
@@ -53,7 +51,7 @@ End-to-end offline model training management platform — covering training task
 
 ---
 
-## Domain Model / 领域模型
+## 领域模型
 
 > 完整术语定义见 [GLOSSARY.md](docs/GLOSSARY.md)（唯一来源），以下仅为简明概览。
 
@@ -78,7 +76,7 @@ ExplorationSession (Phase 2：AI Prompt 多配置对比)
         └── Run 1..N
 ```
 
-### State Machines / 状态机
+### State Machine（状态机）
 
 > 唯一权威定义见 [GLOSSARY.md](docs/GLOSSARY.md)，以下为简版。
 
@@ -88,7 +86,7 @@ ExplorationSession (Phase 2：AI Prompt 多配置对比)
 
 ---
 
-## Project Structure / 项目结构
+## 项目结构
 
 ```
 Model Training Pipeline/
@@ -129,15 +127,15 @@ Model Training Pipeline/
 
 ---
 
-## Documentation Index / 文档索引
+## 文档索引
 
 
-| Document                                                        | Scope                                                                        | Audience                       |
+| 文档                                                        | 范围                                                                        | 受众                       |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------ |
 | [术语表 / GLOSSARY](docs/GLOSSARY.md)                              | **唯一术语定义来源**：实体命名、状态机、Action 矩阵、Deprecated Aliases                           | 全员                             |
-| [系统架构说明](docs/architecture/系统架构说明.md)                           | 系统架构、领域模型、模块职责、状态机、产品交付示意图、上下游边界、预研清单 (§1–§17)                               | PM / Backend / Frontend / Arch |
-| [Training Data Pipeline](docs/design/Training-Data-Pipeline.md) | Experiment 配置转化为 Python 脚本投递给 Ray 的详细设计与规范及日志采集过程 (§1–§7)                    | Backend / ML Engineer          |
-| [产品原型与 PRD](docs/design/产品原型与PRD.md)                            | 产品原型、IA、核心功能、MVP Scope；**§5 用户操作说明与平台价值对比**（Python 流程图、Before/After、多模型三种模式） | PM / Frontend                  |
+| [系统架构说明](docs/architecture/系统架构说明.md)                           | 系统架构、领域模型、模块职责、状态机、产品交付示意图、上下游边界、预研清单 (§1–§17)                               | PM / 后端 / 前端 / 架构 |
+| [Training Data Pipeline](docs/design/Training-Data-Pipeline.md) | Experiment 配置转化为 Python 脚本投递给 Ray 的详细设计与规范及日志采集过程 (§1–§7)                    | 后端 / ML 工程师          |
+| [产品原型与 PRD](docs/design/产品原型与PRD.md)                            | 产品原型、IA、核心功能、MVP 范围；**§5 用户操作说明与平台价值对比**（Python 流程图、Before/After、多模型三种模式） | PM / 前端                  |
 | [docs/README.md](docs/README.md)                                | docs 目录索引：调研 / 设计 / 原型 / 参考材料分类                                              | 全员                             |
 
 
@@ -145,13 +143,13 @@ Model Training Pipeline/
 
 ---
 
-## Design Boundaries / 设计边界
+## 设计边界
 
 - **数据清洗由上游负责**：Hive 表已干净；Pipeline 仅做特征选择、可选 WOE、超参与停止条件（见 [Training-Data-Pipeline](docs/design/Training-Data-Pipeline.md) §1、§3.2）。
 - **自动 Feature Selection（Phase 2）**：为本期 **P0 需求**（by_iv / by_corr / by_gini / by_psi / by_stability，见 Pipeline §3.2）。
 
 
-| Boundary     | Description                                 |
+| 边界     | 说明                                 |
 | ------------ | ------------------------------------------- |
 | **训练数据只读**   | 平台从 Hive 表读取训练数据，不对上游数据进行写入或修改              |
 | **松耦合于特征平台** | 训练数据来源为任意有权限的 Hive 表（含特征平台 WideTable），不做强耦合 |
@@ -161,10 +159,10 @@ Model Training Pipeline/
 
 ---
 
-## System Boundary / 上下游边界
+## 上下游边界
 
 
-| Layer                                                 | Ownership  | Note           |
+| 层级                                                 | 归属  | 备注           |
 | ----------------------------------------------------- | ---------- | -------------- |
 | Hive 表数据准备（WideTable / 其他管道）                          | 上游 (非本平台)  | 本平台只读消费        |
 | Experiment 配置 → 调度 → Run 执行 → 评估 → 归档 → Build 注册      | **本平台**    | 核心职责           |
@@ -175,27 +173,27 @@ Model Training Pipeline/
 
 ---
 
-## Tech Stack / 技术栈
+## 技术栈
 
 
-| Layer                     | Technology                                              |
+| 层级                     | 技术                                              |
 | ------------------------- | ------------------------------------------------------- |
-| Frontend                  | Ant Design Pro (React) / 主色 `#13c2c2`                   |
-| Backend                   | RESTful API (Experiment / Run / Model Service)          |
-| Data Processing & Engines | Ray (Ray Data / Ray Train / XGBoost / LightGBM)         |
-| Hyperparameter Search     | Ray Tune (下沉于执行侧)                                       |
-| Storage                   | Hive (training data), S3 (artifacts), MetaDB (metadata) |
-| Scheduling                | Internal Cron engine + Priority Queue + Serial Lock     |
-| Auth                      | Unified RBAC (shared with Feature Platform)             |
+| 前端                  | Ant Design Pro (React) / 主色 `#13c2c2`                   |
+| 后端                   | RESTful API (Experiment / Run / Model Service)          |
+| 数据处理与引擎 | Ray (Ray Data / Ray Train / XGBoost / LightGBM)         |
+| 超参搜索     | Ray Tune (下沉于执行侧)                                       |
+| 存储                   | Hive (训练数据), S3 (产物), MetaDB (元数据) |
+| 调度                | 内部 Cron 引擎 + Priority Queue + Serial Lock     |
+| 鉴权                      | 统一 RBAC（与特征平台共用）             |
 
 
 ---
 
-## Key Concepts / 核心概念速查
+## 核心概念速查
 
-> 完整定义与 deprecated alias 映射见 [GLOSSARY.md](docs/GLOSSARY.md)。
+> 完整定义与 Deprecated Alias 映射见 [GLOSSARY.md](docs/GLOSSARY.md)。
 
-| Concept            | Definition                                                                                     |
+| 概念            | 定义                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
 | **Model**          | 逻辑模型实体（如「欺诈检测模型」），含元信息，不绑定训练产物                                                                |
 | **ModelVersion**   | Model 的一次重大迭代（如架构变更），以 v1/v2 标签区分                                                              |
@@ -209,10 +207,10 @@ Model Training Pipeline/
 
 ---
 
-## Backlog / 延期特性
+## 延期特性
 
 
-| Feature                       | Priority  | Note                                                    |
+| 特性                       | 优先级  | 备注                                                    |
 | ----------------------------- | --------- | ------------------------------------------------------- |
 | 自动 Feature Selection（Phase 2） | **P0 本期** | variance_threshold / correlation_filter，见 Pipeline §3.2 |
 | **Experiment 画布配置与 Run 执行**   | **P0 本期** | 支撑全局最优化；画布编排 + Trigger Run + Build 注册                   |
@@ -224,4 +222,4 @@ Model Training Pipeline/
 
 ---
 
-*Project Version: MVP | Last Updated: 2026-04-06*
+*项目版本: MVP | 最后更新: 2026-04-06*

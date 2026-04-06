@@ -1,4 +1,4 @@
-# 平台术语表 (Glossary) — Single Source of Truth
+# 平台术语表 (Glossary) — 唯一权威来源
 
 本文件为离线模型训练平台的**唯一术语定义来源**。所有设计、架构、PRD 文档引用此表，不再各自定义。
 
@@ -21,7 +21,7 @@
 | **物料模板** | Component Template   | 画布节点类型定义，描述步骤的配置 schema。                                                    | 1 Component Template → N Component          |
 
 
-## Deprecated Aliases
+## 已弃用别名 (Deprecated Aliases)
 
 以下为历史术语，仅在 `_FIGMA_SYNC_REVIEW.md` 中保留映射，**不应在新文档中使用**。
 
@@ -71,7 +71,7 @@ QUEUING → KILLED : 用户取消排队
 | **KILLED**   | `tag-red`    | 用户终止                              | —                                |
 
 
-### Run Action 可见性矩阵
+### Run Action 可见性矩阵（操作权限）
 
 
 | 操作                       | QUEUING | RUNNING | CHECKING | SUCCESS | FAILED | KILLED |
@@ -109,4 +109,4 @@ QUEUING → KILLED : 用户取消排队
 
 ---
 
-*Last Updated: 2026-04-06*
+*最后更新: 2026-04-06*

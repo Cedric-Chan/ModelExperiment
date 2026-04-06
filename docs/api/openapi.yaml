@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Offline Model Training Platform API
+  title: 离线模型训练平台 API
   description: |
     离线模型训练平台 REST API 规范。
     覆盖 Model / ModelVersion / Build / Experiment / Run 全生命周期，
@@ -9,11 +9,11 @@ info:
     术语定义见 [GLOSSARY.md](../GLOSSARY.md)。
   version: 1.0.0-draft
   contact:
-    name: Model Training Platform Team
+    name: 模型训练平台团队
 
 servers:
   - url: /api/v1
-    description: Platform API v1
+    description: 平台 API v1
 
 tags:
   - name: Model

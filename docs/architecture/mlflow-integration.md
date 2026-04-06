@@ -4,7 +4,7 @@
 
 内部 Team 已确定将模型离线实验的中间产物（artifact）用 MLflow 管理。本文档定义 Platform 与 MLflow 的集成架构、映射关系和 artifact 登记策略。
 
-## 2. 部署架构
+## 2. 部署架构概览
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -31,9 +31,9 @@
 
 ## 3. 实体映射
 
-### 3.1 Platform → MLflow 映射
+### 3.1 平台 → MLflow 映射
 
-| Platform 概念 | MLflow 概念 | 映射关系 | 说明 |
+| 平台概念 | MLflow 概念 | 映射关系 | 说明 |
 |---------------|-------------|----------|------|
 | **Experiment** | MLflow Experiment | 1:1 | Platform Experiment 创建时同步创建 MLflow Experiment；`mlflow_experiment_id` 存入 Platform Experiment 表 |
 | **Run** | MLflow Parent Run | 1:1 | Platform Run 触发时创建 MLflow Parent Run；`mlflow_run_id` 存入 Platform Run 表 |
@@ -41,7 +41,7 @@
 | **ModelArtifact** | MLflow Artifact | 1:N | Run 产出的所有文件作为 MLflow Artifact 登记 |
 | **Build** | MLflow Registered Model Version | 1:1 | Build 注册时同步创建 MLflow Model Registry 版本 |
 
-### 3.2 ER 扩展
+### 3.2 ER 关系扩展
 
 ```mermaid
 erDiagram
@@ -51,7 +51,7 @@ erDiagram
     Build ||--|| MLflowModelVersion : "maps to"
 ```
 
-### 3.3 Platform 实体新增字段
+### 3.3 平台实体新增字段
 
 **Experiment 表**：
 
@@ -74,7 +74,7 @@ erDiagram
 
 ## 4. Artifact 登记策略
 
-### 4.1 策略：Per-Node Nested Run + Artifact Logging
+### 4.1 策略：逐节点 Nested Run + Artifact Logging
 
 采用 **每节点 log_artifact** 方式（非 Run 级汇总），原因：
 - 允许按节点粒度追溯和对比产物
@@ -124,7 +124,7 @@ sequenceDiagram
     MLflow-->>Platform: model_version
 ```
 
-### 4.3 Artifact S3 路径规范
+### 4.3 Artifact 的 S3 路径规范
 
 MLflow artifact store 与 Platform S3 路径保持一致：
 
@@ -148,7 +148,7 @@ s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
 
 `mlflow/` 子目录下的产物由 MLflow SDK 管理（log_artifact）；`nodes/` 下保留平台自管的镜像副本，确保即使 MLflow 不可用也能通过 Platform 路径访问。
 
-### 4.4 各节点登记的 Params / Metrics / Artifacts
+### 4.4 各节点登记的参数 / 指标 / 产物
 
 | 节点 | MLflow Params | MLflow Metrics | MLflow Artifacts |
 |------|---------------|----------------|------------------|
@@ -162,7 +162,7 @@ s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
 | **Calibrate Fit** | calibration_method | — | calibrator.pkl |
 | **Calibrate Transform** | — | final_score_mean, final_score_std | final_scores.parquet |
 
-## 5. Build 注册与 MLflow Model Registry
+## 5. Build 注册与 MLflow 模型注册表
 
 当用户 Register Build 时：
 
@@ -172,7 +172,7 @@ s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
 2. MLflow 返回 `model_version`，Platform 存入 Build 表的 `mlflow_model_version` 字段
 3. Build 的 `artifact_s3_path` 同时指向 Platform S3 路径（兜底）
 
-## 6. Platform UI 与 MLflow UI 的关系
+## 6. 平台 UI 与 MLflow UI 的关系
 
 | 场景 | 使用 Platform UI | 使用 MLflow UI |
 |------|-----------------|----------------|
@@ -182,7 +182,7 @@ s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
 | Artifact 下载 | 基础下载 | 高级查看（MLflow Artifact Viewer） |
 | Model Registry | Build 注册为主入口 | 模型版本 Stage 管理（Staging/Production/Archived） |
 
-**关系**：Platform UI 为日常操作主入口；MLflow UI 为高级分析补充。Platform Run 详情页提供"在 MLflow 中查看"的跳转链接。
+**关系**：平台 UI 为日常操作主入口；MLflow UI 为高级分析补充。平台 Run 详情页提供"在 MLflow 中查看"的跳转链接。
 
 ## 7. 容错与降级
 
@@ -195,4 +195,4 @@ s3://{bucket}/{base_prefix}/{exp_id}/{run_id}/
 
 ---
 
-*Last Updated: 2026-04-06*
+*最后更新: 2026-04-06*

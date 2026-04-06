@@ -10,12 +10,12 @@
 
 | 版本 | 节点数 | 状态 | 说明 |
 |------|--------|------|------|
-| **Current Milestone (MVP)** | **6 nodes** | **实现中** | Partner spec v2.0，线性管道；当前原型 `model-experiment-web` 基准 |
-| Future / Phase 2 (SOP) | 9 nodes | Deferred | 多子路径、合并 WOE 节点、独立 Tune/Train、CheckPoint（择优）、Calibrate |
+| **当前里程碑 (MVP)** | **6 节点** | **实现中** | Partner spec v2.0，线性管道；当前原型 `model-experiment-web` 基准 |
+| 未来 / Phase 2 (SOP) | 9 节点 | 延期 | 多子路径、合并 WOE 节点、独立 Tune/Train、CheckPoint（择优）、Calibrate |
 
 ---
 
-# Part I: Current Milestone — 6-Node Linear Pipeline (MVP)
+# 第一部分：当前里程碑 — 6 节点线性管道 (MVP)
 
 ## Partner spec v2.0（2025）— 当前原型画布基准
 
@@ -32,15 +32,15 @@
 
 **SavePoint / CheckPoint 边标签**：本 6 节点线性原型 **不展示** 旧版边侧 SavePoint 标签；多 SavePoint、多 CheckPoint 的完整语义见下文「Superseded / deferred」，后端落地时可再挂接。
 
-### Deferred capabilities（Phase 2 引入）
+### 延期能力（Phase 2 引入）
 
 以下能力仍可作为产品与后端长期目标，**不与当前 6 节点原型互斥**，但 **不在本里程碑画布上展开**：合并式 **WOE All / WOE Selected**、**独立 Model Tune 与 Model Train**、**CheckPoint（择优）**、画布上的 **Calibrate**、多子路径并行 Tune+Train。若实现回归多节点拓扑，需同步更新本文与 `Task-Canvas-Config.md`。
 
 ---
 
-# Part II: Future / Phase 2 — 9-Node SOP Pipeline
+# 第二部分：未来 / Phase 2 — 9 节点 SOP 管道
 
-> **Status: Deferred** — 以下为产品与后端长期目标，当前不实现。与 Part I (6-node MVP) 不互斥，Phase 2 实现时在此基础上扩展。
+> **状态: 延期** — 以下为产品与后端长期目标，当前不实现。与第一部分 (6 节点 MVP) 不互斥，Phase 2 实现时在此基础上扩展。
 
 ## 一、Experiment 画布超简化流程与节点划分
 

@@ -95,4 +95,4 @@
 
 ---
 
-**最后更新**：与 `docs/design` 以 `model-experiment-web` 实现为验收基准、Figma 为设计迁移原本的修订同步。
+**最后更新**：与 `docs/design` 文档同步——以 `model-experiment-web` 实现为验收基准、Figma 为设计迁移原本。

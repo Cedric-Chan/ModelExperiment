@@ -1,3 +1,3 @@
-# Architecture references
+# 架构参考
 
-- **Partner frontend node config (read-only):** [`frontend_node_config_spec_latest.md`](./frontend_node_config_spec_latest.md) — v2.0 node model and pipeline-level YAML. Do not edit; product and [`docs/design/`](../design/) align to it.
+- **合作方前端节点配置（只读）：** [`frontend_node_config_spec_latest.md`](./frontend_node_config_spec_latest.md) — v2.0 节点模型与 Pipeline 级 YAML。请勿编辑；产品文档与 [`docs/design/`](../design/) 与其对齐。

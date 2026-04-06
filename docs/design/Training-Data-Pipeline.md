@@ -93,7 +93,7 @@ flowchart LR
 
 ### 3.1 Phase 1: 数据获取
 
-#### Data Ingestion 策略
+#### 数据摄取策略
 
 MVP 阶段 **不引入 Spark**。数据获取有两条路径：
 
@@ -441,7 +441,7 @@ flowchart TD
 - 达到 `n_trials` 上限
 - Early Stopping：连续 `patience` 轮未改善超过 `min_delta`
 
-#### Early Stopping（训练内部）
+#### 早停机制（训练内部）
 
 
 | 参数             | 说明                 |
@@ -497,7 +497,7 @@ flowchart TD
 
 根据 Run 配置 model_type 动态选择评估指标：
 
-##### Classification（分类任务）
+##### 分类任务 (Classification)
 
 
 | 指标               | 说明                  | 数据格式                         |
@@ -512,7 +512,7 @@ flowchart TD
 | PR Curve         | Precision/Recall 序列 | array of [precision, recall] |
 
 
-##### Regression（回归任务）
+##### 回归任务 (Regression)
 
 
 | 指标   | 说明        | 数据格式  |
@@ -524,7 +524,7 @@ flowchart TD
 | MAPE | 平均绝对百分比误差 | float |
 
 
-##### 通用指标
+##### 通用指标 (General)
 
 
 | 指标                    | 说明           | 数据格式                             |
@@ -534,7 +534,7 @@ flowchart TD
 | Feature Importance    | 特征重要性排序      | array of { feature, importance } |
 
 
-Feature Importance 实现方式根据框架决定：
+特征重要性 (Feature Importance) 实现方式根据框架决定：
 
 - 树模型：impurity-based importance（gain / split count）
 - 深度学习 / 通用：SHAP values（若计算资源允许；否则降级为 permutation importance）
@@ -744,11 +744,11 @@ flowchart TD
 
 ---
 
-## 7. Cache Policy（Use Cache 策略）
+## 7. 缓存策略（Use Cache）
 
 Trigger Run 弹窗提供 **Use Cache** 开关，控制是否复用前序 Run 的节点产出。本节定义缓存的判定规则、粒度和过期策略。
 
-### 7.1 缓存判定规则
+### 7.1 命中判定规则
 
 缓存以**节点级**为粒度。每个画布节点是否命中缓存由以下条件联合决定：
 
@@ -762,7 +762,7 @@ cache_hit(node) = Use Cache 开关为 ON
 
 ```
 
-#### Config Hash 计算
+#### 配置哈希 (Config Hash) 计算
 
 对节点配置（RunConfig 中该节点对应的配置区块）做 **canonical JSON 序列化 → SHA-256**：
 
@@ -774,7 +774,7 @@ def compute_config_hash(node_config: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 ```
 
-#### Input Data Hash 计算
+#### 输入数据哈希 (Input Data Hash) 计算
 
 - **Data Source 节点**：`SHA-256(hive_server + table_schema + table_name + partition_filter + custom_filter)` 或 `SHA-256(sample_path)`
 - **下游节点**：继承上游节点的 output_path hash；若上游命中缓存，则 input hash 与前序 Run 一致

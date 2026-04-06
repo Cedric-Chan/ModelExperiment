@@ -1,21 +1,21 @@
 # 模型训练平台 MVP：产品原型与 PRD
 
-**文档状态**: Draft
-**基于模板**: Product Manager Toolkit - Standard PRD Template
-**作者**: AI Product Manager
+**文档状态**: 草稿
+**基于模板**: 产品经理工具包 - 标准 PRD 模板
+**作者**: AI 产品经理
 
 **交互说明来源**：页面流转、控件文案与状态展示以 `[docs/prototype/model-experiment-web](../prototype/model-experiment-web/README.md)` **仓库实现**为验收基准；[Figma：Model Experiment](https://www.figma.com/design/C15E8rRER0qSqYsQZgdVif/Model-Experiment) 为初次设计迁移原本与风格参考。下文 **Experiment / Run** 为领域实体；界面可见 **Exp Id / Exp Name / Model Experiments List** 等与 `[Naming-And-Responsibilities.md](./Naming-And-Responsibilities.md)` 中的「界面 ↔ 领域」映射一致。矛盾追溯见 `[_FIGMA_SYNC_REVIEW.md](./_FIGMA_SYNC_REVIEW.md)`。
 
 ---
 
-## 1. Executive Summary (执行摘要)
+## 1. 执行摘要
 
-**Purpose**: 定义离线模型训练平台本期 MVP 迭代的产品需求文档（PRD）及页面结构约束。
+**目的**: 定义离线模型训练平台本期 MVP 迭代的产品需求文档（PRD）及页面结构约束。
 
 - **问题陈述**: 现有的系统编排基于复杂的 6-Phase Spark 管道与 yaml 拖拽，对于普通业务人员或初阶算法工程师而言，构建、组合多任务寻优的门槛极高，执行环境异构导致稳定性不足。
 - **解决方案**: 将底层执行统一包裹为 Ray Python 脚本，并对用户侧提供 **Experiment（EXP）画布**：Experiment 绑定已注册 Model，保留当前/最新画布配置；一次执行为 **Run**（界面展示 **Run ID**，数据模型同源 **TaskInstance**），中间产物与画布配置均绑定 Run id。列表与导航以 **Model Experiments** 为主入口；在配置页通过 **Action → Trigger Run** 创建新实例，弹窗内配置 **Use Cache**（关闭即等价全量重跑）、**Run Notes**，提交后实例进入排队态 **QUEUING**。
 - **业务影响**: 降低训练环境配置时间；当前导出实现中 Trigger Run 默认按**全 DAG / from start** 校验与执行；执行时分析配置是否变更、无变更部分可走缓存，便于迭代与复现。
-- **核心指标 (Success Metrics)**:
+- **核心指标**:
   - 任务配置提单耗时缩短比例 (Target: < 5 分钟)
   - 底层失败率 (Target: < 5%，依赖 Ray 稳定剥离)
 
@@ -91,7 +91,7 @@ Model → Experiment（绑定已注册 Model，继承 name / region）
 
 ---
 
-## 3. 页面信息架构图 (Information Architecture)
+## 3. 页面信息架构图
 
 展示了本期 MVP 的 Web 层级结构与用户流转路径：
 
@@ -325,9 +325,9 @@ sequenceDiagram
 
 ---
 
-## 5. Technical Feasibility & MVP Scope 约束
+## 5. 技术可行性与 MVP 范围约束
 
-- **Out of Scope (本期不实现)**:
+- **不在范围内（本期不实现）**:
   - Canvas 画布拖拽编排。
   - YAML 编辑器模式。
   - 复杂的底层容错重试配置与多物理机分布图监控。
