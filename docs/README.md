@@ -6,9 +6,11 @@
 
 ## 0. 术语表 — Single Source of Truth
 
-| 文件 | 权威范围 | 说明 |
-|------|----------|------|
+
+| 文件                         | 权威范围                                  | 说明                  |
+| -------------------------- | ------------------------------------- | ------------------- |
 | [GLOSSARY.md](GLOSSARY.md) | 实体命名、状态机、Action 矩阵、Deprecated Aliases | **所有文档引用此表**，不再各自定义 |
+
 
 ---
 
@@ -18,19 +20,21 @@
 
 供方案对比与竞品分析，不直接驱动产品定稿。
 
-| 文件 | 说明 |
-|------|------|
-| 竞品调研_Amazon_SageMaker.md | 竞品调研 |
-| 竞品调研_DagsHub.md | 竞品调研 |
-| 竞品调研_Kubeflow.md | 竞品调研 |
-| 竞品调研_Metaflow.md | 竞品调研 |
-| 竞品调研_Prefect.md | 竞品调研 |
-| 竞品调研_Valohai.md | 竞品调研 |
-| 竞品调研_ZenML.md | 竞品调研 |
-| 竞品调研_火山引擎机器学习平台.md | 竞品调研 |
-| Canvas-DAG-技术选型与方案对比.md | Canvas DAG 技术选型与方案对比 |
-| 方案B-G-Task与Run概念及配置承载对比.md | Task/Run 与配置承载方案对比 |
-| Model Experiment.zip | Figma 导出的交互与视觉参考（React 代码包）；**页面交互与控件以 [`prototype/model-experiment-web`](prototype/model-experiment-web/) 仓库实现为准**，Figma 为设计迁移原本；与 [产品原型与PRD](design/产品原型与PRD.md) 同步；领域模型仍以 [系统架构说明](architecture/系统架构说明.md) 为基准，矛盾追溯见 [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)。 |
+
+| 文件                         | 说明                                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 竞品调研_Amazon_SageMaker.md   | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_DagsHub.md            | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_Kubeflow.md           | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_Metaflow.md           | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_Prefect.md            | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_Valohai.md            | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_ZenML.md              | 竞品调研                                                                                                                                                                                                                                                                                  |
+| 竞品调研_火山引擎机器学习平台.md         | 竞品调研                                                                                                                                                                                                                                                                                  |
+| Canvas-DAG-技术选型与方案对比.md    | Canvas DAG 技术选型与方案对比                                                                                                                                                                                                                                                                  |
+| 方案B-G-Task与Run概念及配置承载对比.md | Task/Run 与配置承载方案对比                                                                                                                                                                                                                                                                    |
+| Model Experiment.zip       | Figma 导出的交互与视觉参考（React 代码包）；**页面交互与控件以 `[prototype/model-experiment-web](prototype/model-experiment-web/)` 仓库实现为准**，Figma 为设计迁移原本；与 [产品原型与PRD](design/产品原型与PRD.md) 同步；领域模型仍以 [系统架构说明](architecture/系统架构说明.md) 为基准，矛盾追溯见 [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)。 |
+
 
 ---
 
@@ -40,10 +44,12 @@
 
 仅作阅读与对照，请勿修改。
 
-| 路径 | 说明 |
-|------|------|
-| MODEL_PIPELINE.md | 流程图与步骤定义 |
+
+| 路径                 | 说明                                         |
+| ------------------ | ------------------------------------------ |
+| MODEL_PIPELINE.md  | 流程图与步骤定义                                   |
 | risk_model_on_ray/ | 参考实现代码与分布式训练手册（含 RayUtil、WOE、Tune、Train 等） |
+
 
 ---
 
@@ -53,17 +59,19 @@
 
 产品需求、画布配置、数据管道、系统架构等设计文档。
 
-| 文件 | 权威范围 | 说明 |
-|------|----------|------|
-| [api/openapi.yaml](api/openapi.yaml) | REST API endpoint / request / response 定义 | OpenAPI 3.1 规范 |
-| [architecture/系统架构说明.md](architecture/系统架构说明.md) | 系统架构、ER 图、模块职责、上下游边界、RBAC、Observability | 后端实现的核心参考 |
-| [architecture/mlflow-integration.md](architecture/mlflow-integration.md) | MLflow 集成架构、实体映射、artifact 策略 | MLflow 对接设计 |
-| [design/产品原型与PRD.md](design/产品原型与PRD.md) | 产品功能范围、IA、UX 交互 | 产品原型与 PRD |
-| [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md) | Figma 矛盾处置记录 | Figma/原型 与历史文档矛盾清单与处置结论 |
-| [design/Naming-And-Responsibilities.md](design/Naming-And-Responsibilities.md) | 命名映射（已合并至 GLOSSARY） | 命名与职责 |
-| [design/Pipeline-Steps-and-Canvas-Nodes.md](design/Pipeline-Steps-and-Canvas-Nodes.md) | 画布节点与 SOP 对齐 | Pipeline 步骤与画布节点 |
-| [design/Task-Canvas-Config.md](design/Task-Canvas-Config.md) | Python 步骤 → 画布节点映射 | Experiment 画布配置 |
-| [design/Training-Data-Pipeline.md](design/Training-Data-Pipeline.md) | 配置 → Ray 执行的详细设计 | 训练数据管道设计 |
+
+| 文件                                                                                     | 权威范围                                      | 说明                      |
+| -------------------------------------------------------------------------------------- | ----------------------------------------- | ----------------------- |
+| [api/openapi.yaml](api/openapi.yaml)                                                   | REST API endpoint / request / response 定义 | OpenAPI 3.1 规范          |
+| [architecture/系统架构说明.md](architecture/系统架构说明.md)                                       | 系统架构、ER 图、模块职责、上下游边界、RBAC、Observability   | 后端实现的核心参考               |
+| [architecture/mlflow-integration.md](architecture/mlflow-integration.md)               | MLflow 集成架构、实体映射、artifact 策略              | MLflow 对接设计             |
+| [design/产品原型与PRD.md](design/产品原型与PRD.md)                                               | 产品功能范围、IA、UX 交互                           | 产品原型与 PRD               |
+| [design/_FIGMA_SYNC_REVIEW.md](design/_FIGMA_SYNC_REVIEW.md)                           | Figma 矛盾处置记录                              | Figma/原型 与历史文档矛盾清单与处置结论 |
+| [design/Naming-And-Responsibilities.md](design/Naming-And-Responsibilities.md)         | 命名映射（已合并至 GLOSSARY）                       | 命名与职责                   |
+| [design/Pipeline-Steps-and-Canvas-Nodes.md](design/Pipeline-Steps-and-Canvas-Nodes.md) | 画布节点与 SOP 对齐                              | Pipeline 步骤与画布节点        |
+| [design/Task-Canvas-Config.md](design/Task-Canvas-Config.md)                           | Python 步骤 → 画布节点映射                        | Experiment 画布配置         |
+| [design/Training-Data-Pipeline.md](design/Training-Data-Pipeline.md)                   | 配置 → Ray 执行的详细设计                          | 训练数据管道设计                |
+
 
 ---
 
@@ -71,11 +79,14 @@
 
 **路径**：`docs/prototype/`
 
-**验收基准**：以 **`model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
+**验收基准**：以 `**model-experiment-web` 仓库实现**为交互与视觉验收基准；**Figma** 为初次设计文档迁移原本，后续调整需要参考其设计风格，但**调整逻辑以最新实现为准**。
 
 React（Vite）可交互原型源码在 `model-experiment-web/`；公共部署见 **[GitHub Pages](https://cedric-chan.github.io/ModelExperiment/)**。`MODEL_TRAINING.html` 为说明页，引导打开线上演示与本地运行方式。
 
-| 路径 | 说明 |
-|------|------|
-| [prototype/MODEL_TRAINING.html](prototype/MODEL_TRAINING.html) | 说明页：线上演示链接与本地运行命令 |
+
+| 路径                                                                 | 说明                                          |
+| ------------------------------------------------------------------ | ------------------------------------------- |
+| [prototype/MODEL_TRAINING.html](prototype/MODEL_TRAINING.html)     | 说明页：线上演示链接与本地运行命令                           |
 | [prototype/model-experiment-web/](prototype/model-experiment-web/) | React 交互原型源码（演进自 Figma / Make 导出，以仓库当前行为为准） |
+
+
